@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name          eBay Kleinanzeigen - Anzeige duplizieren / neu einstellen (Debug + Robust)
-// @namespace     https://github.com/J05HI
+// @namespace     https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen
 // @description   Bietet intelligente "Anzeige duplizieren / neu einstellen" Funktionen mit Bilder-Schutz beim Bearbeiten einer vorhandenen Anzeige in eBay Kleinanzeigen.
 // @icon          http://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
-// @copyright     2024, J05HI (https://github.com/J05HI)
+// @copyright     2025, OldRon1977 (https://github.com/OldRon1977)
 // @license       MIT
-// @version       2.2.0
+// @version       1.0.0
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://*.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -13,8 +13,8 @@
 // @match         https://ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @run-at        document-idle
 // @grant         none
-// @updateURL     https://gist.githubusercontent.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5/raw/eBay_Kleinanzeigen_Anzeige_duplizieren.js
-// @downloadURL   https://gist.githubusercontent.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5/raw/eBay_Kleinanzeigen_Anzeige_duplizieren.js
+// @updateURL     https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/blob/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js
+// @downloadURL   https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/blob/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js
 // ==/UserScript==
 
 (function () {
