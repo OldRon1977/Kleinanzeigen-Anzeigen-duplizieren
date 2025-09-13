@@ -6,18 +6,6 @@
 [![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen)
 [![Tampermonkey](https://img.shields.io/badge/Tampermonkey-Compatible-green.svg)](https://tampermonkey.net/)
 
-## 📋 Inhaltsverzeichnis
-
-- [Überblick](#überblick)
-- [Features](#features)
-- [Installation](#installation)
-- [Verwendung](#verwendung)
-- [Screenshots](#screenshots)
-- [Technische Details](#technische-details)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [Lizenz](#lizenz)
-
 ## 🎯 Überblick
 
 Dieses UserScript erweitert die Bearbeiten-Seite von eBay Kleinanzeigen um zwei intelligente Buttons:
