@@ -13,8 +13,8 @@
 // @match         https://ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @run-at        document-idle
 // @grant         none
-// @updateURL     https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/blob/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js
-// @downloadURL   https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/blob/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js
+// @updateURL     https://raw.githubusercontent.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js
+// @downloadURL   https://raw.githubusercontent.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js
 // ==/UserScript==
 
 (function () {
