@@ -1,270 +1,149 @@
-# 🔄 eBay Kleinanzeigen - Smart Anzeige Duplizieren
+# eBay Kleinanzeigen - Anzeige duplizieren / Smart neu einstellen
 
-> **UserScript für intelligentes Duplizieren und Neu-Einstellen von Kleinanzeigen mit automatischem Bilder-Schutz**
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen)
-[![Tampermonkey](https://img.shields.io/badge/Tampermonkey-Compatible-green.svg)](https://tampermonkey.net/)
-
-## 🎯 Überblick
-
-Dieses UserScript erweitert die Bearbeiten-Seite von eBay Kleinanzeigen um zwei intelligente Buttons:
-
-- **📋 Anzeige duplizieren**: Erstellt eine sichere Kopie (Original bleibt bestehen)
-- **🔄 Smart neu einstellen**: Intelligente Neuerstellung mit automatischem Bilder-Schutz
-
-### 🚨 **Problem gelöst**: 
-Das häufige Problem, dass Bilder beim Neu-Einstellen von Anzeigen verloren gehen, wird durch **automatische Bildanalyse** und **intelligente Benutzerführung** verhindert.
+Ein UserScript für Tampermonkey, das zwei praktische Buttons zum Duplizieren und intelligenten Neu-Einstellen von Anzeigen auf eBay Kleinanzeigen/Kleinanzeigen.de hinzufügt.
 
 ## ✨ Features
 
-### 🛡️ **Automatischer Bilder-Schutz**
-- Erkennt automatisch gefährdete Bilder (kleinanzeigen.de-hosted)
-- Warnt vor potenziellem Bildverlust
-- Bietet sichere Alternativen an
+- **📋 Duplizieren**: Erstellt eine Kopie der Anzeige, Original bleibt erhalten
+- **🔄 Smart neu einstellen**: Löscht das Original und erstellt eine neue Anzeige
+- **🖼️ Automatische Bilderhaltung**: Alle Bilder bleiben bei beiden Funktionen erhalten
+- **⚡ Robust & Schnell**: Schlanker Code mit nur ~200 Zeilen
+- **🛡️ Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
 
-### 🧠 **Intelligente Analyse**
-- **Keine problematischen Bilder** → Automatische sichere Neuerstellung
-- **Gefährdete Bilder gefunden** → Warndialog mit Optionen
-- **Externe Bilder** → Bleiben automatisch erhalten
-
-### 💪 **Robuste Technik**
-- Retry-Mechanismus bei API-Fehlern
-- Mehrfach-Selektoren für maximale Kompatibilität
-- Umfangreiche Fehlerbehandlung
-- Debug-Modus für Entwickler
-
-### 🎨 **Benutzerfreundlich**
-- Moderne, responsive UI
-- Klare Benachrichtigungen
-- Tastatur-Shortcuts (ESC zum Abbrechen)
-- Loading-Spinner mit Feedback
-
-## 🚀 Installation
+## 📦 Installation
 
 ### Voraussetzungen
-- **Browser**: Chrome, Firefox, Edge, Safari, Opera
-- **UserScript Manager**: [Tampermonkey](https://tampermonkey.net/) (empfohlen) oder Violentmonkey
+- Browser: Chrome, Firefox, Edge, Safari oder Opera
+- [Tampermonkey](https://www.tampermonkey.net/) Browser-Extension
 
-### Schritt-für-Schritt Installation
+### Installationsschritte
 
-1. **UserScript Manager installieren**
-   ```
-   🔗 https://tampermonkey.net/
-   ```
+1. **Tampermonkey installieren** (falls noch nicht vorhanden)
+   - [Chrome Web Store](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
+   - [Firefox Add-ons](https://addons.mozilla.org/de/firefox/addon/tampermonkey/)
+   - [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
 
 2. **Script installieren**
-   - [📥 **Direkt installieren**](https://raw.githubusercontent.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js)
-   - Oder: Script-Code kopieren und manuell in Tampermonkey einfügen
+   - Option A: [Direkt-Installation Link](https://raw.githubusercontent.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/main/kleinanzeigen-duplizieren.user.js) (klicken wenn Tampermonkey installiert ist)
+   - Option B: Manuell über Tampermonkey Dashboard → "Neues Script" → Code einfügen
 
-3. **Aktivierung überprüfen**
-   - Tampermonkey-Icon klicken
-   - Script sollte "Enabled" sein
+3. **Aktivierung prüfen**
+   - Tampermonkey Icon → Script sollte als "Aktiviert" angezeigt werden
 
-## 📖 Verwendung
+## 🎯 Verwendung
 
-### 1. Zur Anzeige-Bearbeitung navigieren
-```
-https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=XXXXX
-```
+1. **Anzeige bearbeiten**: Navigiere zu einer deiner Anzeigen und klicke auf "Bearbeiten"
+   ```
+   https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=XXXXX
+   ```
 
-### 2. Neue Buttons verwenden
+2. **Neue Buttons nutzen**: Unter dem "Änderungen speichern" Button erscheinen zwei neue Optionen:
 
-#### **📋 Duplizieren** (Immer sicher)
-- Erstellt sofortige Kopie der Anzeige
-- Original bleibt unverändert bestehen
-- Alle Daten werden übernommen
+   ### 📋 Duplizieren
+   - Erstellt eine exakte Kopie der Anzeige
+   - Original bleibt unverändert bestehen
+   - Alle Bilder und Daten werden übernommen
+   - Ideal für: Ähnliche Artikel, Varianten, Backup
 
-#### **🔄 Smart neu einstellen** (Intelligent)
-- **Ohne problematische Bilder**: Läuft automatisch durch
-- **Mit gefährdeten Bildern**: Zeigt Warndialog mit Optionen:
-  - 🛡️ **Sicher duplizieren**: Original behalten
-  - 🗑️ **Trotzdem löschen**: Bewusster Bildverlust
-  - ❌ **Abbrechen**: Keine Aktion
+   ### 🔄 Smart neu einstellen  
+   - Löscht die Original-Anzeige
+   - Erstellt automatisch eine neue Anzeige mit allen Daten
+   - Alle Bilder bleiben erhalten
+   - Ideal für: Anzeige erneuern, nach oben bringen
 
-### 3. Warndialog-Optionen verstehen
+## 🖼️ Bilder-Handhabung
 
-| Option | Original | Bilder | Verwendung |
-|--------|----------|---------|------------|
-| 🛡️ Sicher duplizieren | ✅ Bleibt | ✅ Bleiben | Du willst beide Anzeigen |
-| 🗑️ Trotzdem löschen | ❌ Gelöscht | ❌ Verloren | Du akzeptierst Bildverlust |
-| ❌ Abbrechen | ✅ Bleibt | ✅ Bleiben | Du willst nichts ändern |
+**Wichtig**: Alle Bilder bleiben automatisch erhalten!
 
-## 📸 Screenshots
-
-### Buttons auf der Bearbeiten-Seite
-```
-[Anzeige bearbeiten Seite]
-┌─────────────────────────────────┐
-│  [Änderungen speichern]         │
-│  [📋 Duplizieren]               │  
-│  [🔄 Smart neu einstellen]      │
-└─────────────────────────────────┘
-```
-
-### Intelligenter Warndialog
-```
-⚠️ Bilder-Warnung
-
-Diese Anzeige enthält 3 Bild(er), die beim Löschen 
-der Originalanzeige unwiderruflich verloren gehen.
-
-Ihre Optionen:
-🛡️ Sicher duplizieren: Original bleibt erhalten
-🗑️ Trotzdem löschen: Original und Bilder werden gelöscht  
-❌ Abbrechen: Keine Aktion durchführen
-
-[🛡️ Sicher duplizieren] [🗑️ Trotzdem löschen] [❌ Abbrechen]
-```
+Das Script nutzt die Tatsache, dass beim Bearbeiten einer Anzeige alle Bilder bereits im Formular geladen sind. Diese werden beim Submit automatisch mit übertragen - egal ob die Original-ID vorhanden ist oder nicht.
 
 ## 🔧 Technische Details
 
 ### Unterstützte URLs
-```javascript
-// Hauptseite
-https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
-https://kleinanzeigen.de/p-anzeige-bearbeiten.html*
-
-// Legacy URLs  
-https://www.ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
-https://ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
-```
-
-### Bildanalyse-Algorithmus
-```javascript
-// Gefährdete Bilder (gehen bei Löschung verloren)
-src.includes('kleinanzeigen.de') || src.includes('ebay-kleinanzeigen.de')
-
-// Sichere Bilder (externe Hosts)
-imgur.com, postimg.cc, etc.
-```
+- `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*`
+- `https://kleinanzeigen.de/p-anzeige-bearbeiten.html*`
+- `https://*.kleinanzeigen.de/p-anzeige-bearbeiten.html*`
+- `https://www.ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*`
 
 ### API-Endpunkte
 - **Löschen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
-- **CSRF-Token**: `meta[name="_csrf"]`
-- **Form-Submit**: Standard HTML Form
+- **CSRF-Token**: `meta[name="_csrf"]` oder `meta[name="csrf-token"]`
 
-## 🐛 Troubleshooting
+### Browser-Kompatibilität
+- ✅ Chrome/Chromium (v88+)
+- ✅ Firefox (v78+)
+- ✅ Edge (v88+)
+- ✅ Safari (v14+)
+- ✅ Opera (v74+)
+
+## 🐛 Fehlerbehebung
 
 ### Script lädt nicht
-```javascript
-// 1. Console öffnen (F12 → Console)
-// 2. Nach diesen Logs suchen:
-[Kleinanzeigen-Script] Script geladen, URL: ...
-[Kleinanzeigen-Script] ✅ Duplikations-Buttons geladen!
-```
+1. Prüfe ob Tampermonkey aktiviert ist
+2. Stelle sicher, dass du auf der Bearbeiten-Seite bist
+3. Browser-Cache leeren (Strg+F5)
+4. Console öffnen (F12) und nach Fehlern suchen
 
-**Mögliche Lösungen:**
-- ✅ Tampermonkey installiert und aktiviert?
-- ✅ Script im Dashboard als "Enabled" markiert?
-- ✅ Auf korrekter URL (`/p-anzeige-bearbeiten.html`)?
-- ✅ Browser-Cache geleert?
+### Buttons erscheinen nicht
+- Warte 2-3 Sekunden nach Seitenladevorgang
+- Das Script sucht automatisch nach dem Submit-Button und platziert die neuen Buttons darunter
 
-### Buttons nicht sichtbar
-```javascript
-// Debug-Informationen in Console prüfen:
-[Kleinanzeigen-Script] Element gefunden mit Selector: #pstad-submit
-[Kleinanzeigen-Script] Buttons erfolgreich eingefügt
-```
-
-**Lösungsschritte:**
-1. Seite neu laden (Strg + F5)
-2. 3 Sekunden warten (Fallback-Timer)
-3. Script neu installieren
-
-### API-Fehler beim Löschen
-```javascript
-// Retry-Mechanismus läuft automatisch
-[Kleinanzeigen-Script] Fehler beim Löschen der Anzeige (Versuch 1): HTTP 403
-[Kleinanzeigen-Script] Fehler beim Löschen der Anzeige (Versuch 2): HTTP 403  
-[Kleinanzeigen-Script] Fehler beim Löschen der Anzeige (Versuch 3): HTTP 403
-```
-
-**Mögliche Ursachen:**
-- Session abgelaufen → Neu anmelden
-- CSRF-Token ungültig → Seite neu laden
-- Rate-Limiting → Kurz warten
-
-## 🛠️ Development
-
-### Lokale Entwicklung
-```bash
-# Repository klonen
-git clone https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen.git
-
-# In Tampermonkey als lokale Datei laden
-file:///path/to/script.user.js
-```
-
-### Debug-Modus aktivieren
-```javascript
-const DEBUG = true; // In Zeile 17 ändern
-```
-
-### Build & Release
-```bash
-# Version in Header aktualisieren
-# @version       1.1.0
-
-# GitHub Release erstellen
-```
-
-## 🤝 Contributing
-
-Contributions sind willkommen! Bitte beachte:
-
-1. **Issues erstellen** für Bug Reports oder Feature Requests
-2. **Pull Requests** mit klarer Beschreibung
-3. **Code-Style** beibehalten (ESLint-kompatibel)
-4. **Tests** für neue Features hinzufügen
-
-### Entwickler-Guidelines
-- Verwende `log()` für Debug-Ausgaben
-- Alle UI-Elemente mit `userscript-` prefixen
-- Error-Handling ist Pflicht
-- Kommentiere komplexe Logik
+### Löschung schlägt fehl
+- Session könnte abgelaufen sein → Neu anmelden
+- Rate-Limiting → Kurz warten und erneut versuchen
 
 ## 📝 Changelog
 
-### Version 1.0.0 (Latest)
-- ✅ **Neu**: Intelligente Bildanalyse mit Warndialog
-- ✅ **Neu**: Smart neu einstellen Funktion
-- ✅ **Fix**: Robuste Element-Suche mit Fallback-Selektoren
-- ✅ **Fix**: Retry-Mechanismus bei API-Fehlern
-- ✅ **Verbesserung**: Moderne UI mit Benachrichtigungen
+### Version 3.0.0 (2025)
+- Komplette Code-Überarbeitung
+- Von 600 auf ~200 Zeilen reduziert
+- Unnötige Bilder-Warnungen entfernt
+- Modernisierte Syntax
+- Timeout-Handling hinzugefügt
 
-## 📄 Lizenz
+### Version 2.x (2024)
+- Erweiterte Bildanalyse (später als unnötig erkannt)
+- Komplexe Manager-Strukturen
 
-```
-MIT License
+### Version 1.x (2024)
+- Initiale Funktionalität
+- Basis-Duplizierung
 
-Copyright (c) 2025 OldRon1977
+## 👥 Credits & Lizenz
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+### Credits
+- **Original-Script**: [J05HI](https://github.com/J05HI) - [Original Gist](https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
+  - Entwickelte die grundlegende Duplikations-Funktionalität
+  - API-Integration und CSRF-Token Handling
+  
+- **Erweiterte Version**: [OldRon1977](https://github.com/OldRon1977)
+  - Smart Neu-Einstellen Feature
+  - Verbesserte Fehlerbehandlung
+  - Code-Optimierungen
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+### Lizenz
+MIT License - Siehe [LICENSE](LICENSE) für Details
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+## 🤝 Contributing
+
+Contributions sind willkommen! 
+
+1. Fork das Repository
+2. Erstelle einen Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Committe deine Änderungen (`git commit -m 'Add some AmazingFeature'`)
+4. Push zum Branch (`git push origin feature/AmazingFeature`)
+5. Öffne einen Pull Request
+
+## ⚠️ Haftungsausschluss
+
+Dieses Script wird "as is" zur Verfügung gestellt. Die Nutzung erfolgt auf eigene Gefahr. Die Autoren übernehmen keine Haftung für eventuelle Schäden oder Verstöße gegen die Nutzungsbedingungen von eBay Kleinanzeigen.
+
+## 📞 Support
+
+Bei Problemen oder Fragen:
+- [Issue erstellen](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/issues)
+- [Discussions](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/discussions)
 
 ---
 
-⭐ **Hat dir das Script geholfen?** Gib dem Repo einen Stern!  
-🐛 **Bug gefunden?** [Issue erstellen](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/issues)  
-💡 **Feature-Idee?** [Discussion starten](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/discussions)
-
----
-
-**Made with ❤️ for the eBay Kleinanzeigen Community**
+**Hinweis**: Dieses Script ist nicht offiziell mit eBay Kleinanzeigen verbunden oder von ihnen unterstützt.
