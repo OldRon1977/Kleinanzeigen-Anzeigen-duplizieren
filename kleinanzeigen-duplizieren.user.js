@@ -5,7 +5,7 @@
 // @icon          http://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2025
 // @license       MIT
-// @version       3.1.1
+// @version       3.1.2
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -351,7 +351,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.1.1)');
+        logger.log('UserScript initialisiert (v3.1.2)');
 
         // Warten bis DOM bereit
         if (document.readyState === 'loading') {
