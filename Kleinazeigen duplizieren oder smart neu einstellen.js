@@ -5,7 +5,7 @@
 // @icon          http://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2025
 // @license       MIT
-// @version       3.0.0
+// @version       3.1.0
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -30,84 +30,156 @@
 (function () {
     'use strict';
 
+    // === KONSTANTEN ===
+    const CONFIG = {
+        NOTIFICATION_TIMEOUT_MS: 4000,     // Wie lange Toast-Nachrichten angezeigt werden
+        DELETE_REQUEST_TIMEOUT_MS: 8000,   // Timeout für API-Anfrage zum Löschen
+        DELETE_WAIT_BEFORE_CREATE_MS: 2000, // Warten bis Löschung verarbeitet ist
+        INITIAL_RETRY_WAIT_MS: 500,        // Initiale Wartezeit für Retries
+        MAX_RETRY_WAIT_MS: 8000,           // Maximale Wartezeit zwischen Retries
+        MAX_BUTTON_RETRIES: 5              // Maximale Versuche zum Erstellen der Buttons
+    };
+
+    // === LOGGING ===
+    const logger = {
+        log: (msg, data) => console.log(`[KA-Script] ${msg}`, data || ''),
+        warn: (msg, data) => console.warn(`[KA-Script] ⚠️ ${msg}`, data || ''),
+        error: (msg, data) => console.error(`[KA-Script] ❌ ${msg}`, data || '')
+    };
+
     // === HILFSFUNKTIONEN ===
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+    /**
+     * Berechnet Wartezeit mit exponential backoff
+     * @param {number} retryCount - Aktuelle Versuches-Nummer (ab 1)
+     * @returns {number} Wartezeit in ms
+     */
+    function getExponentialBackoffWait(retryCount) {
+        // 2^(retryCount-1) * INITIAL_RETRY_WAIT_MS, max MAX_RETRY_WAIT_MS
+        const exponentialWait = Math.pow(2, retryCount - 1) * CONFIG.INITIAL_RETRY_WAIT_MS;
+        return Math.min(exponentialWait, CONFIG.MAX_RETRY_WAIT_MS);
+    }
+
     function showNotification(message, type = 'info') {
+        // Styles sicherstellen
+        ensureStyles();
+
         // Alte Notifications entfernen
         document.querySelectorAll('.ka-notification').forEach(n => n.remove());
 
         const notification = document.createElement('div');
-        notification.className = 'ka-notification';
+        notification.className = `ka-notification ${type}`;
         notification.textContent = message;
-        
-        const colors = {
-            error: '#e74c3c',
-            success: '#27ae60',
-            info: '#3498db'
-        };
-        
-        Object.assign(notification.style, {
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            padding: '12px 20px',
-            backgroundColor: colors[type] || colors.info,
-            color: 'white',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: '500',
-            zIndex: '10000',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-        });
-        
+
         document.body.appendChild(notification);
-        setTimeout(() => notification.remove(), 4000);
+        setTimeout(() => notification.remove(), CONFIG.NOTIFICATION_TIMEOUT_MS);
+    }
+
+    function ensureStyles() {
+        if (document.querySelector('#ka-styles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'ka-styles';
+        style.textContent = `
+            @keyframes ka-spin { to { transform: rotate(360deg); } }
+
+            .ka-spinner {
+                position: fixed;
+                inset: 0;
+                background-color: rgba(0, 0, 0, 0.3);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+            }
+
+            .ka-spinner > div {
+                width: 40px;
+                height: 40px;
+                border: 4px solid #f3f3f3;
+                border-top-color: #3498db;
+                border-radius: 50%;
+                animation: ka-spin 1s linear infinite;
+            }
+
+            .ka-notification {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 500;
+                color: white;
+                z-index: 10000;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            }
+
+            .ka-notification.error { background-color: #e74c3c; }
+            .ka-notification.success { background-color: #27ae60; }
+            .ka-notification.info { background-color: #3498db; }
+
+            .ka-button-container {
+                margin-top: 10px;
+            }
+
+            .ka-duplicate-btn, .ka-smart-btn {
+                padding: 10px 20px;
+                margin-left: 10px;
+                margin-top: 10px;
+                cursor: pointer;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: #6c757d;
+                color: white;
+                font-size: 14px;
+                font-weight: 500;
+                transition: background-color 0.2s ease;
+            }
+
+            .ka-duplicate-btn:hover { background-color: #5a6268; }
+
+            .ka-smart-btn {
+                background-color: #007bff;
+            }
+
+            .ka-smart-btn:hover { background-color: #0056b3; }
+        `;
+        document.head.appendChild(style);
     }
 
     function showLoadingSpinner(show = true) {
         const existing = document.querySelector('.ka-spinner');
         if (existing) existing.remove();
-        
+
         if (!show) return;
 
+        ensureStyles();
         const spinner = document.createElement('div');
         spinner.className = 'ka-spinner';
-        spinner.innerHTML = '<div style="width:40px;height:40px;border:4px solid #f3f3f3;border-top-color:#3498db;border-radius:50%;animation:ka-spin 1s linear infinite"></div>';
-        
-        Object.assign(spinner.style, {
-            position: 'fixed',
-            inset: '0',
-            backgroundColor: 'rgba(0,0,0,0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: '9999'
-        });
-
-        // Animation einmalig hinzufügen
-        if (!document.querySelector('#ka-styles')) {
-            const style = document.createElement('style');
-            style.id = 'ka-styles';
-            style.textContent = '@keyframes ka-spin { to { transform: rotate(360deg); } }';
-            document.head.appendChild(style);
-        }
-
+        spinner.innerHTML = '<div></div>';
         document.body.appendChild(spinner);
     }
 
     // === API FUNKTIONEN ===
     function getCsrfToken() {
-        const token = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]')?.getAttribute('content');
-        if (!token) throw new Error('CSRF-Token nicht gefunden');
+        const metaTag = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]');
+        if (!metaTag) throw new Error('CSRF-Token Meta-Tag nicht gefunden - Seite nicht richtig geladen?');
+
+        const token = metaTag.getAttribute('content');
+        if (!token) throw new Error('CSRF-Token ist leer oder nicht gesetzt');
+
         return token;
     }
 
     async function deleteAd(adId) {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        
+        const timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
+
         try {
+            logger.log(`Lösche Anzeige mit ID: ${adId}`);
+
             const response = await fetch(`https://www.kleinanzeigen.de/m-anzeigen-loeschen.json?ids=${adId}`, {
                 method: 'POST',
                 headers: {
@@ -119,36 +191,50 @@
             });
 
             clearTimeout(timeout);
-            
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            if (!response.ok) {
+                logger.error(`Anzeige-Löschung fehlgeschlagen`, { status: response.status });
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            logger.log('Anzeige erfolgreich gelöscht');
             return await response.json();
-            
+
         } catch (error) {
             clearTimeout(timeout);
             if (error.name === 'AbortError') {
+                logger.error('Timeout beim Löschen');
                 throw new Error('Timeout beim Löschen');
             }
+            logger.error('Fehler beim Löschen', error);
             throw error;
         }
     }
 
     // === HAUPTFUNKTIONEN ===
+    function getFormElements() {
+        const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+        const form = document.querySelector('form');
+        if (!adIdInput || !form) throw new Error('Form-Elemente nicht gefunden');
+        return { adIdInput, form };
+    }
+
     async function duplicateAd() {
         try {
+            logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
-            
-            const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
-            const form = document.querySelector('form');
-            
-            if (!adIdInput || !form) throw new Error('Form-Elemente nicht gefunden');
-            
+
+            const { adIdInput, form } = getFormElements();
+
             // ID löschen = Neue Anzeige, Bilder bleiben im Form erhalten
             adIdInput.value = '';
-            
+
+            logger.log('Anzeige-ID gelöscht, Form wird eingereicht');
             showNotification('📋 Anzeige wird dupliziert (mit allen Bildern)...');
             form.submit();
-            
+
         } catch (error) {
+            logger.error('Fehler beim Duplizieren', error);
             showNotification('❌ Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
         }
@@ -156,48 +242,72 @@
 
     async function smartRepublish() {
         try {
+            logger.log('Starte Smart-Republish-Prozess');
             showLoadingSpinner();
-            
-            const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
-            const form = document.querySelector('form');
-            
-            if (!adIdInput || !form) throw new Error('Form-Elemente nicht gefunden');
-            
+
+            const { adIdInput, form } = getFormElements();
+
             const originalId = adIdInput.value;
             if (!originalId) throw new Error('Keine Anzeigen-ID gefunden');
 
+            logger.log(`Versuche Original-Anzeige ${originalId} zu löschen`);
             showNotification('🗑️ Original wird gelöscht...');
-            
+
+            let deleteFailed = false;
             try {
                 await deleteAd(originalId);
-                await delay(2000); // Kurz warten bis Löschung verarbeitet
+                await delay(CONFIG.DELETE_WAIT_BEFORE_CREATE_MS);
+                logger.log('Original-Anzeige erfolgreich gelöscht');
             } catch (error) {
-                // Bei Löschfehler trotzdem fortfahren - alte Anzeige bleibt dann halt
-                console.warn('Löschung fehlgeschlagen, erstelle trotzdem neue Anzeige:', error);
+                deleteFailed = true;
+                logger.warn('Löschung fehlgeschlagen, erstelle trotzdem neue Anzeige', error);
+                showNotification('⚠️ Original-Anzeige konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
             }
-            
+
             // Neue Anzeige erstellen - Bilder sind noch im Form!
             adIdInput.value = '';
-            showNotification('✨ Neue Anzeige wird erstellt (mit allen Bildern)...');
+            const statusMsg = deleteFailed
+                ? '✨ Neue Anzeige wird erstellt (Original bleibt noch kurz sichtbar)...'
+                : '✨ Neue Anzeige wird erstellt (mit allen Bildern)...';
+            logger.log('Erstelle neue Anzeige', { deleteFailed });
+            showNotification(statusMsg);
             form.submit();
-            
+
         } catch (error) {
+            logger.error('Fehler beim Smart-Republish', error);
             showNotification('❌ Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
         }
     }
 
     // === BUTTONS ERSTELLEN ===
+    let buttonCreateRetries = 0;
+
     function createButtons() {
         // Prüfen ob bereits vorhanden
-        if (document.querySelector('.ka-duplicate-btn')) return;
-        
-        const submitButton = document.querySelector('#pstad-submit, button[type="submit"], .button-primary');
-        if (!submitButton) {
-            console.log('[KA-Script] Submit-Button nicht gefunden, versuche später erneut');
-            setTimeout(createButtons, 1000);
+        if (document.querySelector('.ka-duplicate-btn')) {
+            logger.log('Buttons bereits vorhanden, überspringe Erstellung');
             return;
         }
+
+        const submitButton = document.querySelector('#pstad-submit, button[type="submit"], .button-primary');
+        if (!submitButton) {
+            if (buttonCreateRetries < CONFIG.MAX_BUTTON_RETRIES) {
+                buttonCreateRetries++;
+                const waitTime = getExponentialBackoffWait(buttonCreateRetries);
+                logger.log(`Submit-Button nicht gefunden, Versuch ${buttonCreateRetries}/${CONFIG.MAX_BUTTON_RETRIES} (Warte ${waitTime}ms)`);
+                setTimeout(createButtons, waitTime);
+            } else {
+                logger.error(`Button-Erstellung fehlgeschlagen nach ${CONFIG.MAX_BUTTON_RETRIES} Versuchen`);
+                showNotification('❌ Buttons konnten nicht erstellt werden - Seite nicht vollständig geladen?', 'error');
+            }
+            return;
+        }
+
+        logger.log('Erstelle Duplikations-Buttons');
+
+        // Styles sicherstellen
+        ensureStyles();
 
         // Duplikat-Button
         const dupButton = document.createElement('button');
@@ -209,7 +319,7 @@
             e.preventDefault();
             duplicateAd();
         };
-        
+
         // Smart-Button
         const smartButton = document.createElement('button');
         smartButton.type = 'button';
@@ -222,38 +332,23 @@
                 smartRepublish();
             }
         };
-        
-        // Styling
-        [dupButton, smartButton].forEach(btn => {
-            Object.assign(btn.style, {
-                padding: '10px 20px',
-                marginLeft: '10px',
-                marginTop: '10px',
-                cursor: 'pointer',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: '500'
-            });
-        });
-        
-        smartButton.style.backgroundColor = '#007bff';
 
         // Container für Buttons
         const container = document.createElement('div');
-        container.style.marginTop = '10px';
+        container.className = 'ka-button-container';
         container.appendChild(dupButton);
         container.appendChild(smartButton);
         
         submitButton.parentNode.insertBefore(container, submitButton.nextSibling);
-        
+
+        logger.log('Duplikations-Buttons erfolgreich erstellt');
         showNotification('✅ Duplikations-Buttons bereit!', 'success');
     }
 
     // === INITIALISIERUNG ===
     function init() {
+        logger.log('UserScript initialisiert (v3.1.0)');
+
         // Warten bis DOM bereit
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', createButtons);

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c:*)",
+      "Bash(node tests/helpers.test.js:*)",
+      "Bash(node tests/integration.test.js:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run validate:*)",
+      "Bash(npm run test:integration:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
