@@ -5,7 +5,7 @@
 ### Option 1: Automatische Installation (Empfohlen)
 Klick einfach auf diesen Link, um das Script direkt in Tampermonkey zu installieren:
 
-[![Install Script](https://img.shields.io/badge/Install-Kleinanzeigen%20Duplizieren-00aa00?style=flat-square&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js)
+[![Install Script](https://img.shields.io/badge/Install-Kleinanzeigen%20Duplizieren-00aa00?style=flat-square&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 
 **Was passiert:**
 1. Link wird geklickt
@@ -14,13 +14,13 @@ Klick einfach auf diesen Link, um das Script direkt in Tampermonkey zu installie
 4. Script ist aktiviert ✅
 
 ### Option 2: Manuelle Installation
-1. Gehe zu [Raw Script Datei](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js)
+1. Gehe zu [Raw Script Datei](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 2. Tampermonkey sollte automatisch erkannt werden
 3. Klick "Installieren"
 
 ### Option 3: Copy-Paste
 1. Öffne Tampermonkey → "+" (Neues Script)
-2. Kopiere den Code aus der [Script-Datei](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js)
+2. Kopiere den Code aus der [Script-Datei](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 3. Speichern & Fertig
 
 ---

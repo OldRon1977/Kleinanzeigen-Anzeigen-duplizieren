@@ -14,7 +14,7 @@ Ein UserScript für Tampermonkey, das zwei praktische Buttons zum Duplizieren un
 
 ### ⚡ Schnelle Installation
 
-[![Install Script](https://img.shields.io/badge/Install%20Script-Kleinanzeigen%20Duplizieren-00aa00?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/Kleinazeigen%20duplizieren%20oder%20smart%20neu%20einstellen.js)
+[![Install Script](https://img.shields.io/badge/Install%20Script-Kleinanzeigen%20Duplizieren-00aa00?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 
 **Wie funktioniert es:**
 1. Klick auf den Button oben
