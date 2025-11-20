@@ -14,8 +14,8 @@
 // @match         https://www.ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
-// @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
-// @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
+// @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js?v=3.1.2
+// @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js?v=3.1.2
 // @run-at        document-idle
 // @grant         none
 // ==/UserScript==
