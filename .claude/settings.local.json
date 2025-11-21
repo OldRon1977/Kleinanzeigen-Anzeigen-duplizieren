@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git push:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nAdd auto-update support & installation documentation\n\n✨ Features:\n- Add @updateURL & @downloadURL to UserScript header\n- Tampermonkey now checks for updates weekly automatically\n- Users can manual trigger update check in Tampermonkey\n\n📚 Documentation:\n- Add INSTALL.md with detailed installation guide\n- Add installation badge/button to README.md\n- Document auto-update process\n- Add troubleshooting section\n\n🔧 Configuration:\n- Update namespace to point to GitHub repo\n- Add @homepage link\n- Add @author field\n\n✅ Benefits:\n- One-click installation from GitHub\n- Automatic version updates via Tampermonkey\n- Simplified user experience\n- Better distribution\n\n📦 Files Changed:\n- Kleinazeigen duplizieren oder smart neu einstellen.js (headers)\n- README.md (installation section)\n- INSTALL.md (new comprehensive guide)\n\nStatus: Ready for distribution\nEOF\n)\")",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []
