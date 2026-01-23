@@ -23,6 +23,8 @@ Klick einfach auf diesen Link, um das Script direkt in Tampermonkey zu installie
 2. Kopiere den Code aus der [Script-Datei](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 3. Speichern & Fertig
 
+Optional kann das Hilfs-Skript `helper.js` analog Installiert werden.
+
 ---
 
 ## ✅ Automatische Updates
@@ -162,7 +164,8 @@ Nach der Installation:
 
 | Version | Datum | Changes |
 |---------|-------|---------|
-| **3.1.0** | Nov 2025 | ✅ Auto-Update Support + Tests |
+| **3.2.0** | Jan 2026 | ✅ Einbindung Helper script für "Meine Anzeigen" Portal |
+| 3.1.0 | Nov 2025 | ✅ Auto-Update Support + Tests |
 | 3.0.0 | Nov 2025 | ✅ Smart Republish Feature |
 | 2.x | 2024 | ✅ Original Features |
 

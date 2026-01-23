@@ -50,6 +50,8 @@ Das Script erhält **automatisch Updates**:
 
 ## 🎯 Verwendung
 
+### Mittels "Anzeige bearbeiten"
+
 1. **Anzeige bearbeiten**: Navigiere zu einer deiner Anzeigen und klicke auf "Bearbeiten"
    ```
    https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=XXXXX
@@ -68,6 +70,22 @@ Das Script erhält **automatisch Updates**:
    - Erstellt automatisch eine neue Anzeige mit allen Daten
    - Alle Bilder bleiben erhalten
    - Ideal für: Anzeige erneuern, nach oben bringen
+
+### Mittels "Meine Anzeigen"
+
+1. **Meine Anzeigen**: Navigiere zu deiner Anzeigenübersicht 
+
+
+- Kleinanzeigen Homepage
+  - Meins 🖱️
+  - Anzeigen 🖱️
+
+   ```
+   https://www.kleinanzeigen.de/m-meine-anzeigen.html
+   ```
+
+2. **Anzeige smart neu einstellen**: Dies ermöglicht es einfach Anzeigen Smart neu einzustellen, ohne diese einzeln zu öffnen.
+
 
 ## 🖼️ Bilder-Handhabung
 
@@ -112,7 +130,10 @@ Das Script nutzt die Tatsache, dass beim Bearbeiten einer Anzeige alle Bilder be
 
 ## 📝 Changelog
 
-### Version 3.1.0 (November 2025) ⭐ Aktuell
+### Version 3.2.0 (Januar 2026) ⭐ Aktuell
+- Einbindung Helper script für "Meine Anzeigen" Portal
+
+### Version 3.1.0 (November 2025)
 - ✨ Auto-Update Support aktiviert
 - 🧪 54 Unit & Integration Tests (100% bestanden)
 - 📚 Umfangreiche Dokumentation

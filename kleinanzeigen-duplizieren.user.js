@@ -3,9 +3,9 @@
 // @namespace     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @description   Einfaches Duplizieren und Smart Neu-Einstellen von Anzeigen mit automatischer Bilderhaltung
 // @icon          http://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
-// @copyright     2025
+// @copyright     2026
 // @license       MIT
-// @version       3.1.3
+// @version       3.2.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -23,11 +23,8 @@
  * Basierend auf dem Original-Script von J05HI
  * https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5
  * 
- * Änderungen in v3.0:
- * - Smart Neu-Einstellen Funktion hinzugefügt
- * - Bilder bleiben automatisch erhalten (keine Warnung nötig)
- * - Code vereinfacht und modernisiert
- * - Besseres Error-Handling mit Timeout
+ * Änderungen in v3.2:
+ * - Integrierung eines Helper Scripts für das erneuern mehrerer Anzeigen über "Meine Anzeigen" Portal
  */
 
 (function () {
@@ -356,7 +353,14 @@
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', createButtons);
         } else {
-            createButtons();
+            // prüfen auf Automatik Parameter
+            if (window.location.href.includes("&smartRepublish")) {
+                console.log("URL contains &smartRepublish");
+                smartRepublish()
+            }
+            else {
+                createButtons();
+            }
         }
     }
 
