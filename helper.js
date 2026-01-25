@@ -5,7 +5,7 @@
 // @version      1.0.0
 // @description  Hilfsskript für Smart Neu-Einstellen
 // @author       amnesia
-// @match        https://www.kleinanzeigen.de/m-meine-anzeigen.html
+// @match        https://www.kleinanzeigen.de/m-meine-anzeigen.html*
 // @icon         http://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @grant        none
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.js
@@ -43,7 +43,7 @@
     // Function to open the edit window
     function smartRepublishHelper(adId, button) {
         window.open(
-            "https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=" + adId + "&smartRepublish",
+            "https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=" + adId + "#smartRepublish",
             "_blank",
             "toolbar=yes,scrollbars=yes,resizable=yes,top=500,left=500,width=400,height=400"
         );

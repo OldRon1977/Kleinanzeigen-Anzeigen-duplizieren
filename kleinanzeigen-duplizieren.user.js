@@ -354,8 +354,8 @@
             document.addEventListener('DOMContentLoaded', createButtons);
         } else {
             // prüfen auf Automatik Parameter
-            if (window.location.href.includes("&smartRepublish")) {
-                console.log("URL contains &smartRepublish");
+            if (window.location.href.includes("#smartRepublish")) {
+                console.log("URL contains #smartRepublish");
                 smartRepublish()
             }
             else {
