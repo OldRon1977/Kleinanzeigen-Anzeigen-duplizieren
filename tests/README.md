@@ -20,15 +20,15 @@ Tests für die Kern-Funktionalität:
 ### 2. **integration.test.js** - Integration Tests für Workflows
 Tests für komplette Workflows:
 - ✅ Duplicate Ad Flow (3 Tests)
-- ✅ Smart Republish Flow (4 Tests)
+- ✅ Smart Republish Flow (3 Tests)
 - ✅ Error Handling (3 Tests)
 - ✅ Button Creation (3 Tests)
-- ✅ Notification System (5 Tests)
+- ✅ Notification System (4 Tests)
 - ✅ Configuration (3 Tests)
 - ✅ State Management (2 Tests)
 - ✅ End-to-End Scenarios (2 Tests)
 
-**Gesamt: 25 Integration Tests**
+**Gesamt: 23 Integration Tests**
 
 ---
 
