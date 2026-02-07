@@ -77,6 +77,11 @@ Das Script nutzt die Tatsache, dass beim Bearbeiten einer Anzeige alle Bilder be
 
 ## 🔧 Technische Details
 
+### Berechtigungen
+Das Script verwendet `@grant none` – es hat keine erweiterten Tampermonkey-Berechtigungen
+und kann nur im Kontext der aktuellen Kleinanzeigen-Seite agieren. Es speichert keine Daten
+und kommuniziert ausschließlich mit kleinanzeigen.de über HTTPS.
+
 ### Unterstützte URLs
 - `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*`
 - `https://kleinanzeigen.de/p-anzeige-bearbeiten.html*`
@@ -112,7 +117,17 @@ Das Script nutzt die Tatsache, dass beim Bearbeiten einer Anzeige alle Bilder be
 
 ## 📝 Changelog
 
-### Version 3.1.0 (November 2025) ⭐ Aktuell
+### Version 3.2.0 (Februar 2026) ⭐ Aktuell
+- 🔒 Security-Härtung nach ISO 27001/27002 Audit
+- ✅ Input-Validierung für Anzeigen-IDs (Defense-in-Depth)
+- ✅ Session-Timeout-Erkennung (401/403 → hilfreiche Fehlermeldung)
+- ✅ Button-Disabling nach Klick (verhindert Doppelklick)
+- ✅ innerHTML durch createElement ersetzt (Code-Hygiene)
+- 📄 SECURITY.md hinzugefügt (Responsible Disclosure)
+- 📄 .gitignore erstellt (Repository-Hygiene)
+- 📚 Permissions-Dokumentation im README
+
+### Version 3.1.0 (November 2025)
 - ✨ Auto-Update Support aktiviert
 - 🧪 54 Unit & Integration Tests (100% bestanden)
 - 📚 Umfangreiche Dokumentation
