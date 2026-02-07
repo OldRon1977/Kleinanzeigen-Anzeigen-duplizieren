@@ -5,7 +5,7 @@
 // @icon          http://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2025
 // @license       MIT
-// @version       3.1.3
+// @version       3.2.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -148,6 +148,11 @@
             }
 
             .ka-smart-btn:hover { background-color: #0056b3; }
+
+            .ka-duplicate-btn:disabled, .ka-smart-btn:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -161,7 +166,9 @@
         ensureStyles();
         const spinner = document.createElement('div');
         spinner.className = 'ka-spinner';
-        spinner.innerHTML = '<div></div>';
+        // US-SEC-006: innerHTML durch createElement ersetzen
+        const spinnerInner = document.createElement('div');
+        spinner.appendChild(spinnerInner);
         document.body.appendChild(spinner);
     }
 
@@ -177,6 +184,11 @@
     }
 
     async function deleteAd(adId) {
+        // US-SEC-001: Input-Validierung für Anzeigen-ID
+        if (!adId || !/^\d{1,20}$/.test(adId)) {
+            throw new Error('Ungültige Anzeigen-ID');
+        }
+
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
 
@@ -195,7 +207,12 @@
 
             clearTimeout(timeout);
 
+            // US-SEC-002: Session-Timeout-Erkennung
             if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    logger.warn('Session abgelaufen', { status: response.status });
+                    throw new Error('Sitzung abgelaufen – bitte neu einloggen und Seite neu laden.');
+                }
                 logger.error(`Anzeige-Löschung fehlgeschlagen`, { status: response.status });
                 throw new Error(`HTTP ${response.status}`);
             }
@@ -240,6 +257,8 @@
             logger.error('Fehler beim Duplizieren', error);
             showNotification('❌ Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
+            // US-SEC-003: Buttons bei Fehler wieder aktivieren
+            document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
 
@@ -280,6 +299,8 @@
             logger.error('Fehler beim Smart-Republish', error);
             showNotification('❌ Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
+            // US-SEC-003: Buttons bei Fehler wieder aktivieren
+            document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
 
@@ -318,20 +339,26 @@
         dupButton.className = 'ka-duplicate-btn';
         dupButton.textContent = '📋 Duplizieren';
         dupButton.title = 'Erstellt eine Kopie, Original bleibt erhalten';
-        dupButton.onclick = (e) => {
-            e.preventDefault();
-            duplicateAd();
-        };
-
-        // Smart-Button
+        // Smart-Button (vor onclick-Handler definieren für Closure)
         const smartButton = document.createElement('button');
         smartButton.type = 'button';
         smartButton.className = 'ka-smart-btn';
         smartButton.textContent = '🔄 Smart neu einstellen';
         smartButton.title = 'Löscht Original und erstellt neue Anzeige';
+
+        // US-SEC-003: Button-Disabling nach Klick
+        dupButton.onclick = (e) => {
+            e.preventDefault();
+            dupButton.disabled = true;
+            smartButton.disabled = true;
+            duplicateAd();
+        };
+
         smartButton.onclick = (e) => {
             e.preventDefault();
             if (confirm('Original-Anzeige wird gelöscht und als neue Anzeige eingestellt.\n\nAlle Bilder bleiben erhalten.\n\nFortfahren?')) {
+                dupButton.disabled = true;
+                smartButton.disabled = true;
                 smartRepublish();
             }
         };
@@ -350,7 +377,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.1.2)');
+        logger.log('UserScript initialisiert (v3.2.0)');
 
         // Warten bis DOM bereit
         if (document.readyState === 'loading') {
