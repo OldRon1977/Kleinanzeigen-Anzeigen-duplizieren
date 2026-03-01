@@ -4,9 +4,24 @@
 
 Dieses Dokument dokumentiert alle Code-Quality-Verbesserungen über verschiedene Versionen.
 
-**Aktuelle Version:** v3.2.0 (Februar 2026)
+**Aktuelle Version:** v3.2.1 (März 2026)
 **Quality Score:** 9.1/10 (von ursprünglich 7.2/10)
 **Gesamtverbesserung:** +1.9 Punkte
+
+---
+
+## 🔧 v3.2.1 - Consistency Fix (März 2026)
+
+**Änderungsdatum:** März 2026
+**Typ:** Housekeeping / Dokumentation
+**Quality Improvement:** Keine Score-Änderung (nur Korrekturen)
+
+### Behobene Inkonsistenzen
+
+1. **Versions-Sync** - Compatibility-Fallback-Datei von 3.1.2 auf 3.2.1 aktualisiert
+2. **Dateiname** - Tippfehler "Kleinazeigen" → "Kleinanzeigen" korrigiert
+3. **Repository-URL** - package.json zeigt jetzt auf OldRon1977's Fork
+4. **Testzählungen** - Dokumentation an tatsächliche Testanzahl angeglichen
 
 ---
 

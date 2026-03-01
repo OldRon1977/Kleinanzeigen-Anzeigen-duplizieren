@@ -117,7 +117,13 @@ und kommuniziert ausschließlich mit kleinanzeigen.de über HTTPS.
 
 ## 📝 Changelog
 
-### Version 3.2.0 (Februar 2026) ⭐ Aktuell
+### Version 3.2.1 (März 2026) ⭐ Aktuell
+- 🔧 Versions-Inkonsistenzen behoben (Fallback-Datei synchronisiert)
+- 🔧 Tippfehler im Dateinamen korrigiert ("Kleinazeigen" → "Kleinanzeigen")
+- 🔧 Repository-URL in package.json korrigiert
+- 🔧 Testzählungen in Dokumentation korrigiert
+
+### Version 3.2.0 (Februar 2026)
 - 🔒 Security-Härtung nach ISO 27001/27002 Audit
 - ✅ Input-Validierung für Anzeigen-IDs (Defense-in-Depth)
 - ✅ Session-Timeout-Erkennung (401/403 → hilfreiche Fehlermeldung)

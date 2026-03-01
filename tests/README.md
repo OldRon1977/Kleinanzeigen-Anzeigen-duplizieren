@@ -66,8 +66,8 @@ node tests/integration.test.js
 | Category | Tests | Coverage |
 |----------|-------|----------|
 | Helper Functions | 29 | Core utilities |
-| Integration Flows | 25 | Main workflows |
-| **Total** | **54** | **Comprehensive** |
+| Integration Flows | 23 | Main workflows |
+| **Total** | **52** | **Comprehensive** |
 
 ### Abgedeckte Funktionen
 - [x] `getExponentialBackoffWait()` - Backoff Berechnung
@@ -332,7 +332,7 @@ Wenn Tests fehlschlagen:
 
 ## ✨ Zusammenfassung
 
-✅ **54 Tests** für robuste Codequalität
+✅ **52 Tests** für robuste Codequalität
 ✅ **Zero External Dependencies** - nur Node.js Standard-Library
 ✅ **Schnell zu starten** - `npm test` oder `node tests/*.test.js`
 ✅ **Umfassend** - Unit Tests + Integration Tests

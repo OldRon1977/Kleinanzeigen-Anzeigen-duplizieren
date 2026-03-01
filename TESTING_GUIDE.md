@@ -34,7 +34,7 @@ node tests/integration.test.js
 - Retry Logic (2 tests)
 
 ### Integration Tests (`tests/integration.test.js`)
-✅ 25 Tests für Workflows
+✅ 23 Tests für Workflows
 
 - Duplicate Flow (3 tests)
 - Smart Republish Flow (3 tests)
@@ -91,7 +91,7 @@ node tests/integration.test.js
 ### Expected Output
 ```
 ✅ All Tests Passed
-📊 SUMMARY: 54 Tests - ALL PASSED
+📊 SUMMARY: 52 Tests - ALL PASSED
 ```
 
 ---
@@ -101,10 +101,10 @@ node tests/integration.test.js
 | Feature | Tests | Coverage |
 |---------|-------|----------|
 | Helper Functions | 29 | 100% |
-| Workflows | 25 | 100% |
+| Workflows | 23 | 100% |
 | Error Handling | 6 | 100% |
 | Config | 6 | 100% |
-| **TOTAL** | **54** | **100%** |
+| **TOTAL** | **52** | **100%** |
 
 ---
 
@@ -168,8 +168,8 @@ Some delay tests might be flaky depending on system load. This is expected - the
 
 ```
 Test Suites:      2
-Total Tests:      54
-Passed:          54
+Total Tests:      52
+Passed:          52
 Failed:           0
 Skipped:          0
 Success Rate:    100%

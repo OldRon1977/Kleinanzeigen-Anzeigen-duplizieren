@@ -5,7 +5,7 @@
 ## 📌 Latest Test Run: v3.2.0 (Februar 2026)
 
 **Date:** Februar 7, 2026
-**Version:** v3.2.0 (Security Hardening)
+**Version:** v3.2.1 (Consistency Fix)
 **Status:** ✅ **ALL TESTS PASSED**
 **Test Framework:** Node.js Native (assert module)
 
@@ -27,8 +27,7 @@ Success Rate:      100%
 | **TOTAL** | **52** | **✅ PASSED** |
 
 **Changes from v3.0.0:**
-- Integration Tests: 25 → 23 (2 redundante Tests entfernt/zusammengefasst)
-- Total Tests: 54 → 52
+- Keine Änderung an Testanzahl
 - Success Rate: 100% (unverändert)
 
 ### New Test Coverage v3.2.0
@@ -163,7 +162,7 @@ Retry 5: 8000ms (max)
 
 ---
 
-## 🔗 Integration Tests (25 Tests)
+## 🔗 Integration Tests (23 Tests)
 
 ### Duplicate Ad Flow Tests (3/3) ✅
 
@@ -317,7 +316,7 @@ The following components cannot be directly tested due to IIFE encapsulation (pl
 
 ```
 Total Test Suites:     2
-Total Test Cases:      54
+Total Test Cases:      52
 Execution Time:        ~2-3 seconds
 Memory Usage:          ~20-30 MB
 CPU Usage:             Minimal
@@ -358,7 +357,7 @@ CPU Usage:             Minimal
 
 ## ✨ Conclusion
 
-✅ **All 54 tests passed successfully**
+✅ **All 52 tests passed successfully**
 
 The Kleinanzeigen Anzeigen-duplizieren UserScript v3.0.0 is:
 - ✅ Syntactically valid
