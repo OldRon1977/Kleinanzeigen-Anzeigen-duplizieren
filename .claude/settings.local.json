@@ -2,35 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(git push:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\nAdd auto-update support & installation documentation\n\n✨ Features:\n- Add @updateURL & @downloadURL to UserScript header\n- Tampermonkey now checks for updates weekly automatically\n- Users can manual trigger update check in Tampermonkey\n\n📚 Documentation:\n- Add INSTALL.md with detailed installation guide\n- Add installation badge/button to README.md\n- Document auto-update process\n- Add troubleshooting section\n\n🔧 Configuration:\n- Update namespace to point to GitHub repo\n- Add @homepage link\n- Add @author field\n\n✅ Benefits:\n- One-click installation from GitHub\n- Automatic version updates via Tampermonkey\n- Simplified user experience\n- Better distribution\n\n📦 Files Changed:\n- Kleinazeigen duplizieren oder smart neu einstellen.js (headers)\n- README.md (installation section)\n- INSTALL.md (new comprehensive guide)\n\nStatus: Ready for distribution\nEOF\n)\")",
       "Bash(git commit:*)",
       "Bash(git mv:*)",
-      "Bash(npx skills find userscript)",
-      "Bash(npx skills find javascript testing)",
-      "Bash(npx skills find code review)",
-      "Bash(npx skills find security audit)",
-      "Bash(npx skills find git changelog)",
-      "Bash(npx skills add wshobson/agents@javascript-testing-patterns -g -y)",
-      "Bash(npx skills add wshobson/agents@code-review-excellence -g -y)",
-      "Bash(npx skills find \"jsdom dom testing\")",
-      "Bash(npx skills find \"userscript tampermonkey\")",
-      "Bash(npx skills info henkisdabro/wookstar-claude-code-plugins@tampermonkey)",
-      "WebFetch(domain:skills.sh)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(npx skills find henkisdabro)",
-      "WebFetch(domain:github.com)",
-      "Bash(npx skills add henkisdabro/wookstar-claude-code-plugins@tampermonkey -g -y)",
-      "Bash(npm test)",
-      "Bash(node -c \"/home/tiger/Dokumente/GitHub/Kleinanzeigen-Anzeigen-duplizieren/kleinanzeigen-duplizieren.user.js\")",
-      "Bash(node -c \"/home/tiger/Dokumente/GitHub/Kleinanzeigen-Anzeigen-duplizieren/Kleinanzeigen duplizieren oder smart neu einstellen.js\")",
-      "Bash(git -C /home/tiger/Dokumente/GitHub/Kleinanzeigen-Anzeigen-duplizieren status)",
-      "Bash(git add kleinanzeigen-duplizieren.user.js package.json \"Kleinanzeigen duplizieren oder smart neu einstellen.js\" IMPROVEMENTS.md README.md TESTING_GUIDE.md TEST_RESULTS.md tests/README.md FINAL_CODE_REVIEW.md)",
-      "Bash(git -C /home/tiger/Dokumente/GitHub/Kleinanzeigen-Anzeigen-duplizieren diff --cached --stat)"
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git merge:*)",
+      "Bash(git tag:*)",
+      "Bash(git branch:*)",
+      "Bash(git rm:*)",
+      "Bash(npm test:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
-    "ask": [],
-    "additionalDirectories": [
-      "/tmp/wookstar-inspect"
-    ]
+    "ask": []
   }
 }
