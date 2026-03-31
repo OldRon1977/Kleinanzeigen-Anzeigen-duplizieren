@@ -1,26 +1,26 @@
-# eBay Kleinanzeigen - Anzeige duplizieren / Smart neu einstellen
+﻿# eBay Kleinanzeigen - Anzeige duplizieren / Smart neu einstellen
 
-Ein UserScript für Tampermonkey, das zwei praktische Buttons zum Duplizieren und intelligenten Neu-Einstellen von Anzeigen auf eBay Kleinanzeigen/Kleinanzeigen.de hinzufügt.
+Ein UserScript fÃ¼r Tampermonkey, das zwei praktische Buttons zum Duplizieren und intelligenten Neu-Einstellen von Anzeigen auf eBay Kleinanzeigen/Kleinanzeigen.de hinzufÃ¼gt.
 
-## ✨ Features
+## âœ¨ Features
 
-- **📋 Duplizieren**: Erstellt eine Kopie der Anzeige, Original bleibt erhalten
-- **🔄 Smart neu einstellen**: Löscht das Original und erstellt eine neue Anzeige
-- **🖼️ Automatische Bilderhaltung**: Alle Bilder bleiben bei beiden Funktionen erhalten
-- **⚡ Robust & Schnell**: Schlanker Code mit nur ~200 Zeilen
-- **🛡️ Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
+- **ðŸ“‹ Duplizieren**: Erstellt eine Kopie der Anzeige, Original bleibt erhalten
+- **ðŸ”„ Smart neu einstellen**: LÃ¶scht das Original und erstellt eine neue Anzeige
+- **ðŸ–¼ï¸ Automatische Bilderhaltung**: Alle Bilder bleiben bei beiden Funktionen erhalten
+- **âš¡ Robust & Schnell**: Schlanker Code mit nur ~200 Zeilen
+- **ðŸ›¡ï¸ Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
 
-## 📦 Installation
+## ðŸ“¦ Installation
 
-### ⚡ Schnelle Installation
+### âš¡ Schnelle Installation
 
 [![Install Script](https://img.shields.io/badge/Install%20Script-Kleinanzeigen%20Duplizieren-00aa00?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 
 **Wie funktioniert es:**
 1. Klick auf den Button oben
-2. Tampermonkey öffnet sich automatisch
+2. Tampermonkey Ã¶ffnet sich automatisch
 3. Klick "Installieren"
-4. Fertig! Script ist aktiv ✅
+4. Fertig! Script ist aktiv âœ…
 
 > **Hinweis**: Tampermonkey muss vorher installiert sein. Siehe [Voraussetzungen](#voraussetzungen) unten.
 
@@ -35,135 +35,135 @@ Ein UserScript für Tampermonkey, das zwei praktische Buttons zum Duplizieren un
 - [Safari App Store](https://apps.apple.com/de/app/tampermonkey/id1482490089)
 
 ### Alternative Installationsmethoden
-Siehe [**INSTALL.md**](INSTALL.md) für:
+Siehe [**INSTALL.md**](INSTALL.md) fÃ¼r:
 - Manuelle Installation
 - Copy-Paste Installation
 - Detaillierte Anleitung
 - Automatische Updates
 
-### ✅ Auto-Updates aktiviert
-Das Script erhält **automatisch Updates**:
-- Tampermonkey prüft jede Woche nach neuen Versionen
+### âœ… Auto-Updates aktiviert
+Das Script erhÃ¤lt **automatisch Updates**:
+- Tampermonkey prÃ¼ft jede Woche nach neuen Versionen
 - Updates werden automatisch installiert
-- Du wirst benachrichtigt wenn eine neue Version verfügbar ist
-- Keine zusätzliche Aktion erforderlich!
+- Du wirst benachrichtigt wenn eine neue Version verfÃ¼gbar ist
+- Keine zusÃ¤tzliche Aktion erforderlich!
 
-## 🎯 Verwendung
+## ðŸŽ¯ Verwendung
 
 1. **Anzeige bearbeiten**: Navigiere zu einer deiner Anzeigen und klicke auf "Bearbeiten"
    ```
    https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=XXXXX
    ```
 
-2. **Neue Buttons nutzen**: Unter dem "Änderungen speichern" Button erscheinen zwei neue Optionen:
+2. **Neue Buttons nutzen**: Unter dem "Ã„nderungen speichern" Button erscheinen zwei neue Optionen:
 
-   ### 📋 Duplizieren
+   ### ðŸ“‹ Duplizieren
    - Erstellt eine exakte Kopie der Anzeige
-   - Original bleibt unverändert bestehen
-   - Alle Bilder und Daten werden übernommen
-   - Ideal für: Ähnliche Artikel, Varianten, Backup
+   - Original bleibt unverÃ¤ndert bestehen
+   - Alle Bilder und Daten werden Ã¼bernommen
+   - Ideal fÃ¼r: Ã„hnliche Artikel, Varianten, Backup
 
-   ### 🔄 Smart neu einstellen  
-   - Löscht die Original-Anzeige
+   ### ðŸ”„ Smart neu einstellen  
+   - LÃ¶scht die Original-Anzeige
    - Erstellt automatisch eine neue Anzeige mit allen Daten
    - Alle Bilder bleiben erhalten
-   - Ideal für: Anzeige erneuern, nach oben bringen
+   - Ideal fÃ¼r: Anzeige erneuern, nach oben bringen
 
-## 🖼️ Bilder-Handhabung
+## ðŸ–¼ï¸ Bilder-Handhabung
 
 **Wichtig**: Alle Bilder bleiben automatisch erhalten!
 
-Das Script nutzt die Tatsache, dass beim Bearbeiten einer Anzeige alle Bilder bereits im Formular geladen sind. Diese werden beim Submit automatisch mit übertragen - egal ob die Original-ID vorhanden ist oder nicht.
+Das Script nutzt die Tatsache, dass beim Bearbeiten einer Anzeige alle Bilder bereits im Formular geladen sind. Diese werden beim Submit automatisch mit Ã¼bertragen - egal ob die Original-ID vorhanden ist oder nicht.
 
-## 🔧 Technische Details
+## ðŸ”§ Technische Details
 
 ### Berechtigungen
-Das Script verwendet `@grant none` – es hat keine erweiterten Tampermonkey-Berechtigungen
+Das Script verwendet `@grant none` â€“ es hat keine erweiterten Tampermonkey-Berechtigungen
 und kann nur im Kontext der aktuellen Kleinanzeigen-Seite agieren. Es speichert keine Daten
-und kommuniziert ausschließlich mit kleinanzeigen.de über HTTPS.
+und kommuniziert ausschlieÃŸlich mit kleinanzeigen.de Ã¼ber HTTPS.
 
-### Unterstützte URLs
+### UnterstÃ¼tzte URLs
 - `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*`
 - `https://kleinanzeigen.de/p-anzeige-bearbeiten.html*`
 - `https://*.kleinanzeigen.de/p-anzeige-bearbeiten.html*`
 - `https://www.ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*`
 
 ### API-Endpunkte
-- **Löschen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
+- **LÃ¶schen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
 - **CSRF-Token**: `meta[name="_csrf"]` oder `meta[name="csrf-token"]`
 
-### Browser-Kompatibilität
-- ✅ Chrome/Chromium (v88+)
-- ✅ Firefox (v78+)
-- ✅ Edge (v88+)
-- ✅ Safari (v14+)
-- ✅ Opera (v74+)
+### Browser-KompatibilitÃ¤t
+- âœ… Chrome/Chromium (v88+)
+- âœ… Firefox (v78+)
+- âœ… Edge (v88+)
+- âœ… Safari (v14+)
+- âœ… Opera (v74+)
 
-## 🐛 Fehlerbehebung
+## ðŸ› Fehlerbehebung
 
-### Script lädt nicht
-1. Prüfe ob Tampermonkey aktiviert ist
+### Script lÃ¤dt nicht
+1. PrÃ¼fe ob Tampermonkey aktiviert ist
 2. Stelle sicher, dass du auf der Bearbeiten-Seite bist
 3. Browser-Cache leeren (Strg+F5)
-4. Console öffnen (F12) und nach Fehlern suchen
+4. Console Ã¶ffnen (F12) und nach Fehlern suchen
 
 ### Buttons erscheinen nicht
 - Warte 2-3 Sekunden nach Seitenladevorgang
 - Das Script sucht automatisch nach dem Submit-Button und platziert die neuen Buttons darunter
 
-### Löschung schlägt fehl
-- Session könnte abgelaufen sein → Neu anmelden
-- Rate-Limiting → Kurz warten und erneut versuchen
+### LÃ¶schung schlÃ¤gt fehl
+- Session kÃ¶nnte abgelaufen sein â†’ Neu anmelden
+- Rate-Limiting â†’ Kurz warten und erneut versuchen
 
-## 📝 Changelog
+## ðŸ“ Changelog
 
-### Version 3.2.1 (März 2026) ⭐ Aktuell
-- 🔧 Versions-Inkonsistenzen behoben (Fallback-Datei synchronisiert)
-- 🔧 Tippfehler im Dateinamen korrigiert ("Kleinazeigen" → "Kleinanzeigen")
-- 🔧 Repository-URL in package.json korrigiert
-- 🔧 Testzählungen in Dokumentation korrigiert
+### Version 3.2.1 (MÃ¤rz 2026) â­ Aktuell
+- ðŸ”§ Versions-Inkonsistenzen behoben (Fallback-Datei synchronisiert)
+- ðŸ”§ Tippfehler im Dateinamen korrigiert ("Kleinazeigen" â†’ "Kleinanzeigen")
+- ðŸ”§ Repository-URL in package.json korrigiert
+- ðŸ”§ TestzÃ¤hlungen in Dokumentation korrigiert
 
 ### Version 3.2.0 (Februar 2026)
-- 🔒 Security-Härtung nach ISO 27001/27002 Audit
-- ✅ Input-Validierung für Anzeigen-IDs (Defense-in-Depth)
-- ✅ Session-Timeout-Erkennung (401/403 → hilfreiche Fehlermeldung)
-- ✅ Button-Disabling nach Klick (verhindert Doppelklick)
-- ✅ innerHTML durch createElement ersetzt (Code-Hygiene)
-- 📄 SECURITY.md hinzugefügt (Responsible Disclosure)
-- 📄 .gitignore erstellt (Repository-Hygiene)
-- 📚 Permissions-Dokumentation im README
+- ðŸ”’ Security-HÃ¤rtung nach ISO 27001/27002 Audit
+- âœ… Input-Validierung fÃ¼r Anzeigen-IDs (Defense-in-Depth)
+- âœ… Session-Timeout-Erkennung (401/403 â†’ hilfreiche Fehlermeldung)
+- âœ… Button-Disabling nach Klick (verhindert Doppelklick)
+- âœ… innerHTML durch createElement ersetzt (Code-Hygiene)
+- ðŸ“„ SECURITY.md hinzugefÃ¼gt (Responsible Disclosure)
+- ðŸ“„ .gitignore erstellt (Repository-Hygiene)
+- ðŸ“š Permissions-Dokumentation im README
 
 ### Version 3.1.0 (November 2025)
-- ✨ Auto-Update Support aktiviert
-- 🧪 54 Unit & Integration Tests (100% bestanden)
-- 📚 Umfangreiche Dokumentation
-- 🔧 Exponential Backoff für Retries
-- 📝 Logger System für Debugging
-- 🎨 CSS Klassen mit Hover-Effekten
-- 🛡️ Verbesserte Error-Handling
-- 📊 Code Quality Score: 8.9/10
+- âœ¨ Auto-Update Support aktiviert
+- ðŸ§ª 54 Unit & Integration Tests (100% bestanden)
+- ðŸ“š Umfangreiche Dokumentation
+- ðŸ”§ Exponential Backoff fÃ¼r Retries
+- ðŸ“ Logger System fÃ¼r Debugging
+- ðŸŽ¨ CSS Klassen mit Hover-Effekten
+- ðŸ›¡ï¸ Verbesserte Error-Handling
+- ðŸ“Š Code Quality Score: 8.9/10
 
 ### Version 3.0.0 (2025)
-- Komplette Code-Überarbeitung
+- Komplette Code-Ãœberarbeitung
 - Von 600 auf ~362 Zeilen optimiert
 - Smart Neu-Einstellen Feature
 - Retry-Limit mit Max-Versuchen
 - CSRF-Token Validation
-- User-Warnung bei Lösch-Fehler
+- User-Warnung bei LÃ¶sch-Fehler
 
 ### Version 2.x (2024)
-- Erweiterte Bildanalyse (später als unnötig erkannt)
+- Erweiterte Bildanalyse (spÃ¤ter als unnÃ¶tig erkannt)
 - Komplexe Manager-Strukturen
 
 ### Version 1.x (2024)
-- Initiale Funktionalität
+- Initiale FunktionalitÃ¤t
 - Basis-Duplizierung
 
-## 👥 Credits & Lizenz
+## ðŸ‘¥ Credits & Lizenz
 
 ### Credits
 - **Original-Script**: [J05HI](https://github.com/J05HI) - [Original Gist](https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
-  - Entwickelte die grundlegende Duplikations-Funktionalität
+  - Entwickelte die grundlegende Duplikations-FunktionalitÃ¤t
   - API-Integration und CSRF-Token Handling
   
 - **Erweiterte Version**: [OldRon1977](https://github.com/OldRon1977)
@@ -172,23 +172,23 @@ und kommuniziert ausschließlich mit kleinanzeigen.de über HTTPS.
   - Code-Optimierungen
 
 ### Lizenz
-MIT License - Siehe [LICENSE](LICENSE) für Details
+MIT License - Siehe [LICENSE](LICENSE) fÃ¼r Details
 
-## 🤝 Contributing
+## ðŸ¤ Contributing
 
 Contributions sind willkommen! 
 
 1. Fork das Repository
 2. Erstelle einen Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Committe deine Änderungen (`git commit -m 'Add some AmazingFeature'`)
+3. Committe deine Ã„nderungen (`git commit -m 'Add some AmazingFeature'`)
 4. Push zum Branch (`git push origin feature/AmazingFeature`)
-5. Öffne einen Pull Request
+5. Ã–ffne einen Pull Request
 
-## ⚠️ Haftungsausschluss
+## âš ï¸ Haftungsausschluss
 
-Dieses Script wird "as is" zur Verfügung gestellt. Die Nutzung erfolgt auf eigene Gefahr. Die Autoren übernehmen keine Haftung für eventuelle Schäden oder Verstöße gegen die Nutzungsbedingungen von eBay Kleinanzeigen.
+Dieses Script wird "as is" zur VerfÃ¼gung gestellt. Die Nutzung erfolgt auf eigene Gefahr. Die Autoren Ã¼bernehmen keine Haftung fÃ¼r eventuelle SchÃ¤den oder VerstÃ¶ÃŸe gegen die Nutzungsbedingungen von eBay Kleinanzeigen.
 
-## 📞 Support
+## ðŸ“ž Support
 
 Bei Problemen oder Fragen:
 - [Issue erstellen](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/issues)
@@ -196,4 +196,5 @@ Bei Problemen oder Fragen:
 
 ---
 
-**Hinweis**: Dieses Script ist nicht offiziell mit eBay Kleinanzeigen verbunden oder von ihnen unterstützt.
+**Hinweis**: Dieses Script ist nicht offiziell mit eBay Kleinanzeigen verbunden oder von ihnen unterstÃ¼tzt.
+
