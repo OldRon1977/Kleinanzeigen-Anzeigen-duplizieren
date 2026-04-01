@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       1.1.1
+// @version       3.3.1
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
 // @match         https://kleinanzeigen.de/m-meine-anzeigen.html*
