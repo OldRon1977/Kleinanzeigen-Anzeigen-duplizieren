@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       1.0.0
+// @version       1.1.1
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
 // @match         https://kleinanzeigen.de/m-meine-anzeigen.html*
@@ -20,10 +20,14 @@
 (function () {
     'use strict';
 
+    const MARKER = 'data-ka-smart-helper';
+
     function addControlButtons() {
         const elements = document.querySelectorAll('a[href*="/p-anzeige-bearbeiten.html?adId="]');
         elements.forEach(function (element) {
-            if (element.nextSibling && element.nextSibling.className === 'ka-smart-helper-btn') return;
+            // Robuste Duplikat-Erkennung per data-Attribut statt nextSibling
+            if (element.hasAttribute(MARKER)) return;
+            element.setAttribute(MARKER, 'true');
 
             const match = element.getAttribute('href').match(/adId=([^&]*)/);
             if (!match || !match[1]) return;
@@ -31,17 +35,18 @@
 
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'ka-smart-helper-btn';
             btn.textContent = '\uD83D\uDD04 Smart neu einstellen';
             btn.title = 'Loescht Original und erstellt neue Anzeige';
-            btn.style.cssText = 'margin-left:8px;padding:4px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;font-size:12px;';
+            btn.style.cssText = 'margin-left:8px;padding:4px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;font-size:12px;vertical-align:middle;display:inline-flex;align-items:center;';
 
             btn.onclick = function (e) {
                 e.preventDefault();
+                e.stopPropagation();
                 openSmartRepublish(adId, btn);
             };
 
-            element.parentNode.insertBefore(btn, element.nextSibling);
+            // Button direkt nach dem Bearbeiten-Link einfuegen
+            element.after(btn);
         });
     }
 
@@ -54,10 +59,14 @@
         button.textContent = '\u2705 Geoeffnet';
     }
 
-    addControlButtons();
+    // Initiale Ausfuehrung mit Verzoegerung fuer SPA-Rendering
+    setTimeout(addControlButtons, 1500);
 
+    // MutationObserver mit Debounce gegen Performance-Probleme
+    let debounceTimer;
     const observer = new MutationObserver(function () {
-        addControlButtons();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(addControlButtons, 300);
     });
     observer.observe(document.body, { childList: true, subtree: true });
 })();
