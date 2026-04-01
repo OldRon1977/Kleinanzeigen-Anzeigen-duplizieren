@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       3.3.1
+// @version       3.3.2
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -234,9 +234,17 @@
 
     // === HAUPTFUNKTIONEN ===
     function getFormElements() {
-        const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+        // Neues Kleinanzeigen-Layout: Ad-ID aus URL extrahieren, Input-Feld als Fallback
+        let adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
         const form = document.querySelector('form');
-        if (!adIdInput || !form) throw new Error('Form-Elemente nicht gefunden');
+        if (!form) throw new Error('Formular nicht gefunden');
+        // Falls kein Input-Feld: virtuelles Objekt mit ID aus URL
+        if (!adIdInput) {
+            const urlMatch = window.location.search.match(/adId=(\d+)/);
+            if (!urlMatch) throw new Error('Anzeigen-ID nicht gefunden (weder Input noch URL)');
+            adIdInput = { value: urlMatch[1], _virtual: true };
+            logger.log('Ad-ID aus URL extrahiert: ' + urlMatch[1]);
+        }
         return { adIdInput, form };
     }
 
@@ -315,7 +323,14 @@
             return;
         }
 
-        const submitButton = document.querySelector('#pstad-submit, button[type="submit"], .button-primary');
+        // Neues Layout: Button mit Text "Anzeige speichern" oder "Vorschau" finden
+        let submitButton = document.querySelector('#pstad-submit');
+        if (!submitButton) {
+            // Suche nach dem Speichern-Button anhand des Textes
+            submitButton = Array.from(document.querySelectorAll('button')).find(
+                b => b.textContent.trim().startsWith('Anzeige speichern')
+            );
+        }
         if (!submitButton) {
             if (buttonCreateRetries < CONFIG.MAX_BUTTON_RETRIES) {
                 buttonCreateRetries++;
@@ -378,7 +393,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.3.0)');
+        logger.log('UserScript initialisiert (v3.3.2)');
 
         function startOrRepublish() {
             if (window.location.hash === '#smartRepublish') {
