@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       3.3.3
+// @version       3.3.4
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -314,55 +314,59 @@
     }
 
     // === BUTTONS ERSTELLEN ===
+    // === BUTTONS ERSTELLEN (Floating Toolbar, ausserhalb React-DOM) ===
     let buttonCreateRetries = 0;
+    const TOOLBAR_ID = 'ka-floating-toolbar';
 
     function createButtons() {
-        // PrÃ¼fen ob bereits vorhanden
-        if (document.querySelector('.ka-duplicate-btn')) {
-            logger.log('Buttons bereits vorhanden, Ã¼berspringe Erstellung');
-            return;
-        }
+        // Bereits vorhanden? Nichts tun.
+        if (document.getElementById(TOOLBAR_ID)) return;
 
-        // Neues Layout: Button mit Text "Anzeige speichern" oder "Vorschau" finden
-        let submitButton = document.querySelector('#pstad-submit');
-        if (!submitButton) {
-            // Suche nach dem Speichern-Button anhand des Textes
-            submitButton = Array.from(document.querySelectorAll('button')).find(
-                b => b.textContent.trim().startsWith('Anzeige speichern')
-            );
-        }
-        if (!submitButton) {
+        // Warte auf das Formular als Zeichen dass die Seite geladen ist
+        const form = document.querySelector('form');
+        if (!form) {
             if (buttonCreateRetries < CONFIG.MAX_BUTTON_RETRIES) {
                 buttonCreateRetries++;
                 const waitTime = getExponentialBackoffWait(buttonCreateRetries);
-                logger.log(`Submit-Button nicht gefunden, Versuch ${buttonCreateRetries}/${CONFIG.MAX_BUTTON_RETRIES} (Warte ${waitTime}ms)`);
+                logger.log(`Submit-Button nicht gefunden, Versuch ${buttonCreateRetries}/${CONFIG.MAX_BUTTON_RETRIES}`);
                 setTimeout(createButtons, waitTime);
             } else {
-                logger.error(`Button-Erstellung fehlgeschlagen nach ${CONFIG.MAX_BUTTON_RETRIES} Versuchen`);
-                showNotification('âŒ Buttons konnten nicht erstellt werden - Seite nicht vollstÃ¤ndig geladen?', 'error');
+                logger.error('Button-Erstellung fehlgeschlagen');
             }
             return;
         }
 
-        logger.log('Erstelle Duplikations-Buttons');
-
-        // Styles sicherstellen
+        logger.log('Erstelle Floating-Toolbar');
         ensureStyles();
 
-        // Duplikat-Button
+        // Floating Toolbar direkt am body - React kann sie nicht entfernen
+        const toolbar = document.createElement('div');
+        toolbar.id = TOOLBAR_ID;
+        toolbar.style.cssText = [
+            'position:fixed',
+            'bottom:20px',
+            'right:20px',
+            'z-index:99999',
+            'display:flex',
+            'gap:8px',
+            'padding:12px',
+            'background:white',
+            'border-radius:8px',
+            'box-shadow:0 4px 20px rgba(0,0,0,0.25)'
+        ].join(';');
+
         const dupButton = document.createElement('button');
         dupButton.type = 'button';
         dupButton.className = 'ka-duplicate-btn';
-        dupButton.textContent = 'ðŸ“‹ Duplizieren';
+        dupButton.textContent = '\uD83D\uDCCB Duplizieren';
         dupButton.title = 'Erstellt eine Kopie, Original bleibt erhalten';
-        // Smart-Button (vor onclick-Handler definieren fÃ¼r Closure)
+
         const smartButton = document.createElement('button');
         smartButton.type = 'button';
         smartButton.className = 'ka-smart-btn';
-        smartButton.textContent = 'ðŸ”„ Smart neu einstellen';
-        smartButton.title = 'LÃ¶scht Original und erstellt neue Anzeige';
+        smartButton.textContent = '\uD83D\uDD04 Smart neu einstellen';
+        smartButton.title = 'Loescht Original und erstellt neue Anzeige';
 
-        // US-SEC-003: Button-Disabling nach Klick
         dupButton.onclick = (e) => {
             e.preventDefault();
             dupButton.disabled = true;
@@ -372,28 +376,24 @@
 
         smartButton.onclick = (e) => {
             e.preventDefault();
-            if (confirm('Original-Anzeige wird gelÃ¶scht und als neue Anzeige eingestellt.\n\nAlle Bilder bleiben erhalten.\n\nFortfahren?')) {
+            if (confirm('Original-Anzeige wird geloescht und als neue Anzeige eingestellt.\n\nAlle Bilder bleiben erhalten.\n\nFortfahren?')) {
                 dupButton.disabled = true;
                 smartButton.disabled = true;
                 smartRepublish();
             }
         };
 
-        // Container fÃ¼r Buttons
-        const container = document.createElement('div');
-        container.className = 'ka-button-container';
-        container.appendChild(dupButton);
-        container.appendChild(smartButton);
-        
-        submitButton.parentNode.insertBefore(container, submitButton.nextSibling);
+        toolbar.appendChild(dupButton);
+        toolbar.appendChild(smartButton);
+        document.body.appendChild(toolbar);
 
-        logger.log('Duplikations-Buttons erfolgreich erstellt');
-        showNotification('âœ… Duplikations-Buttons bereit!', 'success');
+        logger.log('Floating-Toolbar erstellt');
+        showNotification('\u2705 Duplikations-Buttons bereit!', 'success');
     }
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.3.3)');
+        logger.log('UserScript initialisiert (v3.3.4)');
 
         function startOrRepublish() {
             if (window.location.hash === '#smartRepublish') {
@@ -401,7 +401,6 @@
                 smartRepublish();
             } else {
                 createButtons();
-                startButtonWatcher();
             }
         }
 
@@ -413,22 +412,6 @@
         }
     }
 
-    // === MUTATIONOBSERVER: Buttons nach React-Re-Render wiederherstellen ===
-    function startButtonWatcher() {
-        let debounceTimer;
-        const observer = new MutationObserver(function () {
-            // Nur reagieren wenn Buttons verschwunden sind
-            if (!document.querySelector('.ka-duplicate-btn')) {
-                clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(function () {
-                    logger.log('Buttons verschwunden, stelle wieder her');
-                    buttonCreateRetries = 0;
-                    createButtons();
-                }, 500);
-            }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-    }
 
     // Start
     init();
