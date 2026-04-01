@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       3.3.6
+// @version       3.3.7
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -175,13 +175,17 @@
 
     // === API FUNKTIONEN ===
     function getCsrfToken() {
+        // Neues Layout: CSRF-Token kann als meta-Tag ODER als hidden input vorliegen
         const metaTag = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]');
-        if (!metaTag) throw new Error('CSRF-Token Meta-Tag nicht gefunden - Seite nicht richtig geladen?');
+        if (metaTag) {
+            const token = metaTag.getAttribute('content');
+            if (token) return token;
+        }
+        // Fallback: Hidden Input
+        const inputTag = document.querySelector('input[name="_csrf"]');
+        if (inputTag && inputTag.value) return inputTag.value;
 
-        const token = metaTag.getAttribute('content');
-        if (!token) throw new Error('CSRF-Token ist leer oder nicht gesetzt');
-
-        return token;
+        throw new Error('CSRF-Token nicht gefunden (weder meta noch input)');
     }
 
     async function deleteAd(adId) {
