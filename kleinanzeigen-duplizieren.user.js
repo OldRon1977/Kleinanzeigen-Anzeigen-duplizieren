@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       3.3.4
+// @version       3.3.5
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -248,25 +248,41 @@
         return { adIdInput, form };
     }
 
+
+    function findSaveButton() {
+        return Array.from(document.querySelectorAll('button')).find(
+            b => b.textContent.trim().startsWith('Anzeige speichern')
+        );
+    }
+
     async function duplicateAd() {
         try {
             logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
 
-            const { adIdInput, form } = getFormElements();
+            // Neuer Ansatz: Seite ohne adId neu laden = neue Anzeige mit gleichen Daten
+            // Der alte form.submit() Ansatz funktioniert nicht mit React
+            const saveBtn = findSaveButton();
+            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden');
 
-            // ID lÃ¶schen = Neue Anzeige, Bilder bleiben im Form erhalten
-            adIdInput.value = '';
+            // Ad-ID aus URL entfernen und Input leeren falls vorhanden
+            const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+            if (adIdInput) {
+                // React-kompatibel: nativeInputValueSetter nutzen
+                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                nativeSetter.call(adIdInput, '');
+                adIdInput.dispatchEvent(new Event('input', { bubbles: true }));
+                adIdInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
 
-            logger.log('Anzeige-ID gelÃ¶scht, Form wird eingereicht');
-            showNotification('ðŸ“‹ Anzeige wird dupliziert (mit allen Bildern)...');
-            form.submit();
+            logger.log('Anzeige-ID geleert, klicke Speichern-Button');
+            showNotification('\uD83D\uDCCB Anzeige wird dupliziert...');
+            saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
-            showNotification('âŒ Fehler: ' + error.message, 'error');
+            showNotification('\u274C Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
-            // US-SEC-003: Buttons bei Fehler wieder aktivieren
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
@@ -276,43 +292,51 @@
             logger.log('Starte Smart-Republish-Prozess');
             showLoadingSpinner();
 
-            const { adIdInput, form } = getFormElements();
+            // Ad-ID aus URL holen
+            const urlMatch = window.location.search.match(/adId=(\d+)/);
+            if (!urlMatch) throw new Error('Keine Anzeigen-ID in URL gefunden');
+            const originalId = urlMatch[1];
 
-            const originalId = adIdInput.value;
-            if (!originalId) throw new Error('Keine Anzeigen-ID gefunden');
-
-            logger.log(`Versuche Original-Anzeige ${originalId} zu lÃ¶schen`);
-            showNotification('ðŸ—‘ï¸ Original wird gelÃ¶scht...');
+            logger.log(`Versuche Original-Anzeige ${originalId} zu loeschen`);
+            showNotification('\uD83D\uDDD1 Original wird geloescht...');
 
             let deleteFailed = false;
             try {
                 await deleteAd(originalId);
                 await delay(CONFIG.DELETE_WAIT_BEFORE_CREATE_MS);
-                logger.log('Original-Anzeige erfolgreich gelÃ¶scht');
+                logger.log('Original-Anzeige erfolgreich geloescht');
             } catch (error) {
                 deleteFailed = true;
-                logger.warn('LÃ¶schung fehlgeschlagen, erstelle trotzdem neue Anzeige', error);
-                showNotification('âš ï¸ Original-Anzeige konnte nicht gelÃ¶scht werden - erstelle trotzdem neue.', 'error');
+                logger.warn('Loeschung fehlgeschlagen', error);
+                showNotification('Original konnte nicht geloescht werden - erstelle trotzdem neue.', 'error');
             }
 
-            // Neue Anzeige erstellen - Bilder sind noch im Form!
-            adIdInput.value = '';
+            // Speichern-Button finden und klicken
+            const saveBtn = findSaveButton();
+            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden');
+
+            const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+            if (adIdInput) {
+                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                nativeSetter.call(adIdInput, '');
+                adIdInput.dispatchEvent(new Event('input', { bubbles: true }));
+                adIdInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
             const statusMsg = deleteFailed
-                ? 'âœ¨ Neue Anzeige wird erstellt (Original bleibt noch kurz sichtbar)...'
-                : 'âœ¨ Neue Anzeige wird erstellt (mit allen Bildern)...';
+                ? 'Neue Anzeige wird erstellt (Original bleibt noch kurz sichtbar)...'
+                : 'Neue Anzeige wird erstellt (mit allen Bildern)...';
             logger.log('Erstelle neue Anzeige', { deleteFailed });
             showNotification(statusMsg);
-            form.submit();
+            saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
-            showNotification('âŒ Fehler: ' + error.message, 'error');
+            showNotification('\u274C Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
-            // US-SEC-003: Buttons bei Fehler wieder aktivieren
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
-
     // === BUTTONS ERSTELLEN ===
     // === BUTTONS ERSTELLEN (Floating Toolbar, ausserhalb React-DOM) ===
     let buttonCreateRetries = 0;
