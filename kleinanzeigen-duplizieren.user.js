@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       3.3.9
+// @version       3.3.10
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -286,10 +286,11 @@
                 10000
             );
             if (adIdInput) {
-                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                nativeSetter.call(adIdInput, '');
-                adIdInput.dispatchEvent(new Event('input', { bubbles: true }));
-                adIdInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (adIdInput) {
+                // name-Attribut entfernen damit das Feld nicht mitgeschickt wird
+                adIdInput.removeAttribute('name');
+                adIdInput.value = '';
+                logger.log('adId Input: name-Attribut entfernt und Wert geleert');
             }
 
             logger.log('Anzeige-ID geleert, klicke Speichern-Button');
@@ -334,10 +335,10 @@
 
             const adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
             if (adIdInput) {
-                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                nativeSetter.call(adIdInput, '');
-                adIdInput.dispatchEvent(new Event('input', { bubbles: true }));
-                adIdInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (adIdInput) {
+                adIdInput.removeAttribute('name');
+                adIdInput.value = '';
+                logger.log('adId Input: name-Attribut entfernt und Wert geleert');
             }
 
             const statusMsg = deleteFailed
