@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       3.3.8
+// @version       3.3.9
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -259,20 +259,33 @@
         );
     }
 
+    // Wartet bis ein Element im DOM erscheint (fuer React-Rendering)
+    function waitForElement(finderFn, timeoutMs) {
+        return new Promise(function (resolve) {
+            const el = finderFn();
+            if (el) return resolve(el);
+            const interval = setInterval(function () {
+                const el = finderFn();
+                if (el) { clearInterval(interval); resolve(el); }
+            }, 300);
+            setTimeout(function () { clearInterval(interval); resolve(null); }, timeoutMs);
+        });
+    }
+
     async function duplicateAd() {
         try {
             logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
 
-            // Neuer Ansatz: Seite ohne adId neu laden = neue Anzeige mit gleichen Daten
-            // Der alte form.submit() Ansatz funktioniert nicht mit React
-            const saveBtn = findSaveButton();
-            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden');
+            // Warte bis React die Seite fertig gerendert hat
+            const saveBtn = await waitForElement(findSaveButton, 10000);
+            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
-            // Ad-ID aus URL entfernen und Input leeren falls vorhanden
-            const adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
+            const adIdInput = await waitForElement(
+                () => document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]'),
+                10000
+            );
             if (adIdInput) {
-                // React-kompatibel: nativeInputValueSetter nutzen
                 const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
                 nativeSetter.call(adIdInput, '');
                 adIdInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -316,8 +329,8 @@
             }
 
             // Speichern-Button finden und klicken
-            const saveBtn = findSaveButton();
-            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden');
+            const saveBtn = await waitForElement(findSaveButton, 10000);
+            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
             const adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
             if (adIdInput) {
