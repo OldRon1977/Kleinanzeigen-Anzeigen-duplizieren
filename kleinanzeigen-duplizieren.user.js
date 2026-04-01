@@ -5,7 +5,7 @@
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
-// @version       3.3.5
+// @version       3.3.6
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -235,7 +235,7 @@
     // === HAUPTFUNKTIONEN ===
     function getFormElements() {
         // Neues Kleinanzeigen-Layout: Ad-ID aus URL extrahieren, Input-Feld als Fallback
-        let adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+        let adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
         const form = document.querySelector('form');
         if (!form) throw new Error('Formular nicht gefunden');
         // Falls kein Input-Feld: virtuelles Objekt mit ID aus URL
@@ -266,7 +266,7 @@
             if (!saveBtn) throw new Error('Speichern-Button nicht gefunden');
 
             // Ad-ID aus URL entfernen und Input leeren falls vorhanden
-            const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+            const adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
             if (adIdInput) {
                 // React-kompatibel: nativeInputValueSetter nutzen
                 const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -315,7 +315,7 @@
             const saveBtn = findSaveButton();
             if (!saveBtn) throw new Error('Speichern-Button nicht gefunden');
 
-            const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+            const adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
             if (adIdInput) {
                 const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
                 nativeSetter.call(adIdInput, '');
