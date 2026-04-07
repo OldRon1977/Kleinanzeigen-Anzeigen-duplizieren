@@ -23,9 +23,9 @@ Klick einfach auf diesen Link, um das Script direkt in Tampermonkey zu installie
 2. Kopiere den Code aus der [Script-Datei](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 3. Speichern & Fertig
 
-### Optional: Helper-Script fuer "Meine Anzeigen"
+### Optional: Helper-Script für "Meine Anzeigen"
 
-Das Helper-Script ermoeglicht Smart Neu-Einstellen direkt aus der Anzeigenuebersicht:
+Das Helper-Script ermöglicht Smart Neu-Einstellen direkt aus der Anzeigenübersicht:
 
 [![Install Helper](https://img.shields.io/badge/Install-Helper%20Script-0077cc?style=flat-square&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js)
 
