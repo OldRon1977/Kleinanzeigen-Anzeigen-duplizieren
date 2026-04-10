@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name          eBay Kleinanzeigen - neu einstellen helper
 // @namespace     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
-// @description   Hilfsskript fuer Smart Neu-Einstellen direkt aus "Meine Anzeigen"
+// @description   Hilfsskript für Smart Neu-Einstellen direkt aus "Meine Anzeigen"
 // @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
 // @copyright     2026
 // @license       MIT
@@ -36,7 +36,7 @@
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = '\uD83D\uDD04 Smart neu einstellen';
-            btn.title = 'Loescht Original und erstellt neue Anzeige';
+            btn.title = 'Löscht Original und erstellt neue Anzeige';
             btn.style.cssText = 'margin-left:8px;padding:4px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;font-size:12px;vertical-align:middle;display:inline-flex;align-items:center;';
 
             btn.onclick = function (e) {
@@ -45,7 +45,7 @@
                 openSmartRepublish(adId, btn);
             };
 
-            // Button direkt nach dem Bearbeiten-Link einfuegen
+            // Button direkt nach dem Bearbeiten-Link einfügen
             element.after(btn);
         });
     }
@@ -56,10 +56,10 @@
             '_blank'
         );
         button.style.color = 'red';
-        button.textContent = '\u2705 Geoeffnet';
+        button.textContent = '\u2705 Geöffnet';
     }
 
-    // Initiale Ausfuehrung mit Verzoegerung fuer SPA-Rendering
+    // Initiale Ausführung mit Verzögerung für SPA-Rendering
     setTimeout(addControlButtons, 1500);
 
     // MutationObserver mit Debounce gegen Performance-Probleme

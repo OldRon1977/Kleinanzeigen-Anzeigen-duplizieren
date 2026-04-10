@@ -5,7 +5,7 @@
  * Das aktuelle Script ist: kleinanzeigen-duplizieren.user.js
  *
  * Falls du diese Datei in Tampermonkey installiert hast,
- * loesche sie und installiere stattdessen die neue Version:
+ * lösche sie und installiere stattdessen die neue Version:
  * https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
  */
 console.log('[KA-Script] Veraltete Datei - bitte kleinanzeigen-duplizieren.user.js verwenden');

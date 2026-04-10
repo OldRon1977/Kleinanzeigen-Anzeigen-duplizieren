@@ -259,7 +259,7 @@
         );
     }
 
-    // Wartet bis ein Element im DOM erscheint (fuer React-Rendering)
+    // Wartet bis ein Element im DOM erscheint (für React-Rendering)
     function waitForElement(finderFn, timeoutMs) {
         return new Promise(function (resolve) {
             const el = finderFn();
@@ -314,18 +314,18 @@
             if (!urlMatch) throw new Error('Keine Anzeigen-ID in URL gefunden');
             const originalId = urlMatch[1];
 
-            logger.log(`Versuche Original-Anzeige ${originalId} zu loeschen`);
-            showNotification('\uD83D\uDDD1 Original wird geloescht...');
+            logger.log(`Versuche Original-Anzeige ${originalId} zu löschen`);
+            showNotification('\uD83D\uDDD1 Original wird gelöscht...');
 
             let deleteFailed = false;
             try {
                 await deleteAd(originalId);
                 await delay(CONFIG.DELETE_WAIT_BEFORE_CREATE_MS);
-                logger.log('Original-Anzeige erfolgreich geloescht');
+                logger.log('Original-Anzeige erfolgreich gelöscht');
             } catch (error) {
                 deleteFailed = true;
-                logger.warn('Loeschung fehlgeschlagen', error);
-                showNotification('Original konnte nicht geloescht werden - erstelle trotzdem neue.', 'error');
+                logger.warn('Löschung fehlgeschlagen', error);
+                showNotification('Original konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
             }
 
             // Speichern-Button finden und klicken
@@ -405,7 +405,7 @@
         smartButton.type = 'button';
         smartButton.className = 'ka-smart-btn';
         smartButton.textContent = '\uD83D\uDD04 Smart neu einstellen';
-        smartButton.title = 'Loescht Original und erstellt neue Anzeige';
+        smartButton.title = 'Löscht Original und erstellt neue Anzeige';
 
         dupButton.onclick = (e) => {
             e.preventDefault();
@@ -416,7 +416,7 @@
 
         smartButton.onclick = (e) => {
             e.preventDefault();
-            if (confirm('Original-Anzeige wird geloescht und als neue Anzeige eingestellt.\n\nAlle Bilder bleiben erhalten.\n\nFortfahren?')) {
+            if (confirm('Original-Anzeige wird gelöscht und als neue Anzeige eingestellt.\n\nAlle Bilder bleiben erhalten.\n\nFortfahren?')) {
                 dupButton.disabled = true;
                 smartButton.disabled = true;
                 smartRepublish();
