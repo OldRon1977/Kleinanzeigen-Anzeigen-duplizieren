@@ -30,3 +30,6 @@ temp/
 # Security audit documentation (internal only, contains vulnerability details)
 Security-Findings.md
 CRIT-001-SOLUTION.md
+
+# Kiro config
+.kiro/settings/
