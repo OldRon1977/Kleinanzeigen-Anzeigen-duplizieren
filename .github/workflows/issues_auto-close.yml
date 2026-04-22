@@ -14,7 +14,7 @@ jobs:
         with:
           days-before-issue-stale: 30
           days-before-issue-close: 14
-          stale-issue-label: "stale"
+          stale-issue-label: "veraltet"
           stale-issue-message: "Dieses Issue ist veraltet, da es seit 30 Tagen ohne Aktivität offen ist."
           close-issue-message: "Dieses Issue wurde geschlossen, da es seit 14 Tagen nach der Markierung als veraltet inaktiv war."
           days-before-pr-stale: -1
