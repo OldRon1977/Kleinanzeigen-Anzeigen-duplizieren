@@ -24,9 +24,9 @@
  * Basierend auf dem Original-Script von J05HI
  * https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5
  * 
- * Ã„nderungen in v3.0:
- * - Smart Neu-Einstellen Funktion hinzugefÃ¼gt
- * - Bilder bleiben automatisch erhalten (keine Warnung nÃ¶tig)
+ * Änderungen in v3.0:
+ * - Smart Neu-Einstellen Funktion hinzugefügt
+ * - Bilder bleiben automatisch erhalten (keine Warnung nötig)
  * - Code vereinfacht und modernisiert
  * - Besseres Error-Handling mit Timeout
  */
@@ -36,19 +36,19 @@
 
     // === KONSTANTEN ===
     const CONFIG = {
-        NOTIFICATION_TIMEOUT_MS: 4000,     // Wie lange Toast-Nachrichten angezeigt werden
-        DELETE_REQUEST_TIMEOUT_MS: 8000,   // Timeout fÃ¼r API-Anfrage zum LÃ¶schen
-        DELETE_WAIT_BEFORE_CREATE_MS: 2000, // Warten bis LÃ¶schung verarbeitet ist
-        INITIAL_RETRY_WAIT_MS: 500,        // Initiale Wartezeit fÃ¼r Retries
-        MAX_RETRY_WAIT_MS: 8000,           // Maximale Wartezeit zwischen Retries
-        MAX_BUTTON_RETRIES: 5              // Maximale Versuche zum Erstellen der Buttons
+        NOTIFICATION_TIMEOUT_MS: 4000,      // Wie lange Toast-Nachrichten angezeigt werden
+        DELETE_REQUEST_TIMEOUT_MS: 8000,    // Timeout für API-Anfrage zum Löschen
+        DELETE_WAIT_BEFORE_CREATE_MS: 2000, // Warten bis Löschung verarbeitet ist
+        INITIAL_RETRY_WAIT_MS: 500,         // Initiale Wartezeit für Retries
+        MAX_RETRY_WAIT_MS: 8000,            // Maximale Wartezeit zwischen Retries
+        MAX_BUTTON_RETRIES: 5               // Maximale Versuche zum Erstellen der Buttons
     };
 
     // === LOGGING ===
     const logger = {
         log: (msg, data) => console.log(`[KA-Script] ${msg}`, data || ''),
-        warn: (msg, data) => console.warn(`[KA-Script] âš ï¸ ${msg}`, data || ''),
-        error: (msg, data) => console.error(`[KA-Script] âŒ ${msg}`, data || '')
+        warn: (msg, data) => console.warn(`[KA-Script] ⚠️ ${msg}`, data || ''),
+        error: (msg, data) => console.error(`[KA-Script] ❌ ${msg}`, data || '')
     };
 
     // === HILFSFUNKTIONEN ===
@@ -189,16 +189,16 @@
     }
 
     async function deleteAd(adId) {
-        // US-SEC-001: Input-Validierung fÃ¼r Anzeigen-ID
+        // US-SEC-001: Input-Validierung für Anzeigen-ID
         if (!adId || !/^\d{1,20}$/.test(adId)) {
-            throw new Error('UngÃ¼ltige Anzeigen-ID');
+            throw new Error('Ungültige Anzeigen-ID');
         }
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
 
         try {
-            logger.log(`LÃ¶sche Anzeige mit ID: ${adId}`);
+            logger.log(`Lösche Anzeige mit ID: ${adId}`);
 
             const response = await fetch(`https://www.kleinanzeigen.de/m-anzeigen-loeschen.json?ids=${adId}`, {
                 method: 'POST',
@@ -216,22 +216,22 @@
             if (!response.ok) {
                 if (response.status === 401 || response.status === 403) {
                     logger.warn('Session abgelaufen', { status: response.status });
-                    throw new Error('Sitzung abgelaufen â€“ bitte neu einloggen und Seite neu laden.');
+                    throw new Error('Sitzung abgelaufen – bitte neu einloggen und Seite neu laden.');
                 }
-                logger.error(`Anzeige-LÃ¶schung fehlgeschlagen`, { status: response.status });
+                logger.error(`Anzeige-Löschung fehlgeschlagen`, { status: response.status });
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            logger.log('Anzeige erfolgreich gelÃ¶scht');
+            logger.log('Anzeige erfolgreich gelöscht');
             return await response.json();
 
         } catch (error) {
             clearTimeout(timeout);
             if (error.name === 'AbortError') {
-                logger.error('Timeout beim LÃ¶schen');
-                throw new Error('Timeout beim LÃ¶schen');
+                logger.error('Timeout beim Löschen');
+                throw new Error('Timeout beim Löschen');
             }
-            logger.error('Fehler beim LÃ¶schen', error);
+            logger.error('Fehler beim Löschen', error);
             throw error;
         }
     }
@@ -293,12 +293,12 @@
             }
 
             logger.log('Anzeige-ID geleert, klicke Speichern-Button');
-            showNotification('\uD83D\uDCCB Anzeige wird dupliziert...');
+            showNotification('📋 Anzeige wird dupliziert...');
             saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
-            showNotification('\u274C Fehler: ' + error.message, 'error');
+            showNotification('❌ Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
@@ -315,7 +315,7 @@
             const originalId = urlMatch[1];
 
             logger.log(`Versuche Original-Anzeige ${originalId} zu löschen`);
-            showNotification('\uD83D\uDDD1 Original wird gelöscht...');
+            showNotification('🗑 Original wird gelöscht...');
 
             let deleteFailed = false;
             try {
@@ -348,12 +348,12 @@
 
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
-            showNotification('\u274C Fehler: ' + error.message, 'error');
+            showNotification('❌ Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
-    // === BUTTONS ERSTELLEN ===
+
     // === BUTTONS ERSTELLEN (Floating Toolbar, ausserhalb React-DOM) ===
     let buttonCreateRetries = 0;
     const TOOLBAR_ID = 'ka-floating-toolbar';
@@ -398,13 +398,13 @@
         const dupButton = document.createElement('button');
         dupButton.type = 'button';
         dupButton.className = 'ka-duplicate-btn';
-        dupButton.textContent = '\uD83D\uDCCB Duplizieren';
+        dupButton.textContent = '📋 Duplizieren';
         dupButton.title = 'Erstellt eine Kopie, Original bleibt erhalten';
 
         const smartButton = document.createElement('button');
         smartButton.type = 'button';
         smartButton.className = 'ka-smart-btn';
-        smartButton.textContent = '\uD83D\uDD04 Smart neu einstellen';
+        smartButton.textContent = '🔄 Smart neu einstellen';
         smartButton.title = 'Löscht Original und erstellt neue Anzeige';
 
         dupButton.onclick = (e) => {
@@ -428,7 +428,7 @@
         document.body.appendChild(toolbar);
 
         logger.log('Floating-Toolbar erstellt');
-        showNotification('\u2705 Duplikations-Buttons bereit!', 'success');
+        showNotification('✅ Duplikations-Buttons bereit!', 'success');
     }
 
     // === INITIALISIERUNG ===
@@ -456,9 +456,7 @@
         }
     }
 
-
     // Start
     init();
 
 })();
-
