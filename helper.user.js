@@ -2,7 +2,7 @@
 // @name          eBay Kleinanzeigen - neu einstellen helper
 // @namespace     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @description   Hilfsskript für Smart Neu-Einstellen direkt aus "Meine Anzeigen"
-// @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
+// @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
 // @version       1.1.2

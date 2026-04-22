@@ -2,7 +2,7 @@
 // @name          eBay Kleinanzeigen - Anzeige duplizieren / neu einstellen
 // @namespace     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @description   Einfaches Duplizieren und Smart Neu-Einstellen von Anzeigen mit automatischer Bilderhaltung
-// @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
+// @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
 // @version       3.3.11
