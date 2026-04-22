@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "kleinanzeigen-anzeigen-duplizieren",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "eBay Kleinanzeigen - Anzeige duplizieren / neu einstellen. Einfaches Duplizieren und Smart Neu-Einstellen von Anzeigen mit automatischer Bilderhaltung",
   "main": "kleinanzeigen-duplizieren.user.js",
   "scripts": {
@@ -8,7 +8,7 @@
     "test:unit": "node tests/helpers.test.js",
     "test:integration": "node tests/integration.test.js",
     "test:all": "npm run test",
-    "lint": "node -c \"kleinanzeigen-duplizieren.user.js\" && echo ✅ Syntax Check PASSED",
+    "lint": "node -c \"kleinanzeigen-duplizieren.user.js\" && echo âœ… Syntax Check PASSED",
     "validate": "npm run lint && npm run test"
   },
   "keywords": [
@@ -31,3 +31,5 @@
   "devDependencies": {},
   "dependencies": {}
 }
+
+

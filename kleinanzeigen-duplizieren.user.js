@@ -1,11 +1,11 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name          eBay Kleinanzeigen - Anzeige duplizieren / neu einstellen
 // @namespace     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @description   Einfaches Duplizieren und Smart Neu-Einstellen von Anzeigen mit automatischer Bilderhaltung
-// @icon          http://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
-// @copyright     2025
+// @icon          https://www.google.com/s2/favicons?domain=www.kleinanzeigen.de
+// @copyright     2026
 // @license       MIT
-// @version       3.2.1
+// @version       3.3.11
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -17,15 +17,16 @@
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
 // @grant         none
+// @run-at        document-idle
 // ==/UserScript==
 
 /*
  * Basierend auf dem Original-Script von J05HI
  * https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5
  * 
- * Änderungen in v3.0:
- * - Smart Neu-Einstellen Funktion hinzugefügt
- * - Bilder bleiben automatisch erhalten (keine Warnung nötig)
+ * Ã„nderungen in v3.0:
+ * - Smart Neu-Einstellen Funktion hinzugefÃ¼gt
+ * - Bilder bleiben automatisch erhalten (keine Warnung nÃ¶tig)
  * - Code vereinfacht und modernisiert
  * - Besseres Error-Handling mit Timeout
  */
@@ -36,9 +37,9 @@
     // === KONSTANTEN ===
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,     // Wie lange Toast-Nachrichten angezeigt werden
-        DELETE_REQUEST_TIMEOUT_MS: 8000,   // Timeout für API-Anfrage zum Löschen
-        DELETE_WAIT_BEFORE_CREATE_MS: 2000, // Warten bis Löschung verarbeitet ist
-        INITIAL_RETRY_WAIT_MS: 500,        // Initiale Wartezeit für Retries
+        DELETE_REQUEST_TIMEOUT_MS: 8000,   // Timeout fÃ¼r API-Anfrage zum LÃ¶schen
+        DELETE_WAIT_BEFORE_CREATE_MS: 2000, // Warten bis LÃ¶schung verarbeitet ist
+        INITIAL_RETRY_WAIT_MS: 500,        // Initiale Wartezeit fÃ¼r Retries
         MAX_RETRY_WAIT_MS: 8000,           // Maximale Wartezeit zwischen Retries
         MAX_BUTTON_RETRIES: 5              // Maximale Versuche zum Erstellen der Buttons
     };
@@ -46,8 +47,8 @@
     // === LOGGING ===
     const logger = {
         log: (msg, data) => console.log(`[KA-Script] ${msg}`, data || ''),
-        warn: (msg, data) => console.warn(`[KA-Script] ⚠️ ${msg}`, data || ''),
-        error: (msg, data) => console.error(`[KA-Script] ❌ ${msg}`, data || '')
+        warn: (msg, data) => console.warn(`[KA-Script] âš ï¸ ${msg}`, data || ''),
+        error: (msg, data) => console.error(`[KA-Script] âŒ ${msg}`, data || '')
     };
 
     // === HILFSFUNKTIONEN ===
@@ -174,26 +175,30 @@
 
     // === API FUNKTIONEN ===
     function getCsrfToken() {
+        // Neues Layout: CSRF-Token kann als meta-Tag ODER als hidden input vorliegen
         const metaTag = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]');
-        if (!metaTag) throw new Error('CSRF-Token Meta-Tag nicht gefunden - Seite nicht richtig geladen?');
+        if (metaTag) {
+            const token = metaTag.getAttribute('content');
+            if (token) return token;
+        }
+        // Fallback: Hidden Input
+        const inputTag = document.querySelector('input[name="_csrf"]');
+        if (inputTag && inputTag.value) return inputTag.value;
 
-        const token = metaTag.getAttribute('content');
-        if (!token) throw new Error('CSRF-Token ist leer oder nicht gesetzt');
-
-        return token;
+        throw new Error('CSRF-Token nicht gefunden (weder meta noch input)');
     }
 
     async function deleteAd(adId) {
-        // US-SEC-001: Input-Validierung für Anzeigen-ID
+        // US-SEC-001: Input-Validierung fÃ¼r Anzeigen-ID
         if (!adId || !/^\d{1,20}$/.test(adId)) {
-            throw new Error('Ungültige Anzeigen-ID');
+            throw new Error('UngÃ¼ltige Anzeigen-ID');
         }
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
 
         try {
-            logger.log(`Lösche Anzeige mit ID: ${adId}`);
+            logger.log(`LÃ¶sche Anzeige mit ID: ${adId}`);
 
             const response = await fetch(`https://www.kleinanzeigen.de/m-anzeigen-loeschen.json?ids=${adId}`, {
                 method: 'POST',
@@ -211,32 +216,60 @@
             if (!response.ok) {
                 if (response.status === 401 || response.status === 403) {
                     logger.warn('Session abgelaufen', { status: response.status });
-                    throw new Error('Sitzung abgelaufen – bitte neu einloggen und Seite neu laden.');
+                    throw new Error('Sitzung abgelaufen â€“ bitte neu einloggen und Seite neu laden.');
                 }
-                logger.error(`Anzeige-Löschung fehlgeschlagen`, { status: response.status });
+                logger.error(`Anzeige-LÃ¶schung fehlgeschlagen`, { status: response.status });
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            logger.log('Anzeige erfolgreich gelöscht');
+            logger.log('Anzeige erfolgreich gelÃ¶scht');
             return await response.json();
 
         } catch (error) {
             clearTimeout(timeout);
             if (error.name === 'AbortError') {
-                logger.error('Timeout beim Löschen');
-                throw new Error('Timeout beim Löschen');
+                logger.error('Timeout beim LÃ¶schen');
+                throw new Error('Timeout beim LÃ¶schen');
             }
-            logger.error('Fehler beim Löschen', error);
+            logger.error('Fehler beim LÃ¶schen', error);
             throw error;
         }
     }
 
     // === HAUPTFUNKTIONEN ===
     function getFormElements() {
-        const adIdInput = document.querySelector('#postad-id, input[name="id"], input[name="postad-id"]');
+        // Neues Kleinanzeigen-Layout: Ad-ID aus URL extrahieren, Input-Feld als Fallback
+        let adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
         const form = document.querySelector('form');
-        if (!adIdInput || !form) throw new Error('Form-Elemente nicht gefunden');
+        if (!form) throw new Error('Formular nicht gefunden');
+        // Falls kein Input-Feld: virtuelles Objekt mit ID aus URL
+        if (!adIdInput) {
+            const urlMatch = window.location.search.match(/adId=(\d+)/);
+            if (!urlMatch) throw new Error('Anzeigen-ID nicht gefunden (weder Input noch URL)');
+            adIdInput = { value: urlMatch[1], _virtual: true };
+            logger.log('Ad-ID aus URL extrahiert: ' + urlMatch[1]);
+        }
         return { adIdInput, form };
+    }
+
+
+    function findSaveButton() {
+        return Array.from(document.querySelectorAll('button')).find(
+            b => b.textContent.trim().startsWith('Anzeige speichern')
+        );
+    }
+
+    // Wartet bis ein Element im DOM erscheint (für React-Rendering)
+    function waitForElement(finderFn, timeoutMs) {
+        return new Promise(function (resolve) {
+            const el = finderFn();
+            if (el) return resolve(el);
+            const interval = setInterval(function () {
+                const el = finderFn();
+                if (el) { clearInterval(interval); resolve(el); }
+            }, 300);
+            setTimeout(function () { clearInterval(interval); resolve(null); }, timeoutMs);
+        });
     }
 
     async function duplicateAd() {
@@ -244,20 +277,29 @@
             logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
 
-            const { adIdInput, form } = getFormElements();
+            // Warte bis React die Seite fertig gerendert hat
+            const saveBtn = await waitForElement(findSaveButton, 10000);
+            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
-            // ID löschen = Neue Anzeige, Bilder bleiben im Form erhalten
-            adIdInput.value = '';
+            const adIdInput = await waitForElement(
+                () => document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]'),
+                10000
+            );
+            if (adIdInput) {
+                // name-Attribut entfernen damit das Feld nicht mitgeschickt wird
+                adIdInput.removeAttribute('name');
+                adIdInput.value = '';
+                logger.log('adId Input: name-Attribut entfernt und Wert geleert');
+            }
 
-            logger.log('Anzeige-ID gelöscht, Form wird eingereicht');
-            showNotification('📋 Anzeige wird dupliziert (mit allen Bildern)...');
-            form.submit();
+            logger.log('Anzeige-ID geleert, klicke Speichern-Button');
+            showNotification('\uD83D\uDCCB Anzeige wird dupliziert...');
+            saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
-            showNotification('❌ Fehler: ' + error.message, 'error');
+            showNotification('\u274C Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
-            // US-SEC-003: Buttons bei Fehler wieder aktivieren
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
@@ -267,13 +309,13 @@
             logger.log('Starte Smart-Republish-Prozess');
             showLoadingSpinner();
 
-            const { adIdInput, form } = getFormElements();
-
-            const originalId = adIdInput.value;
-            if (!originalId) throw new Error('Keine Anzeigen-ID gefunden');
+            // Ad-ID aus URL holen
+            const urlMatch = window.location.search.match(/adId=(\d+)/);
+            if (!urlMatch) throw new Error('Keine Anzeigen-ID in URL gefunden');
+            const originalId = urlMatch[1];
 
             logger.log(`Versuche Original-Anzeige ${originalId} zu löschen`);
-            showNotification('🗑️ Original wird gelöscht...');
+            showNotification('\uD83D\uDDD1 Original wird gelöscht...');
 
             let deleteFailed = false;
             try {
@@ -282,71 +324,89 @@
                 logger.log('Original-Anzeige erfolgreich gelöscht');
             } catch (error) {
                 deleteFailed = true;
-                logger.warn('Löschung fehlgeschlagen, erstelle trotzdem neue Anzeige', error);
-                showNotification('⚠️ Original-Anzeige konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
+                logger.warn('Löschung fehlgeschlagen', error);
+                showNotification('Original konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
             }
 
-            // Neue Anzeige erstellen - Bilder sind noch im Form!
-            adIdInput.value = '';
+            // Speichern-Button finden und klicken
+            const saveBtn = await waitForElement(findSaveButton, 10000);
+            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
+
+            const adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
+            if (adIdInput) {
+                adIdInput.removeAttribute('name');
+                adIdInput.value = '';
+                logger.log('adId Input: name-Attribut entfernt und Wert geleert');
+            }
+
             const statusMsg = deleteFailed
-                ? '✨ Neue Anzeige wird erstellt (Original bleibt noch kurz sichtbar)...'
-                : '✨ Neue Anzeige wird erstellt (mit allen Bildern)...';
+                ? 'Neue Anzeige wird erstellt (Original bleibt noch kurz sichtbar)...'
+                : 'Neue Anzeige wird erstellt (mit allen Bildern)...';
             logger.log('Erstelle neue Anzeige', { deleteFailed });
             showNotification(statusMsg);
-            form.submit();
+            saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
-            showNotification('❌ Fehler: ' + error.message, 'error');
+            showNotification('\u274C Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
-            // US-SEC-003: Buttons bei Fehler wieder aktivieren
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
-
     // === BUTTONS ERSTELLEN ===
+    // === BUTTONS ERSTELLEN (Floating Toolbar, ausserhalb React-DOM) ===
     let buttonCreateRetries = 0;
+    const TOOLBAR_ID = 'ka-floating-toolbar';
 
     function createButtons() {
-        // Prüfen ob bereits vorhanden
-        if (document.querySelector('.ka-duplicate-btn')) {
-            logger.log('Buttons bereits vorhanden, überspringe Erstellung');
-            return;
-        }
+        // Bereits vorhanden? Nichts tun.
+        if (document.getElementById(TOOLBAR_ID)) return;
 
-        const submitButton = document.querySelector('#pstad-submit, button[type="submit"], .button-primary');
-        if (!submitButton) {
+        // Warte auf das Formular als Zeichen dass die Seite geladen ist
+        const form = document.querySelector('form');
+        if (!form) {
             if (buttonCreateRetries < CONFIG.MAX_BUTTON_RETRIES) {
                 buttonCreateRetries++;
                 const waitTime = getExponentialBackoffWait(buttonCreateRetries);
-                logger.log(`Submit-Button nicht gefunden, Versuch ${buttonCreateRetries}/${CONFIG.MAX_BUTTON_RETRIES} (Warte ${waitTime}ms)`);
+                logger.log(`Submit-Button nicht gefunden, Versuch ${buttonCreateRetries}/${CONFIG.MAX_BUTTON_RETRIES}`);
                 setTimeout(createButtons, waitTime);
             } else {
-                logger.error(`Button-Erstellung fehlgeschlagen nach ${CONFIG.MAX_BUTTON_RETRIES} Versuchen`);
-                showNotification('❌ Buttons konnten nicht erstellt werden - Seite nicht vollständig geladen?', 'error');
+                logger.error('Button-Erstellung fehlgeschlagen');
             }
             return;
         }
 
-        logger.log('Erstelle Duplikations-Buttons');
-
-        // Styles sicherstellen
+        logger.log('Erstelle Floating-Toolbar');
         ensureStyles();
 
-        // Duplikat-Button
+        // Floating Toolbar direkt am body - React kann sie nicht entfernen
+        const toolbar = document.createElement('div');
+        toolbar.id = TOOLBAR_ID;
+        toolbar.style.cssText = [
+            'position:fixed',
+            'bottom:20px',
+            'right:20px',
+            'z-index:99999',
+            'display:flex',
+            'gap:8px',
+            'padding:12px',
+            'background:white',
+            'border-radius:8px',
+            'box-shadow:0 4px 20px rgba(0,0,0,0.25)'
+        ].join(';');
+
         const dupButton = document.createElement('button');
         dupButton.type = 'button';
         dupButton.className = 'ka-duplicate-btn';
-        dupButton.textContent = '📋 Duplizieren';
+        dupButton.textContent = '\uD83D\uDCCB Duplizieren';
         dupButton.title = 'Erstellt eine Kopie, Original bleibt erhalten';
-        // Smart-Button (vor onclick-Handler definieren für Closure)
+
         const smartButton = document.createElement('button');
         smartButton.type = 'button';
         smartButton.className = 'ka-smart-btn';
-        smartButton.textContent = '🔄 Smart neu einstellen';
+        smartButton.textContent = '\uD83D\uDD04 Smart neu einstellen';
         smartButton.title = 'Löscht Original und erstellt neue Anzeige';
 
-        // US-SEC-003: Button-Disabling nach Klick
         dupButton.onclick = (e) => {
             e.preventDefault();
             dupButton.disabled = true;
@@ -363,31 +423,42 @@
             }
         };
 
-        // Container für Buttons
-        const container = document.createElement('div');
-        container.className = 'ka-button-container';
-        container.appendChild(dupButton);
-        container.appendChild(smartButton);
-        
-        submitButton.parentNode.insertBefore(container, submitButton.nextSibling);
+        toolbar.appendChild(dupButton);
+        toolbar.appendChild(smartButton);
+        document.body.appendChild(toolbar);
 
-        logger.log('Duplikations-Buttons erfolgreich erstellt');
-        showNotification('✅ Duplikations-Buttons bereit!', 'success');
+        logger.log('Floating-Toolbar erstellt');
+        showNotification('\u2705 Duplikations-Buttons bereit!', 'success');
     }
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.2.1)');
+        logger.log('UserScript initialisiert (v3.3.4)');
+
+        function startOrRepublish() {
+            const hash = window.location.hash;
+            if (hash === '#smartRepublish') {
+                logger.log('Smart Republish via Helper erkannt');
+                smartRepublish();
+            } else if (hash === '#duplicate') {
+                logger.log('Duplizieren via Helper erkannt');
+                duplicateAd();
+            } else {
+                createButtons();
+            }
+        }
 
         // Warten bis DOM bereit
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', createButtons);
+            document.addEventListener('DOMContentLoaded', startOrRepublish);
         } else {
-            createButtons();
+            startOrRepublish();
         }
     }
+
 
     // Start
     init();
 
 })();
+

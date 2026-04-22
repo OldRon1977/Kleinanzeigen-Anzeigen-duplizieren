@@ -1,199 +1,117 @@
-# eBay Kleinanzeigen - Anzeige duplizieren / Smart neu einstellen
+﻿# Kleinanzeigen - Anzeige duplizieren / Smart neu einstellen
 
-Ein UserScript für Tampermonkey, das zwei praktische Buttons zum Duplizieren und intelligenten Neu-Einstellen von Anzeigen auf eBay Kleinanzeigen/Kleinanzeigen.de hinzufügt.
+Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und intelligenten Neu-Einstellen von Anzeigen auf kleinanzeigen.de hinzufügt.
 
-## ✨ Features
+## Features
 
-- **📋 Duplizieren**: Erstellt eine Kopie der Anzeige, Original bleibt erhalten
-- **🔄 Smart neu einstellen**: Löscht das Original und erstellt eine neue Anzeige
-- **🖼️ Automatische Bilderhaltung**: Alle Bilder bleiben bei beiden Funktionen erhalten
-- **⚡ Robust & Schnell**: Schlanker Code mit nur ~200 Zeilen
-- **🛡️ Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
+- **Duplizieren**: Erstellt eine Kopie der Anzeige, Original bleibt erhalten
+- **Smart neu einstellen**: Löscht das Original und erstellt eine neue Anzeige
+- **Automatische Bilderhaltung**: Alle Bilder bleiben bei beiden Funktionen erhalten
+- **Helper-Script**: Buttons direkt auf der "Meine Anzeigen"-Seite
+- **Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
 
-## 📦 Installation
-
-### ⚡ Schnelle Installation
-
-[![Install Script](https://img.shields.io/badge/Install%20Script-Kleinanzeigen%20Duplizieren-00aa00?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
-
-**Wie funktioniert es:**
-1. Klick auf den Button oben
-2. Tampermonkey öffnet sich automatisch
-3. Klick "Installieren"
-4. Fertig! Script ist aktiv ✅
-
-> **Hinweis**: Tampermonkey muss vorher installiert sein. Siehe [Voraussetzungen](#voraussetzungen) unten.
+## Installation
 
 ### Voraussetzungen
 - Browser: Chrome, Firefox, Edge, Safari oder Opera
 - [Tampermonkey](https://www.tampermonkey.net/) Browser-Extension
 
-**Tampermonkey installieren:**
-- [Chrome Web Store](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
-- [Firefox Add-ons](https://addons.mozilla.org/de/firefox/addon/tampermonkey/)
-- [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
-- [Safari App Store](https://apps.apple.com/de/app/tampermonkey/id1482490089)
+### Schritt 1: Hauptscript installieren (Pflicht)
 
-### Alternative Installationsmethoden
-Siehe [**INSTALL.md**](INSTALL.md) für:
-- Manuelle Installation
-- Copy-Paste Installation
-- Detaillierte Anleitung
-- Automatische Updates
+[![Install Script](https://img.shields.io/badge/Install-Hauptscript-00aa00?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js)
 
-### ✅ Auto-Updates aktiviert
-Das Script erhält **automatisch Updates**:
-- Tampermonkey prüft jede Woche nach neuen Versionen
-- Updates werden automatisch installiert
-- Du wirst benachrichtigt wenn eine neue Version verfügbar ist
-- Keine zusätzliche Aktion erforderlich!
+Fügt auf der **Bearbeiten-Seite** einer Anzeige die Buttons "Duplizieren" und "Smart neu einstellen" hinzu.
 
-## 🎯 Verwendung
+### Schritt 2: Helper-Script installieren (Empfohlen)
 
-1. **Anzeige bearbeiten**: Navigiere zu einer deiner Anzeigen und klicke auf "Bearbeiten"
-   ```
-   https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=XXXXX
-   ```
+[![Install Helper](https://img.shields.io/badge/Install-Helper_Script-0077cc?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js)
 
-2. **Neue Buttons nutzen**: Unter dem "Änderungen speichern" Button erscheinen zwei neue Optionen:
+Fügt auf der **Meine Anzeigen**-Seite neben jeder Anzeige die Buttons "Duplizieren" und "Neu einstellen" hinzu. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus.
 
-   ### 📋 Duplizieren
-   - Erstellt eine exakte Kopie der Anzeige
-   - Original bleibt unverändert bestehen
-   - Alle Bilder und Daten werden übernommen
-   - Ideal für: Ähnliche Artikel, Varianten, Backup
+> **Hinweis**: Beide Scripts müssen in Tampermonkey aktiviert sein, damit der Helper korrekt funktioniert.
 
-   ### 🔄 Smart neu einstellen  
-   - Löscht die Original-Anzeige
-   - Erstellt automatisch eine neue Anzeige mit allen Daten
-   - Alle Bilder bleiben erhalten
-   - Ideal für: Anzeige erneuern, nach oben bringen
+### Auto-Updates
+Beide Scripts erhalten automatisch Updates über Tampermonkey.
 
-## 🖼️ Bilder-Handhabung
+## Verwendung
 
-**Wichtig**: Alle Bilder bleiben automatisch erhalten!
+### Direkt auf der Bearbeiten-Seite
+1. Navigiere zu einer Anzeige und klicke "Bearbeiten"
+2. Unten rechts erscheint eine Toolbar mit zwei Buttons
+3. **Duplizieren**: Erstellt eine Kopie, Original bleibt bestehen
+4. **Smart neu einstellen**: Löscht Original, erstellt neue Anzeige
 
-Das Script nutzt die Tatsache, dass beim Bearbeiten einer Anzeige alle Bilder bereits im Formular geladen sind. Diese werden beim Submit automatisch mit übertragen - egal ob die Original-ID vorhanden ist oder nicht.
+### Über die Meine-Anzeigen-Seite (Helper)
+1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
+2. Neben jedem "Bearbeiten"-Link erscheinen zwei neue Buttons
+3. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus
 
-## 🔧 Technische Details
+## Technische Details
 
 ### Berechtigungen
-Das Script verwendet `@grant none` – es hat keine erweiterten Tampermonkey-Berechtigungen
-und kann nur im Kontext der aktuellen Kleinanzeigen-Seite agieren. Es speichert keine Daten
-und kommuniziert ausschließlich mit kleinanzeigen.de über HTTPS.
+Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtigungen. Sie kommunizieren ausschliesslich mit kleinanzeigen.de über HTTPS.
 
 ### Unterstützte URLs
-- `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*`
-- `https://kleinanzeigen.de/p-anzeige-bearbeiten.html*`
-- `https://*.kleinanzeigen.de/p-anzeige-bearbeiten.html*`
-- `https://www.ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*`
+- `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript)
+- `https://www.kleinanzeigen.de/m-meine-anzeigen.html*` (Helper)
 
 ### API-Endpunkte
 - **Löschen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
-- **CSRF-Token**: `meta[name="_csrf"]` oder `meta[name="csrf-token"]`
+- **CSRF-Token**: `input[name="_csrf"]`
 
-### Browser-Kompatibilität
-- ✅ Chrome/Chromium (v88+)
-- ✅ Firefox (v78+)
-- ✅ Edge (v88+)
-- ✅ Safari (v14+)
-- ✅ Opera (v74+)
+## Fehlerbehebung
 
-## 🐛 Fehlerbehebung
+### Buttons erscheinen nicht auf der Bearbeiten-Seite
+- Warte 2-3 Sekunden nach dem Laden
+- Prüfe ob das Hauptscript in Tampermonkey aktiviert ist
+- Browser-Cache leeren (Strg+F5)
 
-### Script lädt nicht
-1. Prüfe ob Tampermonkey aktiviert ist
-2. Stelle sicher, dass du auf der Bearbeiten-Seite bist
-3. Browser-Cache leeren (Strg+F5)
-4. Console öffnen (F12) und nach Fehlern suchen
-
-### Buttons erscheinen nicht
-- Warte 2-3 Sekunden nach Seitenladevorgang
-- Das Script sucht automatisch nach dem Submit-Button und platziert die neuen Buttons darunter
+### Buttons erscheinen nicht auf Meine Anzeigen
+- Prüfe ob das Helper-Script installiert und aktiviert ist
+- Tampermonkey-Icon sollte eine "2" anzeigen (beide Scripts aktiv)
 
 ### Löschung schlägt fehl
-- Session könnte abgelaufen sein → Neu anmelden
-- Rate-Limiting → Kurz warten und erneut versuchen
+- Session könnte abgelaufen sein - neu anmelden
+- Rate-Limiting - kurz warten und erneut versuchen
 
-## 📝 Changelog
+## Changelog
 
-### Version 3.2.1 (März 2026) ⭐ Aktuell
-- 🔧 Versions-Inkonsistenzen behoben (Fallback-Datei synchronisiert)
-- 🔧 Tippfehler im Dateinamen korrigiert ("Kleinazeigen" → "Kleinanzeigen")
-- 🔧 Repository-URL in package.json korrigiert
-- 🔧 Testzählungen in Dokumentation korrigiert
+### Version 3.3.8 / Helper 1.2.0 (April 2026)
+- Helper: Duplizieren-Button hinzugefügt
+- Hauptscript: `#duplicate` Hash-Erkennung für Helper
+- README komplett überarbeitet
+
+### Version 3.3.7 (April 2026)
+- CSRF-Token aus Hidden Input lesen (Kleinanzeigen-Umbau)
+
+### Version 3.3.6 (April 2026)
+- Korrekter Ad-ID Selektor `input[name="adId"]`
+
+### Version 3.3.4-3.3.5 (April 2026)
+- Floating-Toolbar statt DOM-Injection (React-kompatibel)
+- `saveBtn.click()` statt `form.submit()`
+
+### Version 3.3.0-3.3.3 (März 2026)
+- Helper-Script integriert
+- Selektoren an neues Kleinanzeigen-Layout angepasst
 
 ### Version 3.2.0 (Februar 2026)
-- 🔒 Security-Härtung nach ISO 27001/27002 Audit
-- ✅ Input-Validierung für Anzeigen-IDs (Defense-in-Depth)
-- ✅ Session-Timeout-Erkennung (401/403 → hilfreiche Fehlermeldung)
-- ✅ Button-Disabling nach Klick (verhindert Doppelklick)
-- ✅ innerHTML durch createElement ersetzt (Code-Hygiene)
-- 📄 SECURITY.md hinzugefügt (Responsible Disclosure)
-- 📄 .gitignore erstellt (Repository-Hygiene)
-- 📚 Permissions-Dokumentation im README
-
-### Version 3.1.0 (November 2025)
-- ✨ Auto-Update Support aktiviert
-- 🧪 54 Unit & Integration Tests (100% bestanden)
-- 📚 Umfangreiche Dokumentation
-- 🔧 Exponential Backoff für Retries
-- 📝 Logger System für Debugging
-- 🎨 CSS Klassen mit Hover-Effekten
-- 🛡️ Verbesserte Error-Handling
-- 📊 Code Quality Score: 8.9/10
+- Security-Härtung nach ISO 27001/27002 Review
 
 ### Version 3.0.0 (2025)
 - Komplette Code-Überarbeitung
-- Von 600 auf ~362 Zeilen optimiert
 - Smart Neu-Einstellen Feature
-- Retry-Limit mit Max-Versuchen
-- CSRF-Token Validation
-- User-Warnung bei Lösch-Fehler
 
-### Version 2.x (2024)
-- Erweiterte Bildanalyse (später als unnötig erkannt)
-- Komplexe Manager-Strukturen
+## Credits
 
-### Version 1.x (2024)
-- Initiale Funktionalität
-- Basis-Duplizierung
-
-## 👥 Credits & Lizenz
-
-### Credits
 - **Original-Script**: [J05HI](https://github.com/J05HI) - [Original Gist](https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
-  - Entwickelte die grundlegende Duplikations-Funktionalität
-  - API-Integration und CSRF-Token Handling
-  
+- **Helper-Idee**: [panzli](https://github.com/panzli)
 - **Erweiterte Version**: [OldRon1977](https://github.com/OldRon1977)
-  - Smart Neu-Einstellen Feature
-  - Verbesserte Fehlerbehandlung
-  - Code-Optimierungen
 
-### Lizenz
-MIT License - Siehe [LICENSE](LICENSE) für Details
+## Lizenz
 
-## 🤝 Contributing
-
-Contributions sind willkommen! 
-
-1. Fork das Repository
-2. Erstelle einen Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Committe deine Änderungen (`git commit -m 'Add some AmazingFeature'`)
-4. Push zum Branch (`git push origin feature/AmazingFeature`)
-5. Öffne einen Pull Request
-
-## ⚠️ Haftungsausschluss
-
-Dieses Script wird "as is" zur Verfügung gestellt. Die Nutzung erfolgt auf eigene Gefahr. Die Autoren übernehmen keine Haftung für eventuelle Schäden oder Verstöße gegen die Nutzungsbedingungen von eBay Kleinanzeigen.
-
-## 📞 Support
-
-Bei Problemen oder Fragen:
-- [Issue erstellen](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/issues)
-- [Discussions](https://github.com/OldRon1977/Kleinanzeigen---Duplizieren-Smart-neu-einstellen/discussions)
+MIT License - Siehe [LICENSE](LICENSE)
 
 ---
 
-**Hinweis**: Dieses Script ist nicht offiziell mit eBay Kleinanzeigen verbunden oder von ihnen unterstützt.
+Dieses Script ist nicht offiziell mit Kleinanzeigen verbunden oder von ihnen unterstützt.
