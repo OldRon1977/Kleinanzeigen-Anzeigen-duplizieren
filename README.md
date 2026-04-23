@@ -15,6 +15,7 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 ### Voraussetzungen
 - Browser: Chrome, Firefox, Edge, Safari oder Opera
 - [Tampermonkey](https://www.tampermonkey.net/) Browser-Extension
+- Bei einigen Browser (bspw. Chrome) muss noch einmal separat zugelassen werden, ob Skripte ausgeführt werden können. Bei Chrome --> Erweiterungen --> Tampermonkey --> Nutzerskripte zulassen
 
 ### Schritt 1: Hauptscript installieren (Pflicht)
 
