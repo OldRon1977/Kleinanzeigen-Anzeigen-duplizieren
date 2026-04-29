@@ -1,11 +1,11 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name          eBay Kleinanzeigen - Anzeige duplizieren / neu einstellen
 // @namespace     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @description   Einfaches Duplizieren und Smart Neu-Einstellen von Anzeigen mit automatischer Bilderhaltung
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.3.11
+// @version       3.4.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -23,12 +23,11 @@
 /*
  * Basierend auf dem Original-Script von J05HI
  * https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5
- * 
- * Änderungen in v3.0:
- * - Smart Neu-Einstellen Funktion hinzugefügt
- * - Bilder bleiben automatisch erhalten (keine Warnung nötig)
- * - Code vereinfacht und modernisiert
- * - Besseres Error-Handling mit Timeout
+ *
+ * Änderungen in v3.4.0:
+ * - Banner/Popup-Dismisser: Blendet störende Upsell-Banner und Popups automatisch aus
+ * - "Ohne Hochschieben weiter"-Popup wird automatisch weggeklickt
+ * - Kostenpflichtige Feature-Optionen werden ausgeblendet
  */
 
 (function () {
@@ -36,40 +35,100 @@
 
     // === KONSTANTEN ===
     const CONFIG = {
-        NOTIFICATION_TIMEOUT_MS: 4000,      // Wie lange Toast-Nachrichten angezeigt werden
-        DELETE_REQUEST_TIMEOUT_MS: 8000,    // Timeout für API-Anfrage zum Löschen
-        DELETE_WAIT_BEFORE_CREATE_MS: 2000, // Warten bis Löschung verarbeitet ist
-        INITIAL_RETRY_WAIT_MS: 500,         // Initiale Wartezeit für Retries
-        MAX_RETRY_WAIT_MS: 8000,            // Maximale Wartezeit zwischen Retries
-        MAX_BUTTON_RETRIES: 5               // Maximale Versuche zum Erstellen der Buttons
+        NOTIFICATION_TIMEOUT_MS: 4000,
+        DELETE_REQUEST_TIMEOUT_MS: 8000,
+        DELETE_WAIT_BEFORE_CREATE_MS: 2000,
+        INITIAL_RETRY_WAIT_MS: 500,
+        MAX_RETRY_WAIT_MS: 8000,
+        MAX_BUTTON_RETRIES: 5,
+        POPUP_POLL_INTERVAL_MS: 200,
+        POPUP_POLL_TIMEOUT_MS: 10000
     };
 
     // === LOGGING ===
     const logger = {
         log: (msg, data) => console.log(`[KA-Script] ${msg}`, data || ''),
-        warn: (msg, data) => console.warn(`[KA-Script] ⚠️ ${msg}`, data || ''),
-        error: (msg, data) => console.error(`[KA-Script] ❌ ${msg}`, data || '')
+        warn: (msg, data) => console.warn(`[KA-Script] ${msg}`, data || ''),
+        error: (msg, data) => console.error(`[KA-Script] ${msg}`, data || '')
     };
+
+    // === BANNER & POPUP DISMISSER ===
+
+    /**
+     * Injiziert CSS um störende Elemente sofort auszublenden:
+     * - Kostenpflichtige Feature-Optionen (Highlight, Galerie, Bumpup)
+     * - Info-Banner ("Das Bearbeiten deiner Anzeige schiebt sie nicht wieder hoch")
+     */
+    function injectBannerBlockerStyles() {
+        if (document.querySelector('#ka-banner-blocker')) return;
+
+        const style = document.createElement('style');
+        style.id = 'ka-banner-blocker';
+        style.textContent = `
+            /* Kostenpflichtige Features ausblenden */
+            fieldset:has(#ad-feature-group),
+            fieldset:has(input[id^="ad-feature-"]) {
+                display: none !important;
+            }
+
+            /* Info-Banner "Bearbeiten schiebt nicht hoch" ausblenden */
+            span:has(> div.bg-accentContainer.border-accentContainer) {
+                display: none !important;
+            }
+        `;
+
+        const target = document.head || document.documentElement;
+        target.appendChild(style);
+        logger.log('Banner-Blocker CSS injiziert');
+    }
+
+    /**
+     * Startet einen Polling-Mechanismus der nach Upsell-Popups sucht
+     * und diese automatisch schließt (z.B. "Ohne Hochschieben weiter").
+     * Wird nach Klick auf Speichern/Duplizieren/Smart-Neu-Einstellen aktiviert.
+     */
+    function startPopupDismisser() {
+        logger.log('Popup-Dismisser gestartet');
+
+        const dismissPatterns = [
+            'Ohne Hochschieben weiter',
+            'Ohne Highlight weiter',
+            'Nein, danke',
+            'Überspringen'
+        ];
+
+        const interval = setInterval(() => {
+            const allButtons = Array.from(document.querySelectorAll('button'));
+            for (const pattern of dismissPatterns) {
+                const dismissBtn = allButtons.find(btn =>
+                    btn.textContent.trim().includes(pattern)
+                );
+                if (dismissBtn) {
+                    logger.log(`Popup erkannt und geschlossen: "${pattern}"`);
+                    dismissBtn.click();
+                    clearInterval(interval);
+                    return;
+                }
+            }
+        }, CONFIG.POPUP_POLL_INTERVAL_MS);
+
+        setTimeout(() => {
+            clearInterval(interval);
+        }, CONFIG.POPUP_POLL_TIMEOUT_MS);
+
+        return interval;
+    }
 
     // === HILFSFUNKTIONEN ===
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-    /**
-     * Berechnet Wartezeit mit exponential backoff
-     * @param {number} retryCount - Aktuelle Versuches-Nummer (ab 1)
-     * @returns {number} Wartezeit in ms
-     */
     function getExponentialBackoffWait(retryCount) {
-        // 2^(retryCount-1) * INITIAL_RETRY_WAIT_MS, max MAX_RETRY_WAIT_MS
         const exponentialWait = Math.pow(2, retryCount - 1) * CONFIG.INITIAL_RETRY_WAIT_MS;
         return Math.min(exponentialWait, CONFIG.MAX_RETRY_WAIT_MS);
     }
 
     function showNotification(message, type = 'info') {
-        // Styles sicherstellen
         ensureStyles();
-
-        // Alte Notifications entfernen
         document.querySelectorAll('.ka-notification').forEach(n => n.remove());
 
         const notification = document.createElement('div');
@@ -167,7 +226,6 @@
         ensureStyles();
         const spinner = document.createElement('div');
         spinner.className = 'ka-spinner';
-        // US-SEC-006: innerHTML durch createElement ersetzen
         const spinnerInner = document.createElement('div');
         spinner.appendChild(spinnerInner);
         document.body.appendChild(spinner);
@@ -175,13 +233,11 @@
 
     // === API FUNKTIONEN ===
     function getCsrfToken() {
-        // Neues Layout: CSRF-Token kann als meta-Tag ODER als hidden input vorliegen
         const metaTag = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]');
         if (metaTag) {
             const token = metaTag.getAttribute('content');
             if (token) return token;
         }
-        // Fallback: Hidden Input
         const inputTag = document.querySelector('input[name="_csrf"]');
         if (inputTag && inputTag.value) return inputTag.value;
 
@@ -189,7 +245,6 @@
     }
 
     async function deleteAd(adId) {
-        // US-SEC-001: Input-Validierung für Anzeigen-ID
         if (!adId || !/^\d{1,20}$/.test(adId)) {
             throw new Error('Ungültige Anzeigen-ID');
         }
@@ -212,11 +267,10 @@
 
             clearTimeout(timeout);
 
-            // US-SEC-002: Session-Timeout-Erkennung
             if (!response.ok) {
                 if (response.status === 401 || response.status === 403) {
                     logger.warn('Session abgelaufen', { status: response.status });
-                    throw new Error('Sitzung abgelaufen – bitte neu einloggen und Seite neu laden.');
+                    throw new Error('Sitzung abgelaufen - bitte neu einloggen und Seite neu laden.');
                 }
                 logger.error(`Anzeige-Löschung fehlgeschlagen`, { status: response.status });
                 throw new Error(`HTTP ${response.status}`);
@@ -238,11 +292,9 @@
 
     // === HAUPTFUNKTIONEN ===
     function getFormElements() {
-        // Neues Kleinanzeigen-Layout: Ad-ID aus URL extrahieren, Input-Feld als Fallback
         let adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
         const form = document.querySelector('form');
         if (!form) throw new Error('Formular nicht gefunden');
-        // Falls kein Input-Feld: virtuelles Objekt mit ID aus URL
         if (!adIdInput) {
             const urlMatch = window.location.search.match(/adId=(\d+)/);
             if (!urlMatch) throw new Error('Anzeigen-ID nicht gefunden (weder Input noch URL)');
@@ -252,14 +304,12 @@
         return { adIdInput, form };
     }
 
-
     function findSaveButton() {
         return Array.from(document.querySelectorAll('button')).find(
             b => b.textContent.trim().startsWith('Anzeige speichern')
         );
     }
 
-    // Wartet bis ein Element im DOM erscheint (für React-Rendering)
     function waitForElement(finderFn, timeoutMs) {
         return new Promise(function (resolve) {
             const el = finderFn();
@@ -277,7 +327,6 @@
             logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
 
-            // Warte bis React die Seite fertig gerendert hat
             const saveBtn = await waitForElement(findSaveButton, 10000);
             if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
@@ -286,19 +335,21 @@
                 10000
             );
             if (adIdInput) {
-                // name-Attribut entfernen damit das Feld nicht mitgeschickt wird
                 adIdInput.removeAttribute('name');
                 adIdInput.value = '';
                 logger.log('adId Input: name-Attribut entfernt und Wert geleert');
             }
 
             logger.log('Anzeige-ID geleert, klicke Speichern-Button');
-            showNotification('📋 Anzeige wird dupliziert...');
+            showNotification('Anzeige wird dupliziert...');
+
+            // Popup-Dismisser starten bevor wir klicken
+            startPopupDismisser();
             saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
-            showNotification('❌ Fehler: ' + error.message, 'error');
+            showNotification('Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
@@ -309,13 +360,12 @@
             logger.log('Starte Smart-Republish-Prozess');
             showLoadingSpinner();
 
-            // Ad-ID aus URL holen
             const urlMatch = window.location.search.match(/adId=(\d+)/);
             if (!urlMatch) throw new Error('Keine Anzeigen-ID in URL gefunden');
             const originalId = urlMatch[1];
 
             logger.log(`Versuche Original-Anzeige ${originalId} zu löschen`);
-            showNotification('🗑 Original wird gelöscht...');
+            showNotification('Original wird gelöscht...');
 
             let deleteFailed = false;
             try {
@@ -328,7 +378,6 @@
                 showNotification('Original konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
             }
 
-            // Speichern-Button finden und klicken
             const saveBtn = await waitForElement(findSaveButton, 10000);
             if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
@@ -344,25 +393,26 @@
                 : 'Neue Anzeige wird erstellt (mit allen Bildern)...';
             logger.log('Erstelle neue Anzeige', { deleteFailed });
             showNotification(statusMsg);
+
+            // Popup-Dismisser starten bevor wir klicken
+            startPopupDismisser();
             saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
-            showNotification('❌ Fehler: ' + error.message, 'error');
+            showNotification('Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
         }
     }
 
-    // === BUTTONS ERSTELLEN (Floating Toolbar, ausserhalb React-DOM) ===
+    // === BUTTONS ERSTELLEN (Floating Toolbar, außerhalb React-DOM) ===
     let buttonCreateRetries = 0;
     const TOOLBAR_ID = 'ka-floating-toolbar';
 
     function createButtons() {
-        // Bereits vorhanden? Nichts tun.
         if (document.getElementById(TOOLBAR_ID)) return;
 
-        // Warte auf das Formular als Zeichen dass die Seite geladen ist
         const form = document.querySelector('form');
         if (!form) {
             if (buttonCreateRetries < CONFIG.MAX_BUTTON_RETRIES) {
@@ -379,7 +429,6 @@
         logger.log('Erstelle Floating-Toolbar');
         ensureStyles();
 
-        // Floating Toolbar direkt am body - React kann sie nicht entfernen
         const toolbar = document.createElement('div');
         toolbar.id = TOOLBAR_ID;
         toolbar.style.cssText = [
@@ -398,13 +447,13 @@
         const dupButton = document.createElement('button');
         dupButton.type = 'button';
         dupButton.className = 'ka-duplicate-btn';
-        dupButton.textContent = '📋 Duplizieren';
+        dupButton.textContent = 'Duplizieren';
         dupButton.title = 'Erstellt eine Kopie, Original bleibt erhalten';
 
         const smartButton = document.createElement('button');
         smartButton.type = 'button';
         smartButton.className = 'ka-smart-btn';
-        smartButton.textContent = '🔄 Smart neu einstellen';
+        smartButton.textContent = 'Smart neu einstellen';
         smartButton.title = 'Löscht Original und erstellt neue Anzeige';
 
         dupButton.onclick = (e) => {
@@ -428,12 +477,15 @@
         document.body.appendChild(toolbar);
 
         logger.log('Floating-Toolbar erstellt');
-        showNotification('✅ Duplikations-Buttons bereit!', 'success');
+        showNotification('Duplikations-Buttons bereit!', 'success');
     }
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.3.4)');
+        logger.log('UserScript initialisiert (v3.4.0)');
+
+        // Banner-Blocker sofort injizieren
+        injectBannerBlockerStyles();
 
         function startOrRepublish() {
             const hash = window.location.hash;
@@ -448,7 +500,6 @@
             }
         }
 
-        // Warten bis DOM bereit
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', startOrRepublish);
         } else {
