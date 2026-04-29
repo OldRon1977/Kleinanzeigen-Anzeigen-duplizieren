@@ -1,4 +1,4 @@
-﻿# Kleinanzeigen - Anzeige duplizieren / Smart neu einstellen
+# Kleinanzeigen - Anzeige duplizieren / Smart neu einstellen
 
 Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und intelligenten Neu-Einstellen von Anzeigen auf kleinanzeigen.de hinzufügt.
 
@@ -7,6 +7,7 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Duplizieren**: Erstellt eine Kopie der Anzeige, Original bleibt erhalten
 - **Smart neu einstellen**: Löscht das Original und erstellt eine neue Anzeige
 - **Automatische Bilderhaltung**: Alle Bilder bleiben bei beiden Funktionen erhalten
+- **Banner & Popup-Blocker**: Blendet störende Upsell-Banner und Popups automatisch aus
 - **Helper-Script**: Buttons direkt auf der "Meine Anzeigen"-Seite
 - **Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
 
@@ -42,22 +43,30 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 3. **Duplizieren**: Erstellt eine Kopie, Original bleibt bestehen
 4. **Smart neu einstellen**: Löscht Original, erstellt neue Anzeige
 
-### Über die Meine-Anzeigen-Seite (Helper)
+### über die Meine-Anzeigen-Seite (Helper)
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
 2. Neben jedem "Bearbeiten"-Link erscheinen zwei neue Buttons
 3. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus
 
+### Banner & Popup-Blocker (ab v3.4.0)
+Das Script blendet automatisch aus:
+- **Kostenpflichtige Feature-Optionen** (Highlight, Galerie, Bumpup) auf der Bearbeiten-Seite
+- **Info-Banner** ("Das Bearbeiten deiner Anzeige schiebt sie nicht wieder hoch")
+- **Upsell-Popups** ("Ohne Hochschieben weiter", "Ohne Highlight weiter") nach dem Speichern
+
+Kein manuelles Wegklicken mehr nötig.
+
 ## Technische Details
 
 ### Berechtigungen
-Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtigungen. Sie kommunizieren ausschliesslich mit kleinanzeigen.de über HTTPS.
+Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtigungen. Sie kommunizieren ausschließlich mit kleinanzeigen.de über HTTPS.
 
 ### Unterstützte URLs
 - `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript)
 - `https://www.kleinanzeigen.de/m-meine-anzeigen.html*` (Helper)
 
 ### API-Endpunkte
-- **Löschen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
+- **Löschen**: `POST /m-anzeigen-Löschen.json?ids={adId}`
 - **CSRF-Token**: `input[name="_csrf"]`
 
 ## Fehlerbehebung
@@ -71,14 +80,25 @@ Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtig
 - Prüfe ob das Helper-Script installiert und aktiviert ist
 - Tampermonkey-Icon sollte eine "2" anzeigen (beide Scripts aktiv)
 
-### Löschung schlägt fehl
+### Loeschung schlägt fehl
 - Session könnte abgelaufen sein - neu anmelden
 - Rate-Limiting - kurz warten und erneut versuchen
 
+### Upsell-Popup blockiert den Vorgang
+- Ab v3.4.0 wird das Popup automatisch weggeklickt
+- Falls es trotzdem hängt: Seite neu laden und erneut versuchen
+- In der Konsole (F12) nach `[KA-Script] Popup erkannt` suchen
+
 ## Changelog
 
+### Version 3.4.0 (April 2026)
+- **Neu**: Banner-Blocker blendet kostenpflichtige Feature-Optionen per CSS aus
+- **Neu**: Info-Banner ("Bearbeiten schiebt nicht hoch") wird ausgeblendet
+- **Neu**: Popup-Dismisser klickt Upsell-Dialoge automatisch weg ("Ohne Hochschieben weiter", etc.)
+- Fix für Issue #29: Neuer Banner blockierte Skript-Funktionalität
+
 ### Version 3.3.8 / Helper 1.2.0 (April 2026)
-- Helper: Duplizieren-Button hinzugefügt
+- Helper: Duplizieren-Button hinzugeFügt
 - Hauptscript: `#duplicate` Hash-Erkennung für Helper
 - README komplett überarbeitet
 
@@ -100,7 +120,7 @@ Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtig
 - Security-Härtung nach ISO 27001/27002 Review
 
 ### Version 3.0.0 (2025)
-- Komplette Code-Überarbeitung
+- Komplette Code-überarbeitung
 - Smart Neu-Einstellen Feature
 
 ## Credits
