@@ -27,7 +27,7 @@ Fügt auf der **Bearbeiten-Seite** einer Anzeige die Buttons "Duplizieren" und "
 
 [![Install Helper](https://img.shields.io/badge/Install-Helper_Script-0077cc?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js)
 
-Fügt auf der **Meine Anzeigen**-Seite neben jeder Anzeige die Buttons "Duplizieren" und "Neu einstellen" hinzu. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus.
+Fügt auf der **Meine Anzeigen**-Seite neben jeder Anzeige den Button "Smart neu einstellen" hinzu. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus.
 
 > **Hinweis**: Beide Scripts müssen in Tampermonkey aktiviert sein, damit der Helper korrekt funktioniert.
 
@@ -44,7 +44,7 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 
 ### Über die Meine-Anzeigen-Seite (Helper)
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
-2. Neben jedem "Bearbeiten"-Link erscheinen zwei neue Buttons
+2. Neben jedem "Bearbeiten"-Link erscheint der Button "Smart neu einstellen"
 3. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus
 
 ## Technische Details
@@ -77,10 +77,10 @@ Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtig
 
 ## Changelog
 
-### Version 3.3.8 / Helper 1.2.0 (April 2026)
-- Helper: Duplizieren-Button hinzugefügt
-- Hauptscript: `#duplicate` Hash-Erkennung für Helper
-- README komplett überarbeitet
+### Version 3.3.11 / Helper 1.1.2 (April 2026)
+- Hauptscript 3.3.9-3.3.11: Bugfixes (React-Render, adId-Handling, doppeltes if)
+- Hauptscript 3.3.8: `#duplicate` Hash-Erkennung, README überarbeitet
+- Helper: Duplizieren-Button-Versuch (1.2.0) wegen Stabilitätsproblemen auf 1.1.2 zurückgesetzt
 
 ### Version 3.3.7 (April 2026)
 - CSRF-Token aus Hidden Input lesen (Kleinanzeigen-Umbau)
