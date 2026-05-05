@@ -91,15 +91,16 @@ Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtig
 
 ## Changelog
 
-### Version 3.3.11 / Helper 1.1.2 (April 2026)
-- Hauptscript 3.3.9-3.3.11: Bugfixes (React-Render, adId-Handling, doppeltes if)
-- Hauptscript 3.3.8: `#duplicate` Hash-Erkennung, README überarbeitet
-- Helper: Duplizieren-Button-Versuch (1.2.0) wegen Stabilitätsproblemen auf 1.1.2 zurückgesetzt
 ### Version 3.4.0 (April 2026)
 - **Neu**: Banner-Blocker blendet kostenpflichtige Feature-Optionen per CSS aus
 - **Neu**: Info-Banner ("Bearbeiten schiebt nicht hoch") wird ausgeblendet
 - **Neu**: Popup-Dismisser klickt Upsell-Dialoge automatisch weg ("Ohne Hochschieben weiter", etc.)
 - Fix für Issue #29: Neuer Banner blockierte Skript-Funktionalität
+
+### Version 3.3.11 / Helper 1.1.2 (April 2026)
+- Hauptscript 3.3.9-3.3.11: Bugfixes (React-Render, adId-Handling, doppeltes if)
+- Hauptscript 3.3.8: `#duplicate` Hash-Erkennung, README überarbeitet
+- Helper: Duplizieren-Button-Versuch (1.2.0) wegen Stabilitätsproblemen auf 1.1.2 zurückgesetzt
 
 ### Version 3.3.8 / Helper 1.2.0 (April 2026)
 - Helper: Duplizieren-Button hinzugeFügt
