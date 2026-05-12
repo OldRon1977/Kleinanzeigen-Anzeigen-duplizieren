@@ -292,12 +292,26 @@
     }
 
     function openSmartRepublish(adId, button) {
-        window.open(
-            'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
-            '_blank'
-        );
-        button.style.color = 'red';
-        button.textContent = '\u2705 Geöffnet';
+        button.disabled = true;
+        button.style.color = '#888';
+        button.textContent = '\u23F3 Laeuft \u2026';
+        processOne({ adId: adId, title: '' }).then(function (res) {
+            if (res.ok) {
+                button.style.color = '#27ae60';
+                button.textContent = '\u2705 Fertig';
+                deleteSnapshot(adId).catch(function () {});
+            } else {
+                button.style.color = '#e74c3c';
+                button.textContent = '\u274C ' + (res.code || 'Fehler');
+                button.title = res.error || 'unbekannter Fehler';
+                button.disabled = false;
+            }
+        }, function (err) {
+            warn('Single-Republish unerwartet abgebrochen', err);
+            button.style.color = '#e74c3c';
+            button.textContent = '\u274C Abbruch';
+            button.disabled = false;
+        });
     }
 
     // === GLOBALER BATCH-TRIGGER-BUTTON ===
