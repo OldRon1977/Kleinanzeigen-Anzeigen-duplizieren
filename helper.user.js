@@ -726,6 +726,7 @@
                 tabHandle = { close: function () { try { w.close(); } catch (e) {} }, get closed() { return w.closed; } };
             }
 
+            let done = false;
             const cleanup = function (closeTab) {
                 window.removeEventListener('storage', onStorage);
                 clearTimeout(timeoutId);
@@ -737,6 +738,8 @@
             };
 
             const finish = function (payload) {
+                if (done) return;
+                done = true;
                 cleanup(payload.keepTab !== true);
                 resolve(payload);
             };

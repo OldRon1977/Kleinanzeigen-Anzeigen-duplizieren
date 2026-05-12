@@ -469,6 +469,9 @@
         const urlMatch = window.location.search.match(/adId=(\d+)/);
         const originalId = urlMatch ? urlMatch[1] : null;
         const batchMode = isBatchMode();
+        // Lifecycle-Marker fuer differenzierte Fehlerklassifikation:
+        // wenn nach erfolgreichem Delete etwas schief geht, ist das Datenverlust.
+        let phase = 'init';
 
         try {
             logger.log('Starte Smart-Republish-Prozess', { batchMode: batchMode, originalId: originalId });
@@ -476,12 +479,19 @@
 
             if (!originalId) throw new Error('Keine Anzeigen-ID in URL gefunden');
 
+            // Defensive: alten Result-Key abraeumen, falls ein vorheriger Run
+            // crashte und einen Stale-Wert hinterlassen hat.
+            if (batchMode) {
+                try { localStorage.removeItem('ka-batch-result-' + originalId); } catch (e) {}
+            }
+
             // Snapshot VOR Loeschung speichern (atomar, erst dann weiter)
             if (batchMode) {
                 try {
                     showNotification('Snapshot wird erstellt...');
                     const snap = await buildSnapshot(originalId);
                     await batchPutSnapshot(snap);
+                    phase = 'snapshot_done';
                     logger.log('Snapshot gespeichert', { adId: originalId, images: snap.images.length });
                 } catch (e) {
                     logger.error('Snapshot fehlgeschlagen, Abbruch vor Loeschung', e);
@@ -500,9 +510,11 @@
             try {
                 await deleteAd(originalId);
                 await delay(CONFIG.DELETE_WAIT_BEFORE_CREATE_MS);
+                phase = 'delete_ok';
                 logger.log('Original-Anzeige erfolgreich gelöscht');
             } catch (error) {
                 deleteFailed = true;
+                phase = 'delete_failed';
                 logger.warn('Loeschung fehlgeschlagen', error);
                 showNotification('Original konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
             }
@@ -529,7 +541,23 @@
                 // gemeldet. Der Helper schliesst den Tab via GM_openInTab.close().
                 try { sessionStorage.setItem('ka-batch-original-adid', originalId); } catch (e) {}
             }
+            phase = 'save_clicked';
             saveBtn.click();
+
+            // B) Self-Watchdog: wenn der Tab nach 45s noch auf der Bearbeiten-Seite
+            // ist, hat das Save serverseitig nicht durchgegriffen. Ohne diesen
+            // Hinweis wuerde der Helper nur ein generisches Timeout sehen.
+            if (batchMode) {
+                setTimeout(function () {
+                    try {
+                        if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
+                            const sub = (deleteFailed) ? 'delete_failed' : 'delete_ok';
+                            logger.error('Watchdog: Save scheint nicht navigiert zu haben', { sub: sub });
+                            batchSetResult(originalId, 'error:save_failed:' + sub);
+                        }
+                    } catch (e) {}
+                }, 45 * 1000);
+            }
 
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
@@ -537,7 +565,15 @@
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
             if (batchMode && originalId) {
-                batchSetResult(originalId, 'error:exception:' + (error.message || 'unbekannt'));
+                // Wenn Original bereits geloescht wurde, ist das Datenverlust.
+                // Helper soll Snapshot behalten und Batch stoppen.
+                if (phase === 'delete_ok' || phase === 'save_clicked') {
+                    batchSetResult(originalId, 'error:save_failed:delete_ok');
+                } else if (phase === 'delete_failed') {
+                    batchSetResult(originalId, 'error:save_failed:delete_failed');
+                } else {
+                    batchSetResult(originalId, 'error:exception:' + (error.message || 'unbekannt'));
+                }
             }
         }
     }
