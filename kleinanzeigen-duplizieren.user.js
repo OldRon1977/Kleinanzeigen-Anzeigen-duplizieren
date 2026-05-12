@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.4.0
+// @version       3.5.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -396,6 +396,8 @@
 
             // Popup-Dismisser starten bevor wir klicken
             startPopupDismisser();
+            // Batch-Worker: Erfolg an Helper-Tab signalisieren (vor Navigation)
+            try { localStorage.setItem('ka-batch-result-' + originalId, 'ok'); } catch (e) { logger.warn('localStorage write fehlgeschlagen', e); }
             saveBtn.click();
 
         } catch (error) {
@@ -403,6 +405,11 @@
             showNotification('Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+            // Batch-Worker: Fehler an Helper-Tab signalisieren
+            try {
+                const m = window.location.search.match(/adId=(\d+)/);
+                if (m) localStorage.setItem('ka-batch-result-' + m[1], 'error:' + (error.message || 'unbekannt'));
+            } catch (e) {}
         }
     }
 
@@ -482,7 +489,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.4.0)');
+        logger.log('UserScript initialisiert (v3.5.0)');
 
         // Banner-Blocker sofort injizieren
         injectBannerBlockerStyles();

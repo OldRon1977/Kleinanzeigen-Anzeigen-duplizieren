@@ -10,6 +10,45 @@ Dieses Dokument dokumentiert alle Code-Quality-Verbesserungen über verschiedene
 
 ---
 
+## 🔥 v3.5.0 - Batch Smart-Republish (Mai 2026)
+
+**Änderungsdatum:** Mai 2026  
+**Typ:** Feature  
+**Quality Improvement:** Keine Score-Änderung (neues Feature)
+
+### Hinzugefügt
+
+- **Batch-Modus auf "Meine Anzeigen":** Neuer Button `⏰ Alle alten neu einstellen` über der Anzeigen-Liste.
+- **Filter:** Anzeigen werden als "älter als 7 Tage" eingestuft, wenn das Enddatum höchstens 53 Tage in der Zukunft liegt (60-Tage-Standard-Laufzeit minus 7).
+- **Confirm-Overlay:** Listet alle Treffer mit Titel, ID und Restlaufzeit. Start-/Abbrechen-Buttons.
+- **Sequenzielle Abarbeitung:** Pro Anzeige wird ein neuer Tab mit `#smartRepublish` geöffnet. Zwischen zwei Anzeigen 7 +- 2 Minuten Jitter (Math.random).
+- **Cross-Tab-Kommunikation:** über `localStorage` (Schlüssel `ka-batch-result-<adId>`). Worker schreibt `ok` oder `error:<msg>`, Orchestrator hört via `storage`-Event und Polling-Fallback.
+- **Stop-Button:** Bricht Loop nach der laufenden Anzeige ab.
+- **Skip-and-continue:** Fehlgeschlagene Anzeigen werden übersprungen, am Ende als Fehlerliste angezeigt.
+- **Versionsbump:** Hauptscript 3.4.0 → 3.5.0, Helper 1.1.2 → 1.3.0, `package.json` 3.3.11 → 3.5.0 (Drift korrigiert).
+
+### Architektur
+
+```
+Meine-Anzeigen (Helper, Orchestrator)
+   |  Queue: [adId1, adId2, ...]
+   +-- oeffnet Tab #1 mit #smartRepublish
+   |      +-- Hauptscript fuehrt smartRepublish aus,
+   |          schreibt ka-batch-result-<adId> in localStorage
+   +-- Orchestrator liest Ergebnis, schliesst Tab
+   +-- wartet 7 +- 2 min (Jitter)
+   +-- naechste adId, bis Queue leer
+```
+
+### Limitierungen
+
+- **Tab-abhängig:** Schliesst der User die "Meine Anzeigen"-Seite, bricht der Batch ab. Keine persistente Queue.
+- **Pagination:** Nur die aktuell sichtbaren Karten werden berücksichtigt. Bei vielen Anzeigen ggf. mehrfach starten.
+- **Sonder-Laufzeiten:** Filter setzt 60-Tage-Default voraus. Anzeigen mit abweichender Laufzeit können falsch eingestuft werden -- Confirm-Dialog macht es vor dem Start sichtbar.
+- **Popup-Blocker:** Browser könnte `window.open` aus Timer-Kontext blockieren. Fallback dokumentiert.
+
+---
+
 ## 🔧 v3.2.1 - Consistency Fix (März 2026)
 
 **Änderungsdatum:** März 2026

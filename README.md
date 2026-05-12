@@ -91,11 +91,17 @@ Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtig
 
 ## Changelog
 
+### Version 3.5.0 / Helper 1.3.0 (Mai 2026)
+- **Neu**: Batch-Modus auf "Meine Anzeigen". Ein Button stellt alle Anzeigen, die älter als 7 Tage sind, nacheinander mit 7 ± 2 Minuten Pause neu ein.
+- **Neu**: Kleines Overlay zeigt Trefferliste, Start-/Abbrechen-Buttons, Fortschritt und Stop-Button.
+- Tab-übergreifende Kommunikation über `localStorage` (kein zusätzliches `@grant`).
+- Helper 1.3.0 bringt den Orchestrator. Hauptscript 3.5.0 ergänzt einen Result-Hook in `smartRepublish`.
+- Intern: `package.json`-Version (3.3.11 → 3.5.0) an Userscript-Header angeglichen.
+
 ### Version 3.4.0 (April 2026)
 - **Neu**: Banner-Blocker blendet kostenpflichtige Feature-Optionen per CSS aus
 - **Neu**: Info-Banner ("Bearbeiten schiebt nicht hoch") wird ausgeblendet
 - **Neu**: Popup-Dismisser klickt Upsell-Dialoge automatisch weg ("Ohne Hochschieben weiter", etc.)
-- Fix für Issue #29: Neuer Banner blockierte Skript-Funktionalität
 
 ### Version 3.3.11 / Helper 1.1.2 (April 2026)
 - Hauptscript 3.3.9-3.3.11: Bugfixes (React-Render, adId-Handling, doppeltes if)
