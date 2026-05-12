@@ -13,6 +13,11 @@
 // @match         https://*.kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://www.ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
+// @match         https://www.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
+// @match         https://kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
+// @match         https://*.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
+// @match         https://www.ebay-kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
+// @match         https://ebay-kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
@@ -524,6 +529,10 @@
                 // abgesendet wurde. Die Erfolgs-Verifikation laeuft im Helper-Tab,
                 // weil dieser Tab gleich wegnavigiert und sein JS-Context stirbt.
                 batchSetResult(originalId, 'save_clicked:' + (deleteFailed ? 'delete_failed' : 'delete_ok'));
+                // Self-Close-Marker fuer die Bestaetigungs-Seite:
+                // dort liest das Skript ihn aus, schreibt 'ok' ins localStorage
+                // und schliesst den Tab selbst (window.close darf nur der eigene Tab).
+                try { sessionStorage.setItem('ka-batch-close-marker', originalId); } catch (e) {}
             }
             saveBtn.click();
 
@@ -615,6 +624,24 @@
     // === INITIALISIERUNG ===
     function init() {
         logger.log('UserScript initialisiert (v3.5.0)');
+
+        // Wenn wir auf der Bestaetigungs-Seite gelandet sind und ein Batch-Marker
+        // im sessionStorage liegt: Erfolg an Helper signalisieren und Tab schliessen.
+        if (window.location.pathname.indexOf('/p-anzeige-aufgeben-bestaetigung.html') === 0) {
+            try {
+                const origAdId = sessionStorage.getItem('ka-batch-close-marker');
+                if (origAdId) {
+                    sessionStorage.removeItem('ka-batch-close-marker');
+                    logger.log('Bestaetigungs-Seite erreicht, signalisiere ok an Helper', { origAdId: origAdId });
+                    try { localStorage.setItem('ka-batch-result-' + origAdId, 'ok'); } catch (e) {}
+                    // Kurze Verzoegerung, damit Helper das storage-Event verarbeiten kann
+                    setTimeout(function () { try { window.close(); } catch (e) {} }, 500);
+                }
+            } catch (e) {
+                logger.warn('Bestaetigungs-Seite Hook fehlgeschlagen', e);
+            }
+            return;
+        }
 
         // Banner-Blocker sofort injizieren
         injectBannerBlockerStyles();
