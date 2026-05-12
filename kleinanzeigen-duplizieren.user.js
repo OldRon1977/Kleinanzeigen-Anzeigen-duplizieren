@@ -525,14 +525,9 @@
 
             startPopupDismisser();
             if (batchMode) {
-                // Click-Marker: signalisiert dem Helper, dass die Save-Action
-                // abgesendet wurde. Die Erfolgs-Verifikation laeuft im Helper-Tab,
-                // weil dieser Tab gleich wegnavigiert und sein JS-Context stirbt.
-                batchSetResult(originalId, 'save_clicked:' + (deleteFailed ? 'delete_failed' : 'delete_ok'));
-                // Self-Close-Marker fuer die Bestaetigungs-Seite:
-                // dort liest das Skript ihn aus, schreibt 'ok' ins localStorage
-                // und schliesst den Tab selbst (window.close darf nur der eigene Tab).
-                try { sessionStorage.setItem('ka-batch-close-marker', originalId); } catch (e) {}
+                // Marker fuer die Bestaetigungs-Seite: dort wird 'ok' an den Helper
+                // gemeldet. Der Helper schliesst den Tab via GM_openInTab.close().
+                try { sessionStorage.setItem('ka-batch-original-adid', originalId); } catch (e) {}
             }
             saveBtn.click();
 
@@ -625,17 +620,16 @@
     function init() {
         logger.log('UserScript initialisiert (v3.5.0)');
 
-        // Wenn wir auf der Bestaetigungs-Seite gelandet sind und ein Batch-Marker
-        // im sessionStorage liegt: Erfolg an Helper signalisieren und Tab schliessen.
+        // Wenn wir auf der Bestaetigungs-Seite gelandet sind und der Batch-Marker
+        // im sessionStorage liegt: Erfolg an den Helper signalisieren. Den Tab
+        // schliesst der Helper-Tab per GM_openInTab.close().
         if (window.location.pathname.indexOf('/p-anzeige-aufgeben-bestaetigung.html') === 0) {
             try {
-                const origAdId = sessionStorage.getItem('ka-batch-close-marker');
+                const origAdId = sessionStorage.getItem('ka-batch-original-adid');
                 if (origAdId) {
-                    sessionStorage.removeItem('ka-batch-close-marker');
+                    sessionStorage.removeItem('ka-batch-original-adid');
                     logger.log('Bestaetigungs-Seite erreicht, signalisiere ok an Helper', { origAdId: origAdId });
                     try { localStorage.setItem('ka-batch-result-' + origAdId, 'ok'); } catch (e) {}
-                    // Kurze Verzoegerung, damit Helper das storage-Event verarbeiten kann
-                    setTimeout(function () { try { window.close(); } catch (e) {} }, 500);
                 }
             } catch (e) {
                 logger.warn('Bestaetigungs-Seite Hook fehlgeschlagen', e);
