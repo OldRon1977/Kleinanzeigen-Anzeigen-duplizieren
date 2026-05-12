@@ -460,32 +460,6 @@
         };
     }
 
-    function waitForSaveSuccess(originalId, timeoutMs) {
-        // Erfolg: Pfad verlaesst /p-anzeige-bearbeiten.html ODER
-        //          eine andere adId steht im URL/DOM
-        return new Promise(function (resolve) {
-            const start = Date.now();
-            const id = setInterval(function () {
-                const path = window.location.pathname;
-                if (path.indexOf('/p-anzeige-bearbeiten.html') < 0) {
-                    clearInterval(id);
-                    resolve({ ok: true, reason: 'navigation' });
-                    return;
-                }
-                const m = window.location.search.match(/adId=(\d+)/);
-                if (m && m[1] !== String(originalId)) {
-                    clearInterval(id);
-                    resolve({ ok: true, reason: 'new_adId', newAdId: m[1] });
-                    return;
-                }
-                if (Date.now() - start >= timeoutMs) {
-                    clearInterval(id);
-                    resolve({ ok: false });
-                }
-            }, 500);
-        });
-    }
-
     async function smartRepublish() {
         const urlMatch = window.location.search.match(/adId=(\d+)/);
         const originalId = urlMatch ? urlMatch[1] : null;
@@ -545,20 +519,13 @@
             showNotification(statusMsg);
 
             startPopupDismisser();
-            saveBtn.click();
-
             if (batchMode) {
-                // Erfolgs-Verifikation per Navigation/AdId-Wechsel
-                const verify = await waitForSaveSuccess(originalId, 60000);
-                if (verify.ok) {
-                    logger.log('Save verifiziert', verify);
-                    batchSetResult(originalId, 'ok');
-                } else {
-                    const sub = deleteFailed ? 'delete_failed' : 'delete_ok';
-                    logger.error('Save-Verifikation fehlgeschlagen', { sub: sub });
-                    batchSetResult(originalId, 'error:save_failed:' + sub);
-                }
+                // Click-Marker: signalisiert dem Helper, dass die Save-Action
+                // abgesendet wurde. Die Erfolgs-Verifikation laeuft im Helper-Tab,
+                // weil dieser Tab gleich wegnavigiert und sein JS-Context stirbt.
+                batchSetResult(originalId, 'save_clicked:' + (deleteFailed ? 'delete_failed' : 'delete_ok'));
             }
+            saveBtn.click();
 
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);

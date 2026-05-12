@@ -697,6 +697,7 @@
                 window.removeEventListener('storage', onStorage);
                 clearTimeout(timeoutId);
                 clearInterval(pollId);
+                if (saveVerifyTimer) clearTimeout(saveVerifyTimer);
                 if (closeTab) {
                     try { tabRef.close(); } catch (e) {}
                 }
@@ -708,15 +709,67 @@
                 resolve(payload);
             };
 
+            // Save-Verifikation: Worker schreibt 'save_clicked:<deleteState>'
+            // bevor er den Click absendet. Wir uebernehmen ab dort die
+            // URL-Beobachtung des Worker-Tabs, weil dessen JS-Context bei
+            // Navigation stirbt.
+            let saveVerifyTimer = null;
+            const SAVE_VERIFY_TIMEOUT_MS = 60 * 1000;
+            const SAVE_VERIFY_POLL_MS = 1000;
+
+            const startSaveVerify = function (deleteState) {
+                const verifyStart = Date.now();
+                const verifyTick = function () {
+                    if (tabRef.closed) {
+                        finish({
+                            ok: false,
+                            error: 'save_aborted',
+                            code: 'save_aborted',
+                            dataLoss: deleteState === 'delete_ok',
+                            keepTab: false
+                        });
+                        return;
+                    }
+                    let href = '';
+                    try { href = tabRef.location.href || ''; } catch (e) {
+                        // Cross-Origin-Block (sollte same-origin nicht passieren) -> retry
+                    }
+                    if (href.indexOf('/p-anzeige-aufgeben-bestaetigung.html') >= 0) {
+                        finish({ ok: true });
+                        return;
+                    }
+                    if (Date.now() - verifyStart >= SAVE_VERIFY_TIMEOUT_MS) {
+                        finish({
+                            ok: false,
+                            error: 'save_failed:' + deleteState,
+                            code: 'save_failed',
+                            dataLoss: deleteState === 'delete_ok',
+                            keepTab: deleteState === 'delete_ok'
+                        });
+                        return;
+                    }
+                    saveVerifyTimer = setTimeout(verifyTick, SAVE_VERIFY_POLL_MS);
+                };
+                verifyTick();
+            };
+
             const handleValue = function (raw) {
                 if (!raw) return false;
                 if (raw === 'ok') {
                     finish({ ok: true });
                     return true;
                 }
+                if (raw.indexOf('save_clicked:') === 0) {
+                    // Save abgesendet, ab jetzt URL-Polling im Helper-Tab.
+                    // Den Result-Key abraeumen, damit wir nicht endlos triggern.
+                    try { localStorage.removeItem(lsKey); } catch (e) {}
+                    const deleteState = raw.split(':')[1] || 'delete_ok';
+                    log('Save abgesendet (' + deleteState + '), starte URL-Verifikation');
+                    startSaveVerify(deleteState);
+                    return true;
+                }
                 if (raw.indexOf('error:') === 0) {
                     const tail = raw.slice(6);
-                    // tail kann 'save_failed:delete_ok' / 'save_failed:delete_failed' / 'exception:<msg>' / generischer Text sein
                     let code = tail.split(':')[0] || 'unknown';
                     let dataLoss = false;
                     if (code === 'save_failed') {
