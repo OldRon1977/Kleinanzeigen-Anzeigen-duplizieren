@@ -721,13 +721,33 @@
                 const verifyStart = Date.now();
                 const verifyTick = function () {
                     if (tabRef.closed) {
-                        finish({
-                            ok: false,
-                            error: 'save_aborted',
-                            code: 'save_aborted',
-                            dataLoss: deleteState === 'delete_ok',
-                            keepTab: false
-                        });
+                        // Tab ist weg. Wenn der Worker auf der Bestaetigungs-Seite
+                        // selbst 'ok' ins localStorage geschrieben hat, wird der
+                        // storage-Event-Listener das gleich verarbeiten. Hier nur
+                        // dann 'save_aborted' melden, wenn nichts mehr eintrudelt.
+                        let okFlag = null;
+                        try { okFlag = localStorage.getItem(lsKey); } catch (e) {}
+                        if (okFlag === 'ok') {
+                            finish({ ok: true });
+                            return;
+                        }
+                        // Kurz warten, dann final entscheiden -- gibt dem
+                        // storage-Event etwas Luft, den Listener zu erreichen.
+                        setTimeout(function () {
+                            let late = null;
+                            try { late = localStorage.getItem(lsKey); } catch (e) {}
+                            if (late === 'ok') {
+                                finish({ ok: true });
+                            } else {
+                                finish({
+                                    ok: false,
+                                    error: 'save_aborted',
+                                    code: 'save_aborted',
+                                    dataLoss: deleteState === 'delete_ok',
+                                    keepTab: deleteState === 'delete_ok'
+                                });
+                            }
+                        }, 1500);
                         return;
                     }
                     let href = '';
@@ -760,9 +780,12 @@
                     return true;
                 }
                 if (raw.indexOf('save_clicked:') === 0) {
-                    // Save abgesendet, ab jetzt URL-Polling im Helper-Tab.
-                    // Den Result-Key abraeumen, damit wir nicht endlos triggern.
-                    try { localStorage.removeItem(lsKey); } catch (e) {}
+                    // Save abgesendet. URL-Polling im Helper-Tab uebernimmt ab hier.
+                    // Wir merken uns, dass der Click-Marker schon verarbeitet wurde,
+                    // damit pollId nicht endlos triggert. Aber: Result-Key NICHT loeschen,
+                    // weil der Worker auf der Bestaetigungs-Seite gleich 'ok' reinschreibt.
+                    if (saveVerifyTimer === 'pending' || saveVerifyTimer) return true;
+                    saveVerifyTimer = 'pending';
                     const deleteState = raw.split(':')[1] || 'delete_ok';
                     log('Save abgesendet (' + deleteState + '), starte URL-Verifikation');
                     startSaveVerify(deleteState);
