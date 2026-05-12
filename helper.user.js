@@ -14,7 +14,7 @@
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
 // @run-at        document-idle
-// @grant         none
+// @grant         GM_openInTab
 // ==/UserScript==
 
 (function () {
@@ -26,9 +26,9 @@
     // in der Zukunft liegt.
     const MIN_DAYS_TO_END = 53;
 
-    // Jitter-Delay zwischen zwei Smart-Republish-Vorgaengen: 7 +- 2 Minuten.
-    const DELAY_BASE_MS = 7 * 60 * 1000;
-    const DELAY_JITTER_MS = 2 * 60 * 1000;
+    // Jitter-Delay zwischen zwei Smart-Republish-Vorgaengen: 3 +- 1 Minuten.
+    const DELAY_BASE_MS = 3 * 60 * 1000;
+    const DELAY_JITTER_MS = 1 * 60 * 1000;
 
     // Maximaler Wartepuffer auf das Result-Signal aus dem Worker-Tab.
     // Nach Saving kann Bilder-Verarbeitung lange dauern; 180s ist grosszuegig.
@@ -493,7 +493,7 @@
         summary.appendChild(line1);
         const line2 = document.createElement('div');
         line2.style.cssText = 'color:#666;margin-top:4px;';
-        line2.textContent = 'Geschätzte Laufzeit: ca. ' + minutes + ' Minuten (7 ± 2 min Pause pro Anzeige).';
+        line2.textContent = 'Geschätzte Laufzeit: ca. ' + minutes + ' Minuten (3 ± 1 min Pause pro Anzeige).';
         summary.appendChild(line2);
         overlay.appendChild(summary);
 
@@ -684,22 +684,40 @@
             try { localStorage.removeItem(lsKey); } catch (e) {}
 
             log('Öffne Tab für adId ' + adId);
-            const tabRef = window.open(
-                'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
-                '_blank'
-            );
-            if (!tabRef) {
-                resolve({ ok: false, error: 'Popup blockiert', code: 'popup_blocked', keepTab: false });
-                return;
+            // GM_openInTab gibt ein Handle mit close()/closed/onclose zurueck,
+            // das auch nach Navigation des Tabs weiter funktioniert.
+            // Fallback auf window.open, falls @grant aus irgendeinem Grund fehlt.
+            let tabHandle = null;
+            try {
+                if (typeof GM_openInTab === 'function') {
+                    tabHandle = GM_openInTab(
+                        'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
+                        { active: true, insert: true, setParent: true }
+                    );
+                }
+            } catch (e) {
+                warn('GM_openInTab fehlgeschlagen, fallback auf window.open', e);
+            }
+            if (!tabHandle) {
+                const w = window.open(
+                    'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
+                    '_blank'
+                );
+                if (!w) {
+                    resolve({ ok: false, error: 'Popup blockiert', code: 'popup_blocked' });
+                    return;
+                }
+                // Pseudo-Handle, das nicht zuverlaessig schliesst -- aber das ist
+                // der Fallback, kein Default.
+                tabHandle = { close: function () { try { w.close(); } catch (e) {} }, get closed() { return w.closed; } };
             }
 
             const cleanup = function (closeTab) {
                 window.removeEventListener('storage', onStorage);
                 clearTimeout(timeoutId);
                 clearInterval(pollId);
-                if (saveVerifyTimer) clearTimeout(saveVerifyTimer);
                 if (closeTab) {
-                    try { tabRef.close(); } catch (e) {}
+                    try { tabHandle.close(); } catch (e) {}
                 }
                 try { localStorage.removeItem(lsKey); } catch (e) {}
             };
@@ -709,86 +727,10 @@
                 resolve(payload);
             };
 
-            // Save-Verifikation: Worker schreibt 'save_clicked:<deleteState>'
-            // bevor er den Click absendet. Wir uebernehmen ab dort die
-            // URL-Beobachtung des Worker-Tabs, weil dessen JS-Context bei
-            // Navigation stirbt.
-            let saveVerifyTimer = null;
-            const SAVE_VERIFY_TIMEOUT_MS = 60 * 1000;
-            const SAVE_VERIFY_POLL_MS = 1000;
-
-            const startSaveVerify = function (deleteState) {
-                const verifyStart = Date.now();
-                const verifyTick = function () {
-                    if (tabRef.closed) {
-                        // Tab ist weg. Wenn der Worker auf der Bestaetigungs-Seite
-                        // selbst 'ok' ins localStorage geschrieben hat, wird der
-                        // storage-Event-Listener das gleich verarbeiten. Hier nur
-                        // dann 'save_aborted' melden, wenn nichts mehr eintrudelt.
-                        let okFlag = null;
-                        try { okFlag = localStorage.getItem(lsKey); } catch (e) {}
-                        if (okFlag === 'ok') {
-                            finish({ ok: true });
-                            return;
-                        }
-                        // Kurz warten, dann final entscheiden -- gibt dem
-                        // storage-Event etwas Luft, den Listener zu erreichen.
-                        setTimeout(function () {
-                            let late = null;
-                            try { late = localStorage.getItem(lsKey); } catch (e) {}
-                            if (late === 'ok') {
-                                finish({ ok: true });
-                            } else {
-                                finish({
-                                    ok: false,
-                                    error: 'save_aborted',
-                                    code: 'save_aborted',
-                                    dataLoss: deleteState === 'delete_ok',
-                                    keepTab: deleteState === 'delete_ok'
-                                });
-                            }
-                        }, 1500);
-                        return;
-                    }
-                    let href = '';
-                    try { href = tabRef.location.href || ''; } catch (e) {
-                        // Cross-Origin-Block (sollte same-origin nicht passieren) -> retry
-                    }
-                    if (href.indexOf('/p-anzeige-aufgeben-bestaetigung.html') >= 0) {
-                        finish({ ok: true });
-                        return;
-                    }
-                    if (Date.now() - verifyStart >= SAVE_VERIFY_TIMEOUT_MS) {
-                        finish({
-                            ok: false,
-                            error: 'save_failed:' + deleteState,
-                            code: 'save_failed',
-                            dataLoss: deleteState === 'delete_ok',
-                            keepTab: deleteState === 'delete_ok'
-                        });
-                        return;
-                    }
-                    saveVerifyTimer = setTimeout(verifyTick, SAVE_VERIFY_POLL_MS);
-                };
-                verifyTick();
-            };
-
             const handleValue = function (raw) {
                 if (!raw) return false;
                 if (raw === 'ok') {
                     finish({ ok: true });
-                    return true;
-                }
-                if (raw.indexOf('save_clicked:') === 0) {
-                    // Save abgesendet. URL-Polling im Helper-Tab uebernimmt ab hier.
-                    // Wir merken uns, dass der Click-Marker schon verarbeitet wurde,
-                    // damit pollId nicht endlos triggert. Aber: Result-Key NICHT loeschen,
-                    // weil der Worker auf der Bestaetigungs-Seite gleich 'ok' reinschreibt.
-                    if (saveVerifyTimer === 'pending' || saveVerifyTimer) return true;
-                    saveVerifyTimer = 'pending';
-                    const deleteState = raw.split(':')[1] || 'delete_ok';
-                    log('Save abgesendet (' + deleteState + '), starte URL-Verifikation');
-                    startSaveVerify(deleteState);
                     return true;
                 }
                 if (raw.indexOf('error:') === 0) {

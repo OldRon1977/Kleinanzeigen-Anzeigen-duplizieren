@@ -59,7 +59,7 @@ Kein manuelles Wegklicken mehr nötig.
 ## Technische Details
 
 ### Berechtigungen
-Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtigungen. Sie kommunizieren ausschließlich mit kleinanzeigen.de über HTTPS.
+Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant GM_openInTab` für das robuste Schließen von Worker-Tabs im Batch-Modus -- ohne diese Berechtigung kann ein Userscript Tabs nach einer Navigation nicht mehr zuverlässig schließen. Beide Scripts kommunizieren ausschließlich mit kleinanzeigen.de über HTTPS.
 
 ### Unterstützte URLs
 - `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript)
@@ -92,14 +92,14 @@ Beide Scripts verwenden `@grant none` - keine erweiterten Tampermonkey-Berechtig
 ## Changelog
 
 ### Version 3.5.0 / Helper 1.3.0 (Mai 2026)
-- **Neu**: Batch-Modus auf "Meine Anzeigen". Ein Button stellt alle Anzeigen, die älter als 7 Tage sind, nacheinander mit 7 ± 2 Minuten Pause neu ein.
+- **Neu**: Batch-Modus auf "Meine Anzeigen". Ein Button stellt alle Anzeigen, die älter als 7 Tage sind, nacheinander mit 3 ± 1 Minuten Pause neu ein.
 - **Neu**: Recovery-Snapshot vor jedem Smart-Republish im Batch. Texte, Felder und Bilder werden lokal in IndexedDB gespeichert, bei erfolgreicher Neu-Anzeige automatisch verworfen.
 - **Neu**: Save-Verifikation. Erfolg wird erst gemeldet, wenn die Bearbeiten-Seite verlassen wurde oder eine neue Anzeigen-ID auftaucht. Kein vorzeitiges OK.
 - **Neu**: Auto-Stop bei Datenverlust. Wenn Original gelöscht ist, neue Anzeige aber nicht entstand, bricht der Batch sofort ab und hält den Snapshot.
 - **Neu**: Recovery-UI im Done- und Confirm-Overlay. Verbliebene Snapshots lassen sich als ZIP herunterladen (`data.json` plus Bilder pro Anzeige) oder löschen.
 - **Neu**: Kleines Overlay zeigt Trefferliste, Start-/Abbrechen-Buttons, Fortschritt und Stop-Button.
 - Worker-Timeout von 90 auf 180 Sekunden erhöht (gibt Bilder-Verarbeitung mehr Luft).
-- Tab-übergreifende Kommunikation über `localStorage` (Result-Signal) und IndexedDB (Snapshot). Weiterhin `@grant none`.
+- Tab-übergreifende Kommunikation über `localStorage` (Result-Signal) und IndexedDB (Snapshot). Helper nutzt jetzt `GM_openInTab`, um Worker-Tabs nach Erfolg zuverlässig zu schließen. Hauptscript bleibt `@grant none`.
 - Helper 1.3.0 bringt Orchestrator und Recovery-UI. Hauptscript 3.5.0 ergänzt Snapshot-Erstellung, Save-Verifikation und differenzierte Fehler-Codes.
 - Intern: `package.json`-Version (3.3.11 → 3.5.0) an Userscript-Header angeglichen.
 
