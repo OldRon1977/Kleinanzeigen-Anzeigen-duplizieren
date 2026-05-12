@@ -355,16 +355,166 @@
         }
     }
 
+    // === BATCH-WORKER: Snapshot/Recovery via IndexedDB ===
+    const BATCH_IDB_NAME = 'ka-batch';
+    const BATCH_IDB_VERSION = 1;
+    const BATCH_IDB_STORE = 'snapshots';
+
+    function batchOpenIDB() {
+        return new Promise(function (resolve, reject) {
+            const req = indexedDB.open(BATCH_IDB_NAME, BATCH_IDB_VERSION);
+            req.onupgradeneeded = function () {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(BATCH_IDB_STORE)) {
+                    db.createObjectStore(BATCH_IDB_STORE, { keyPath: 'adId' });
+                }
+            };
+            req.onsuccess = function () { resolve(req.result); };
+            req.onerror = function () { reject(req.error); };
+        });
+    }
+    function batchPutSnapshot(snap) {
+        return batchOpenIDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                const tx = db.transaction(BATCH_IDB_STORE, 'readwrite');
+                const req = tx.objectStore(BATCH_IDB_STORE).put(snap);
+                req.onsuccess = function () { resolve(); };
+                req.onerror = function () { reject(req.error); };
+            });
+        });
+    }
+
+    function batchSetResult(adId, value) {
+        try { localStorage.setItem('ka-batch-result-' + adId, value); }
+        catch (e) { logger.warn('localStorage write fehlgeschlagen', e); }
+    }
+
+    function isBatchMode() { return window.location.hash === '#smartRepublish'; }
+
+    function readFormFields() {
+        const fields = {};
+        const rawFields = {};
+        document.querySelectorAll('input, textarea, select').forEach(function (el) {
+            const name = el.getAttribute('name');
+            if (!name) return;
+            if (el.type === 'checkbox' || el.type === 'radio') {
+                if (!el.checked) return;
+            }
+            if (el.type === 'password' || el.type === 'file') return;
+            const v = el.value;
+            if (v === undefined || v === null || v === '') return;
+            rawFields[name] = String(v).slice(0, 5000);
+        });
+        const titleInput = document.querySelector('input[name="title"], input#title');
+        if (titleInput) fields.title = titleInput.value;
+        const descTa = document.querySelector('textarea[name="description"], textarea#description');
+        if (descTa) fields.description = descTa.value;
+        const priceInput = document.querySelector('input[name="price"], input#price');
+        if (priceInput) fields.price = priceInput.value;
+        const priceTypeSel = document.querySelector('select[name="priceType"], select#priceType');
+        if (priceTypeSel) fields.priceType = priceTypeSel.value;
+        const locInput = document.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
+        if (locInput) fields.location = locInput.value;
+        return { fields: fields, rawFields: rawFields };
+    }
+
+    function collectImageUrls() {
+        const urls = new Set();
+        document.querySelectorAll('img').forEach(function (img) {
+            const src = img.src || img.getAttribute('data-src') || '';
+            if (src && src.indexOf('img.kleinanzeigen.de') >= 0 && src.indexOf('/prod-ads/images/') >= 0) {
+                // Auf groesste Variante normalisieren (rule=$_57.JPG = full size)
+                const url = src.replace(/[?&]rule=\$_\d+\.[A-Z]+/i, '?rule=$_57.JPG');
+                urls.add(url);
+            }
+        });
+        return Array.from(urls);
+    }
+
+    async function fetchAsBlob(url) {
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.blob();
+    }
+
+    async function buildSnapshot(adId) {
+        const ff = readFormFields();
+        const urls = collectImageUrls();
+        const images = [];
+        for (const u of urls) {
+            try {
+                const blob = await fetchAsBlob(u);
+                images.push({ url: u, blob: blob, mime: blob.type || 'image/jpeg' });
+            } catch (e) {
+                logger.warn('Bild-Fetch fehlgeschlagen, speichere nur URL', { url: u, error: String(e) });
+                images.push({ url: u, blob: null, mime: null });
+            }
+        }
+        return {
+            adId: String(adId),
+            capturedAt: Date.now(),
+            title: ff.fields.title || '',
+            fields: ff.fields,
+            rawFields: ff.rawFields,
+            images: images
+        };
+    }
+
+    function waitForSaveSuccess(originalId, timeoutMs) {
+        // Erfolg: Pfad verlaesst /p-anzeige-bearbeiten.html ODER
+        //          eine andere adId steht im URL/DOM
+        return new Promise(function (resolve) {
+            const start = Date.now();
+            const id = setInterval(function () {
+                const path = window.location.pathname;
+                if (path.indexOf('/p-anzeige-bearbeiten.html') < 0) {
+                    clearInterval(id);
+                    resolve({ ok: true, reason: 'navigation' });
+                    return;
+                }
+                const m = window.location.search.match(/adId=(\d+)/);
+                if (m && m[1] !== String(originalId)) {
+                    clearInterval(id);
+                    resolve({ ok: true, reason: 'new_adId', newAdId: m[1] });
+                    return;
+                }
+                if (Date.now() - start >= timeoutMs) {
+                    clearInterval(id);
+                    resolve({ ok: false });
+                }
+            }, 500);
+        });
+    }
+
     async function smartRepublish() {
+        const urlMatch = window.location.search.match(/adId=(\d+)/);
+        const originalId = urlMatch ? urlMatch[1] : null;
+        const batchMode = isBatchMode();
+
         try {
-            logger.log('Starte Smart-Republish-Prozess');
+            logger.log('Starte Smart-Republish-Prozess', { batchMode: batchMode, originalId: originalId });
             showLoadingSpinner();
 
-            const urlMatch = window.location.search.match(/adId=(\d+)/);
-            if (!urlMatch) throw new Error('Keine Anzeigen-ID in URL gefunden');
-            const originalId = urlMatch[1];
+            if (!originalId) throw new Error('Keine Anzeigen-ID in URL gefunden');
 
-            logger.log(`Versuche Original-Anzeige ${originalId} zu löschen`);
+            // Snapshot VOR Loeschung speichern (atomar, erst dann weiter)
+            if (batchMode) {
+                try {
+                    showNotification('Snapshot wird erstellt...');
+                    const snap = await buildSnapshot(originalId);
+                    await batchPutSnapshot(snap);
+                    logger.log('Snapshot gespeichert', { adId: originalId, images: snap.images.length });
+                } catch (e) {
+                    logger.error('Snapshot fehlgeschlagen, Abbruch vor Loeschung', e);
+                    showNotification('Snapshot fehlgeschlagen - Abbruch', 'error');
+                    showLoadingSpinner(false);
+                    document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                    batchSetResult(originalId, 'error:snapshot_failed:' + (e.message || 'unbekannt'));
+                    return;
+                }
+            }
+
+            logger.log('Versuche Original-Anzeige ' + originalId + ' zu loeschen');
             showNotification('Original wird gelöscht...');
 
             let deleteFailed = false;
@@ -374,7 +524,7 @@
                 logger.log('Original-Anzeige erfolgreich gelöscht');
             } catch (error) {
                 deleteFailed = true;
-                logger.warn('Löschung fehlgeschlagen', error);
+                logger.warn('Loeschung fehlgeschlagen', error);
                 showNotification('Original konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
             }
 
@@ -394,22 +544,30 @@
             logger.log('Erstelle neue Anzeige', { deleteFailed });
             showNotification(statusMsg);
 
-            // Popup-Dismisser starten bevor wir klicken
             startPopupDismisser();
-            // Batch-Worker: Erfolg an Helper-Tab signalisieren (vor Navigation)
-            try { localStorage.setItem('ka-batch-result-' + originalId, 'ok'); } catch (e) { logger.warn('localStorage write fehlgeschlagen', e); }
             saveBtn.click();
+
+            if (batchMode) {
+                // Erfolgs-Verifikation per Navigation/AdId-Wechsel
+                const verify = await waitForSaveSuccess(originalId, 60000);
+                if (verify.ok) {
+                    logger.log('Save verifiziert', verify);
+                    batchSetResult(originalId, 'ok');
+                } else {
+                    const sub = deleteFailed ? 'delete_failed' : 'delete_ok';
+                    logger.error('Save-Verifikation fehlgeschlagen', { sub: sub });
+                    batchSetResult(originalId, 'error:save_failed:' + sub);
+                }
+            }
 
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
             showNotification('Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
-            // Batch-Worker: Fehler an Helper-Tab signalisieren
-            try {
-                const m = window.location.search.match(/adId=(\d+)/);
-                if (m) localStorage.setItem('ka-batch-result-' + m[1], 'error:' + (error.message || 'unbekannt'));
-            } catch (e) {}
+            if (batchMode && originalId) {
+                batchSetResult(originalId, 'error:exception:' + (error.message || 'unbekannt'));
+            }
         }
     }
 

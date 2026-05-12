@@ -10,22 +10,30 @@ Dieses Dokument dokumentiert alle Code-Quality-Verbesserungen über verschiedene
 
 ---
 
-## 🔥 v3.5.0 - Batch Smart-Republish (Mai 2026)
+## 🔥 v3.5.0 - Batch Smart-Republish + Safety-Net (Mai 2026)
 
 **Änderungsdatum:** Mai 2026  
 **Typ:** Feature  
-**Quality Improvement:** Keine Score-Änderung (neues Feature)
+**Quality Improvement:** Robustheit gegen Datenverlust deutlich erhöht
 
 ### Hinzugefügt
 
 - **Batch-Modus auf "Meine Anzeigen":** Neuer Button `⏰ Alle alten neu einstellen` über der Anzeigen-Liste.
 - **Filter:** Anzeigen werden als "älter als 7 Tage" eingestuft, wenn das Enddatum höchstens 53 Tage in der Zukunft liegt (60-Tage-Standard-Laufzeit minus 7).
 - **Confirm-Overlay:** Listet alle Treffer mit Titel, ID und Restlaufzeit. Start-/Abbrechen-Buttons.
-- **Sequenzielle Abarbeitung:** Pro Anzeige wird ein neuer Tab mit `#smartRepublish` geöffnet. Zwischen zwei Anzeigen 7 +- 2 Minuten Jitter (Math.random).
-- **Cross-Tab-Kommunikation:** über `localStorage` (Schlüssel `ka-batch-result-<adId>`). Worker schreibt `ok` oder `error:<msg>`, Orchestrator hört via `storage`-Event und Polling-Fallback.
+- **Sequenzielle Abarbeitung:** Pro Anzeige neuer Tab mit `#smartRepublish`. Zwischen zwei Anzeigen 7 ± 2 Minuten Jitter (Math.random).
+- **Cross-Tab-Kommunikation:** über `localStorage` (`ka-batch-result-<adId>`). Worker schreibt `ok` oder `error:<code>:<sub>`, Orchestrator hört via `storage`-Event und Polling-Fallback.
 - **Stop-Button:** Bricht Loop nach der laufenden Anzeige ab.
-- **Skip-and-continue:** Fehlgeschlagene Anzeigen werden übersprungen, am Ende als Fehlerliste angezeigt.
+- **Skip-and-continue** bei harmlosen Fehlern (`delete_failed`, `timeout`); fehlgeschlagene Anzeigen werden übersprungen und am Ende als Fehlerliste angezeigt.
 - **Versionsbump:** Hauptscript 3.4.0 → 3.5.0, Helper 1.1.2 → 1.3.0, `package.json` 3.3.11 → 3.5.0 (Drift korrigiert).
+
+### Safety-Net (P1 + P2 + P3)
+
+- **P1 Save-Verifikation:** Worker meldet `ok` erst, wenn die Bearbeiten-Seite verlassen wurde oder eine neue Anzeigen-ID auftaucht. Vorher wurde `ok` direkt vor dem Click geschrieben – ein vorzeitiges OK trotz fehlgeschlagenem Speichern war möglich. Jetzt nicht mehr.
+- **P2 Recovery-Snapshot:** Worker liest vor der Löschung alle Form-Felder (Titel, Beschreibung, Preis, Kategorie, Standort) plus alle Bild-URLs aus dem CDN als Bytes (`fetch` → Blob). Speichert atomar in IndexedDB (Datenbank `ka-batch`, Store `snapshots`). Bei Erfolg wird der Snapshot automatisch verworfen, bei Datenverlust bleibt er erhalten.
+- **Recovery-UI:** Helper-Overlay zeigt verbliebene Snapshots in Confirm- und Done-Phase. Button **"Als ZIP herunterladen"** baut ein selbst-erzeugtes ZIP-Archiv (STORE-only, kein Fremdcode) mit `data.json` + Bildern pro Anzeige. Button **"Alle löschen"** mit Bestätigung. Snapshots bleiben so lange persistent, bis User sie löscht.
+- **P3 Auto-Stop bei Datenverlust:** Worker differenziert Fehler-Codes: `delete_failed` (Original noch da, harmlos) vs. `save_failed:delete_ok` (Original weg, neue Anzeige nicht entstanden, Datenverlust). Bei `save_failed:delete_ok` stoppt der Helper die Schleife sofort. Begrenzt den Schaden auf maximal eine Anzeige.
+- **Timeout-Bump:** Worker-Result-Timeout von 90s auf 180s erhöht. Bilder-Verarbeitung beim Snapshot-Erstellen kostet einige Sekunden, plus Server-Roundtrip.
 
 ### Architektur
 
@@ -33,19 +41,37 @@ Dieses Dokument dokumentiert alle Code-Quality-Verbesserungen über verschiedene
 Meine-Anzeigen (Helper, Orchestrator)
    |  Queue: [adId1, adId2, ...]
    +-- oeffnet Tab #1 mit #smartRepublish
-   |      +-- Hauptscript fuehrt smartRepublish aus,
-   |          schreibt ka-batch-result-<adId> in localStorage
+   |      +-- Hauptscript: Snapshot in IndexedDB
+   |      +-- Hauptscript: deleteAd()
+   |      +-- Hauptscript: saveBtn.click()
+   |      +-- Hauptscript: waitForSaveSuccess() (Navigation oder neue adId)
+   |      +-- Hauptscript: ka-batch-result-<adId> = 'ok' | 'error:<code>'
    +-- Orchestrator liest Ergebnis, schliesst Tab
+   +-- Snapshot loeschen wenn ok oder harmloser Fehler
+   +-- Snapshot behalten + STOP wenn dataLoss
    +-- wartet 7 +- 2 min (Jitter)
    +-- naechste adId, bis Queue leer
 ```
 
+### Fehler-Codes (Worker -> Helper)
+
+| Code | Bedeutung | dataLoss | Helper-Verhalten |
+|---|---|---|---|
+| `ok` | Save verifiziert | nein | Snapshot loeschen, weiter |
+| `error:snapshot_failed:<msg>` | Snapshot-Erstellung scheiterte vor Loeschung | nein | weiter (kein Datenverlust, weil Loeschung nicht ausgefuehrt) |
+| `error:delete_failed` | Loeschung des Originals scheiterte | nein | Snapshot loeschen, weiter |
+| `error:save_failed:delete_ok` | Original geloescht, neue Anzeige nicht entstand | **ja** | **Auto-Stop**, Snapshot bleibt |
+| `error:save_failed:delete_failed` | Loeschung scheiterte UND Save scheiterte | nein | weiter |
+| `error:exception:<msg>` | Unerwartete Exception | unklar | weiter (konservativ; Snapshot bleibt nicht) |
+| `error:timeout` | Worker hat 180s nicht geantwortet | unklar | weiter |
+
 ### Limitierungen
 
-- **Tab-abhängig:** Schliesst der User die "Meine Anzeigen"-Seite, bricht der Batch ab. Keine persistente Queue.
+- **Tab-abhängig:** Schliesst der User die "Meine Anzeigen"-Seite, bricht der Batch ab. Snapshots bleiben in IndexedDB erhalten.
 - **Pagination:** Nur die aktuell sichtbaren Karten werden berücksichtigt. Bei vielen Anzeigen ggf. mehrfach starten.
-- **Sonder-Laufzeiten:** Filter setzt 60-Tage-Default voraus. Anzeigen mit abweichender Laufzeit können falsch eingestuft werden -- Confirm-Dialog macht es vor dem Start sichtbar.
-- **Popup-Blocker:** Browser könnte `window.open` aus Timer-Kontext blockieren. Fallback dokumentiert.
+- **Sonder-Laufzeiten:** Filter setzt 60-Tage-Default voraus.
+- **Popup-Blocker:** Browser könnte `window.open` aus Timer-Kontext blockieren.
+- **Bild-Download:** Wenn Kleinanzeigen ein Bild hinter dem CDN nicht ausliefert, wird für dieses Bild nur die URL gespeichert, nicht der Blob. Im Recovery-ZIP fehlt es dann.
 
 ---
 
