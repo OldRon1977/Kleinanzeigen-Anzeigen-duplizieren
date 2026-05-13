@@ -9,11 +9,9 @@ inclusion: always
 ```
 Kleinanzeigen-Anzeigen-duplizieren/
 +-- kleinanzeigen-duplizieren.user.js   # Haupt-Userscript (Tampermonkey)
-+-- helper.user.js                      # Helper-Funktionen
-+-- tests/                              # Unit + Integration Tests
-+-- README.md                           # Projektuebersicht
++-- helper.user.js                      # Helper-Userscript fuer Meine-Anzeigen-Seite
++-- scripts/build.js                    # Versions-Sync package.json -> @version-Header
++-- README.md                           # Projektuebersicht und Changelog
 +-- INSTALL.md                          # Installationsanleitung
 +-- SECURITY.md                         # Sicherheitshinweise
-+-- TESTING_GUIDE.md                    # Test-Anleitung
-+-- IMPROVEMENTS.md                     # Geplante Verbesserungen
 ```

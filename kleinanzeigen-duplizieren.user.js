@@ -5,19 +5,13 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.5.0
+// @version       3.5.1
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://kleinanzeigen.de/p-anzeige-bearbeiten.html*
-// @match         https://*.kleinanzeigen.de/p-anzeige-bearbeiten.html*
-// @match         https://www.ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
-// @match         https://ebay-kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://www.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
 // @match         https://kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
-// @match         https://*.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
-// @match         https://www.ebay-kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
-// @match         https://ebay-kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
@@ -88,31 +82,44 @@
     }
 
     /**
-     * Startet einen Polling-Mechanismus der nach Upsell-Popups sucht
-     * und diese automatisch schließt (z.B. "Ohne Hochschieben weiter").
-     * Wird nach Klick auf Speichern/Duplizieren/Smart-Neu-Einstellen aktiviert.
+     * Startet einen Polling-Mechanismus, der nach Upsell-Popups sucht und sie
+     * automatisch schließt (z.B. "Ohne Hochschieben weiter").
+     *
+     * Härte gegen UI-Drift bei Kleinanzeigen:
+     * - Suche ist auf Modal-Container eingeschränkt
+     *   (`[role="dialog"], [aria-modal="true"]`). Buttons außerhalb von
+     *   Modals werden nie geklickt -- ein generischer "Nein, danke"-Button
+     *   in einem Permission-Dialog oder Form-Bereich fällt damit aus dem
+     *   Suchraum.
+     * - Match ist exakt auf den getrimmten textContent. Kein `includes`,
+     *   damit zusammengesetzte Labels wie "Nein, danke aktivieren" nicht
+     *   versehentlich getroffen werden.
+     *
+     * Lieber kein Auto-Click als ein falscher Click während der save-clicked-
+     * Phase, in der das Original schon gelöscht ist.
      */
     function startPopupDismisser() {
         logger.log('Popup-Dismisser gestartet');
 
-        const dismissPatterns = [
+        const dismissTexts = new Set([
             'Ohne Hochschieben weiter',
             'Ohne Highlight weiter',
             'Nein, danke',
             'Überspringen'
-        ];
+        ]);
 
         const interval = setInterval(() => {
-            const allButtons = Array.from(document.querySelectorAll('button'));
-            for (const pattern of dismissPatterns) {
-                const dismissBtn = allButtons.find(btn =>
-                    btn.textContent.trim().includes(pattern)
-                );
-                if (dismissBtn) {
-                    logger.log(`Popup erkannt und geschlossen: "${pattern}"`);
-                    dismissBtn.click();
-                    clearInterval(interval);
-                    return;
+            const modals = document.querySelectorAll('[role="dialog"], [aria-modal="true"]');
+            for (const modal of modals) {
+                const buttons = modal.querySelectorAll('button');
+                for (const btn of buttons) {
+                    const text = (btn.textContent || '').trim();
+                    if (dismissTexts.has(text)) {
+                        logger.log(`Popup erkannt und geschlossen: "${text}"`);
+                        btn.click();
+                        clearInterval(interval);
+                        return;
+                    }
                 }
             }
         }, CONFIG.POPUP_POLL_INTERVAL_MS);
@@ -654,7 +661,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.5.0)');
+        logger.log('UserScript initialisiert (v3.5.1)');
 
         // Wenn wir auf der Bestaetigungs-Seite gelandet sind und der Batch-Marker
         // im sessionStorage liegt: Erfolg an den Helper signalisieren. Den Tab
