@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.5.1
+// @version       3.5.2
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -27,6 +27,11 @@
  * - Banner/Popup-Dismisser: Blendet störende Upsell-Banner und Popups automatisch aus
  * - "Ohne Hochschieben weiter"-Popup wird automatisch weggeklickt
  * - Kostenpflichtige Feature-Optionen werden ausgeblendet
+ *
+ * Änderungen in v3.5.2:
+ * - Fix Issue #39: Popup-Dismisser klickt mit Cooldown erneut, solange das
+ *   "Effektiver verkaufen"-Popup steht (vorher One-Shot, Klick konnte
+ *   verpuffen bevor die Handler des Modals aktiv waren); Timeout 10s -> 30s
  */
 
 (function () {
@@ -41,7 +46,8 @@
         MAX_RETRY_WAIT_MS: 8000,
         MAX_BUTTON_RETRIES: 5,
         POPUP_POLL_INTERVAL_MS: 200,
-        POPUP_POLL_TIMEOUT_MS: 10000
+        POPUP_POLL_TIMEOUT_MS: 30000,
+        POPUP_RECLICK_COOLDOWN_MS: 1000
     };
 
     // === LOGGING ===
@@ -94,6 +100,10 @@
      * - Match ist exakt auf den getrimmten textContent. Kein `includes`,
      *   damit zusammengesetzte Labels wie "Nein, danke aktivieren" nicht
      *   versehentlich getroffen werden.
+     * - Kein One-Shot: Das "Effektiver verkaufen"-Modal rendert seine Buttons,
+     *   bevor die Click-Handler aktiv sind (Spinner im Modal). Ein einzelner
+     *   früher Klick verpufft dann. Deshalb wird mit Cooldown erneut
+     *   geklickt, solange der Button noch im DOM steht (Issue #39).
      *
      * Lieber kein Auto-Click als ein falscher Click während der save-clicked-
      * Phase, in der das Original schon gelöscht ist.
@@ -108,6 +118,8 @@
             'Überspringen'
         ]);
 
+        let lastClickAt = 0;
+
         const interval = setInterval(() => {
             const modals = document.querySelectorAll('[role="dialog"], [aria-modal="true"]');
             for (const modal of modals) {
@@ -115,9 +127,11 @@
                 for (const btn of buttons) {
                     const text = (btn.textContent || '').trim();
                     if (dismissTexts.has(text)) {
-                        logger.log(`Popup erkannt und geschlossen: "${text}"`);
+                        const now = Date.now();
+                        if (now - lastClickAt < CONFIG.POPUP_RECLICK_COOLDOWN_MS) return;
+                        lastClickAt = now;
+                        logger.log(`Popup erkannt, klicke: "${text}"`);
                         btn.click();
-                        clearInterval(interval);
                         return;
                     }
                 }
@@ -661,7 +675,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.5.1)');
+        logger.log('UserScript initialisiert (v3.5.2)');
 
         // Wenn wir auf der Bestaetigungs-Seite gelandet sind und der Batch-Marker
         // im sessionStorage liegt: Erfolg an den Helper signalisieren. Den Tab
