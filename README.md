@@ -66,8 +66,8 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - `https://www.kleinanzeigen.de/m-meine-anzeigen.html*` (Helper)
 
 ### API-Endpunkte
-- **Löschen**: `POST /m-anzeigen-Löschen.json?ids={adId}`
-- **CSRF-Token**: `input[name="_csrf"]`
+- **Löschen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
+- **CSRF-Token**: wird in dieser Reihenfolge gesucht: `meta[name="_csrf"]`, `meta[name="csrf-token"]`, dann `input[name="_csrf"]`
 
 ## Fehlerbehebung
 
@@ -90,6 +90,10 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - In der Konsole (F12) nach `[KA-Script] Popup erkannt` suchen
 
 ## Changelog
+
+### Version 3.5.2 (Juli 2026)
+
+- **Fix**: Issue #39 — Popup-Dismisser klickt mit Cooldown erneut, solange das "Effektiver verkaufen"-Popup steht (vorher One-Shot, der Klick konnte verpuffen, bevor die Handler des Modals aktiv waren). Popup-Timeout von 10s auf 30s erhöht.
 
 ### Version 3.5.1 / Helper 1.3.1 (Mai 2026)
 
