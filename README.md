@@ -89,6 +89,12 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Falls es trotzdem hängt: Seite neu laden und erneut versuchen
 - In der Konsole (F12) nach `[KA-Script] Popup erkannt` suchen
 
+## Entwicklung
+
+- `npm test` führt die Unit-Tests aus (Vitest + jsdom, siehe Ordner `tests/`). Getestet werden die puren Logik-Anteile beider Userscripts (Protokoll-Klassifikation, Datums-, ZIP- und Formularlogik) über Test-Exports, die nur in Node aktiv sind — im Browser bleiben beide Scripts unverändert.
+- `npm run validate` synchronisiert die `@version`-Header mit `package.json` und prüft die Syntax beider `.user.js`-Dateien.
+- Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script ist in [PROTOCOL.md](PROTOCOL.md) verbindlich dokumentiert; die Tests in `tests/helper.protocol.test.js` prüfen dessen Datenverlust-Semantik.
+
 ## Changelog
 
 ### Version 3.5.2 (Juli 2026)

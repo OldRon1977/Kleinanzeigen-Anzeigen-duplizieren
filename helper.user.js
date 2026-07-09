@@ -695,6 +695,28 @@
         return Math.max(60 * 1000, Math.round(DELAY_BASE_MS + offset));
     }
 
+    // Pure Klassifikation eines Result-Werts aus localStorage (siehe PROTOCOL.md,
+    // Abschnitt Datenverlust-Semantik). Gibt null zurueck, wenn der Wert nicht
+    // verwertbar ist (leer oder unbekanntes Format), sonst das fertige
+    // Ergebnis-Payload fuer finish().
+    function classifyResultValue(raw) {
+        if (!raw) return null;
+        if (raw === 'ok') {
+            return { ok: true };
+        }
+        if (raw.indexOf('error:') === 0) {
+            const tail = raw.slice(6);
+            let code = tail.split(':')[0] || 'unknown';
+            let dataLoss = false;
+            if (code === 'save_failed') {
+                const sub = tail.split(':')[1] || '';
+                dataLoss = (sub === 'delete_ok');
+            }
+            return { ok: false, error: tail, code: code, dataLoss: dataLoss, keepTab: dataLoss };
+        }
+        return null;
+    }
+
     function processOne(item) {
         return new Promise(function (resolve) {
             const adId = item.adId;
@@ -749,23 +771,10 @@
             };
 
             const handleValue = function (raw) {
-                if (!raw) return false;
-                if (raw === 'ok') {
-                    finish({ ok: true });
-                    return true;
-                }
-                if (raw.indexOf('error:') === 0) {
-                    const tail = raw.slice(6);
-                    let code = tail.split(':')[0] || 'unknown';
-                    let dataLoss = false;
-                    if (code === 'save_failed') {
-                        const sub = tail.split(':')[1] || '';
-                        dataLoss = (sub === 'delete_ok');
-                    }
-                    finish({ ok: false, error: tail, code: code, dataLoss: dataLoss, keepTab: dataLoss });
-                    return true;
-                }
-                return false;
+                const payload = classifyResultValue(raw);
+                if (!payload) return false;
+                finish(payload);
+                return true;
             };
 
             const onStorage = function (e) {
@@ -877,6 +886,26 @@
     function tick() {
         addControlButtons();
         addBatchTriggerButton();
+    }
+
+    // Test-Exports: nur in Node (Vitest) aktiv, im Browser wirkungslos.
+    // Strenge Umgebungspruefung, damit eine Website mit globalem `module`
+    // das Script nicht versehentlich deaktivieren kann.
+    if (typeof module !== 'undefined' && module.exports &&
+        typeof process !== 'undefined' && process.versions && process.versions.node) {
+        module.exports = {
+            MIN_DAYS_TO_END,
+            parseEndDate,
+            daysUntil,
+            jitterDelay,
+            sanitize,
+            crc32,
+            utf8,
+            dosTime,
+            buildZip,
+            classifyResultValue
+        };
+        return; // im Test-Kontext keine Initialisierung/Timer
     }
 
     setTimeout(tick, 1500);
