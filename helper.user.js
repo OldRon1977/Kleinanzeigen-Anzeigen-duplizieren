@@ -8,7 +8,6 @@
 // @version       1.3.1
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
-// @match         https://kleinanzeigen.de/m-meine-anzeigen.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
