@@ -93,13 +93,13 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 - `npm test` führt die Unit-Tests aus (Vitest + jsdom, siehe Ordner `tests/`). Getestet werden die puren Logik-Anteile beider Userscripts (Protokoll-Klassifikation, Datums-, ZIP- und Formularlogik) über Test-Exports, die nur in Node aktiv sind — im Browser bleiben beide Scripts unverändert.
 - `npm run validate` synchronisiert die `@version`-Header mit `package.json` und prüft die Syntax beider `.user.js`-Dateien.
-- Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script ist in [PROTOCOL.md](PROTOCOL.md) verbindlich dokumentiert; die Tests in `tests/helper.protocol.test.js` prüfen dessen Datenverlust-Semantik.
+- Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
 
 ### Version 3.6.0 / Helper 1.4.0 (Juli 2026)
 
-Ergebnis eines vollständigen Code-Reviews (14 Findings, siehe `REVIEW.md`). Alle Änderungen sind Härtungen bestehender Abläufe — keine neuen Features, Happy Path unverändert.
+Ergebnis eines vollständigen Code-Reviews (14 Findings). Alle Änderungen sind Härtungen bestehender Abläufe — keine neuen Features, Happy Path unverändert.
 
 - **Fix (Datenverlust-Schutz)**: Smart-Republish prüft jetzt VOR der Löschung, ob Speichern-Button und adId-Feld vorhanden sind (Preflight); fehlt eines, wird ohne Löschung abgebrochen. Die Neutralisierung des adId-Felds ist Pflicht statt optional — kein stilles "Bearbeiten statt Duplizieren" mehr. Nach der Löschung werden veraltete Element-Referenzen neu aufgelöst; Fehlpfade melden datenverlust-korrekte Codes. (BUG-001, BUG-002)
 - **Fix (Datenverlust-Schutz)**: Recovery-Snapshot wird jetzt in BEIDEN Modi erstellt (bisher nur Batch); im manuellen Modus räumt der Worker ihn auf der Bestätigungs-Seite selbst wieder ab. (BUG-001)
@@ -109,7 +109,7 @@ Ergebnis eines vollständigen Code-Reviews (14 Findings, siehe `REVIEW.md`). All
 - **Fix**: non-www-`@match`-Einträge entfernt — die Scripts sind funktional an `www.kleinanzeigen.de` gebunden (Fetch-Credentials, localStorage/IndexedDB sind origin-gebunden). (BUG-005)
 - **Fix**: ZIP-Export wirft bei Formatgrenzen (>65535 Dateien, ≥4 GiB) einen Fehler statt stillschweigend ein korruptes Archiv zu erzeugen. (DEBT-003)
 - **Neu (Qualität)**: Testinfrastruktur mit Vitest + jsdom, 32 Unit-Tests für Protokoll-, Datums-, ZIP- und Formularlogik; CI-Workflow validiert Build, Syntax, Versions-Sync und Tests bei jedem Push/PR. (TEST-001, BUILD-001)
-- **Neu (Doku)**: `PROTOCOL.md` definiert das Tab-Protokoll zwischen beiden Scripts verbindlich (inkl. Fehlercode-Grammatik und Datenverlust-Semantik). `INSTALL.md` neu geschrieben (korrektes Encoding, keine falschen Datenschutz-Aussagen). (DEBT-002, DOC-001)
+- **Neu (Doku)**: Das Tab-Protokoll zwischen beiden Scripts (Fehlercode-Grammatik, Datenverlust-Semantik) ist jetzt verbindlich dokumentiert und testgesichert. `INSTALL.md` neu geschrieben (korrektes Encoding, keine falschen Datenschutz-Aussagen). (DEBT-002, DOC-001)
 - **Cleanup**: Toter Code entfernt (`getFormElements`), Versionsliteral im Log wird von `scripts/build.js` synchronisiert, README-Fakten korrigiert. (DEBT-001, BUILD-002, DOC-002)
 
 ### Version 3.5.2 (Juli 2026)
