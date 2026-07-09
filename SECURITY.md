@@ -15,7 +15,7 @@ Wenn du eine Sicherheitsluecke findest:
 2. Beschreibe das Problem und wie es reproduziert werden kann.
 3. Bitte veroeffentliche keine Details, bevor ein Fix verfuegbar ist.
 
-Antwortzeit: innerhalb von 7 Tagen.
+Antwort: so schnell es geht - das ist ein Hobby-Projekt, es kann also auch mal etwas dauern.
 
 ## Berechtigungen und Datenfluesse
 
