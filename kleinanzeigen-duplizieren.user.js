@@ -411,7 +411,13 @@
             if (el.type === 'checkbox' || el.type === 'radio') {
                 if (!el.checked) return;
             }
-            if (el.type === 'password' || el.type === 'file') return;
+            // Sicherheits-Artefakte gehoeren nicht in den Snapshot: Der Snapshot/ZIP
+            // ist fuer die manuelle Wiederherstellung durch Menschen gedacht, nicht
+            // fuer Tokens. Hidden-Felder (u.a. das CSRF-Token in input[name="_csrf"],
+            // siehe getCsrfToken()) sowie Passwort-/Datei-Felder werden ausgeschlossen.
+            // "_csrf" zusaetzlich per Namens-Denylist, falls das Token je in einem
+            // nicht-hidden Feld auftauchen sollte.
+            if (el.type === 'password' || el.type === 'file' || el.type === 'hidden' || name === '_csrf') return;
             const v = el.value;
             if (v === undefined || v === null || v === '') return;
             rawFields[name] = String(v).slice(0, 5000);
