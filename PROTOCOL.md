@@ -23,7 +23,9 @@ mit einer URL, deren Hash das Verhalten des Worker-Scripts steuert:
 | `#duplicate` | Reines Duplizieren ohne Löschung, kein Ergebnis-Signal, kein Snapshot | Externe Aufrufe per URL-Hash (historisch Helper 1.2.0); der Duplizieren-Button ruft `duplicateAd()` direkt auf, ohne Hash. Vom aktuellen Helper nicht verwendet |
 
 `isBatchMode()` im Worker prüft exakt `window.location.hash === '#smartRepublish'`.
-Nur in diesem Modus werden Snapshot, Result-Key und Watchdog aktiv.
+Nur in diesem Modus werden Result-Key und Batch-Watchdog aktiv. Der Snapshot
+wird dagegen in **beiden Modi** erstellt (im manuellen Modus räumt ihn der
+Worker selbst wieder ab, siehe Snapshot-Abschnitt).
 
 ## IndexedDB: `ka-batch`
 
@@ -60,12 +62,18 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
 ```
 
 - Geschrieben von: `batchPutSnapshot()` im Worker, **vor** dem Löschversuch
-  des Originals, nur wenn `isBatchMode()`.
+  des Originals, in **beiden Modi** (Batch **und** manuell). Im manuellen
+  Modus dient er nur als Sicherung während des Neu-Einstellens.
 - Gelesen von: Helper (`listSnapshotMeta`, `getSnapshotsAll`) für die
   Recovery-Übersicht und den ZIP-Export.
-- Gelöscht von: Helper (`deleteSnapshot`) nach erfolgreichem Verarbeiten
-  einer Anzeige (Erfolg **oder** Fehler ohne Datenverlust). Bei erkanntem
-  Datenverlust bleibt der Snapshot bewusst erhalten.
+- Gelöscht von:
+  - **Batch-Modus:** Helper (`deleteSnapshot`) nach erfolgreichem Verarbeiten
+    einer Anzeige (Erfolg **oder** Fehler ohne Datenverlust). Bei erkanntem
+    Datenverlust bleibt der Snapshot bewusst erhalten.
+  - **Manueller Modus:** Worker selbst (`batchDeleteSnapshot()`) auf der
+    Bestätigungs-Seite, sobald die Neuanlage erfolgreich war (kein Helper
+    beteiligt). So bleiben keine Orphan-Snapshots zurück, die das
+    Recovery-UI des Helpers sonst als Warnung anzeigen würde.
 
 ## localStorage: Result-Keys
 
@@ -115,6 +123,7 @@ Vom Worker über localStorage geschrieben:
 
 | Code | Bedeutung | Auslöser |
 |---|---|---|
+| `precondition_failed` | Preflight fehlgeschlagen: Speichern-Button oder adId-Input **vor** jeder Löschung nicht auffindbar → Abbruch ohne Löschung, **kein Datenverlust**. Sub-Detail: `save_button_missing` oder `adid_input_missing` | Worker-seitiger Preflight in `smartRepublish()`, vor `deleteAd()` |
 | `snapshot_failed` | Snapshot-Erstellung fehlgeschlagen, **vor** jeder Löschung abgebrochen | Fehler in `buildSnapshot()`/`batchPutSnapshot()` |
 | `save_failed:delete_ok` | Speichern der neuen Anzeige fehlgeschlagen, **Original wurde bereits gelöscht** → Datenverlust | Exception nach `phase === 'delete_ok'` oder `'save_clicked'`; oder Watchdog nach 45s, wenn Original erfolgreich gelöscht wurde |
 | `save_failed:delete_failed` | Speichern fehlgeschlagen, Original-Löschung war bereits fehlgeschlagen → kein zusätzlicher Datenverlust | Exception nach `phase === 'delete_failed'`; oder Watchdog nach 45s, wenn die Löschung fehlschlug |
@@ -159,16 +168,24 @@ Snapshot nach Verarbeitung gelöscht (Erfolg oder harmloser Fehler).
 Datenverlust wird der Worker-Tab **nicht** automatisch geschlossen, damit er
 zur manuellen Prüfung offen bleibt.
 
-## sessionStorage: `ka-batch-original-adid`
+## sessionStorage: `ka-batch-original-adid` und `ka-manual-mode`
 
-Rein Worker-intern, überbrückt die Navigation von der Bearbeiten-Seite zur
+Rein Worker-intern, überbrücken die Navigation von der Bearbeiten-Seite zur
 Bestätigungs-Seite (kein Zugriff durch den Helper):
 
-- Geschrieben in `smartRepublish()` unmittelbar vor dem Klick auf
-  "Anzeige speichern", nur wenn `batchMode`.
-- Gelesen und sofort entfernt in `init()` auf
-  `p-anzeige-aufgeben-bestaetigung.html*`. Ist der Wert vorhanden, schreibt
-  der Worker `ok` in den zugehörigen localStorage-Result-Key.
+- `ka-batch-original-adid` wird in `smartRepublish()` unmittelbar vor dem
+  Klick auf "Anzeige speichern" gesetzt — in **beiden Modi** (Batch **und**
+  manuell).
+- `ka-manual-mode` (`'1'`) wird zusätzlich gesetzt, aber **nur im manuellen
+  Modus** (also wenn nicht `isBatchMode()`).
+- Gelesen und sofort entfernt (beide Marker) in `init()` auf
+  `p-anzeige-aufgeben-bestaetigung.html*`:
+  - **Batch-Modus** (`ka-manual-mode` fehlt): der Worker schreibt `ok` in den
+    zugehörigen localStorage-Result-Key. Verhalten unverändert; den Snapshot
+    löscht der Helper.
+  - **Manueller Modus** (`ka-manual-mode` gesetzt): der Worker schreibt
+    **keinen** Result-Key, sondern löscht seinen eigenen Snapshot aus
+    IndexedDB (`batchDeleteSnapshot()`), da kein Helper beteiligt ist.
 
 ## Timing-Verträge
 
