@@ -32,6 +32,7 @@
     // Nach Saving kann Bilder-Verarbeitung lange dauern; 180s ist grosszuegig.
     const RESULT_WAIT_TIMEOUT_MS = 180 * 1000;
 
+    // Geteiltes Tab-Protokoll: siehe PROTOCOL.md
     // localStorage-Schluessel
     const LS_RESULT_PREFIX = 'ka-batch-result-';
 
