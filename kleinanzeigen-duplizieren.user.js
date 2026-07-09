@@ -45,7 +45,8 @@
         MAX_BUTTON_RETRIES: 5,
         POPUP_POLL_INTERVAL_MS: 200,
         POPUP_POLL_TIMEOUT_MS: 30000,
-        POPUP_RECLICK_COOLDOWN_MS: 1000
+        POPUP_RECLICK_COOLDOWN_MS: 1000,
+        SAVE_WATCHDOG_TIMEOUT_MS: 45000
     };
 
     // === LOGGING ===
@@ -333,6 +334,23 @@
         });
     }
 
+    // Verhindert einen dauerhaft blockierten Vollbild-Spinner: falls nach dem
+    // Klick auf "Anzeige speichern" die erwartete Seiten-Navigation ausbleibt
+    // (z.B. Serverfehler ohne Redirect), raeumt dieser Watchdog UI-Overlay
+    // und Buttons auf, statt die Seite dauerhaft klick-blockiert zu lassen.
+    function startSaveWatchdog() {
+        setTimeout(function () {
+            try {
+                if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
+                    logger.error('Save-Watchdog: Keine Navigation nach Speichern-Klick erkannt, gebe UI frei');
+                    showLoadingSpinner(false);
+                    document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                    showNotification('Speichern scheint fehlgeschlagen - bitte Seite prüfen und ggf. manuell speichern.', 'error');
+                }
+            } catch (e) {}
+        }, CONFIG.SAVE_WATCHDOG_TIMEOUT_MS);
+    }
+
     async function duplicateAd() {
         try {
             logger.log('Starte Duplikat-Prozess');
@@ -357,6 +375,7 @@
             // Popup-Dismisser starten bevor wir klicken
             startPopupDismisser();
             saveBtn.click();
+            startSaveWatchdog();
 
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
@@ -555,6 +574,7 @@
             }
             phase = 'save_clicked';
             saveBtn.click();
+            startSaveWatchdog();
 
             // B) Self-Watchdog: wenn der Tab nach 45s noch auf der Bearbeiten-Seite
             // ist, hat das Save serverseitig nicht durchgegriffen. Ohne diesen
