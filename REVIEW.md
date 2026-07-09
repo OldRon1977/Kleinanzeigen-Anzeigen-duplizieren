@@ -82,7 +82,7 @@ Es existieren keine automatisierten Tests (TEST-001) und keine CI-Validierung (B
 **ID:** BUG-001
 **Kategorie:** Bug
 **Priorität:** Hoch
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `kleinanzeigen-duplizieren.user.js`
 **Betroffene Klassen:** keine (funktionale IIFE-Struktur)
@@ -133,7 +133,7 @@ Bei einer destruktiven, nicht umkehrbaren Operation müssen alle Vorbedingungen 
 **ID:** BUG-002
 **Kategorie:** Bug
 **Priorität:** Hoch
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `kleinanzeigen-duplizieren.user.js`
 **Betroffene Klassen:** keine
@@ -183,7 +183,7 @@ Ein Schritt, der für die Kernsemantik der Operation zwingend ist, darf nicht al
 **ID:** BUG-003
 **Kategorie:** Bug
 **Priorität:** Hoch
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `helper.user.js`
 **Betroffene Klassen:** keine
@@ -231,7 +231,7 @@ Der Recovery-Snapshot ist die einzige Kompensation für den irreversiblen Lösch
 **ID:** BUG-004
 **Kategorie:** Bug
 **Priorität:** Mittel
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `kleinanzeigen-duplizieren.user.js`
 **Betroffene Klassen:** keine
@@ -274,7 +274,7 @@ Das Erfolgsmodell "der Klick führt immer zur Navigation" ist implizit und laut 
 **ID:** BUG-005
 **Kategorie:** Bug
 **Priorität:** Mittel
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `kleinanzeigen-duplizieren.user.js`, `helper.user.js`
 **Betroffene Klassen:** keine
@@ -320,7 +320,7 @@ Die Kombination "non-www als unterstützter Ausführungskontext deklariert" + "F
 **ID:** SEC-001
 **Kategorie:** Security
 **Priorität:** Mittel
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `kleinanzeigen-duplizieren.user.js`, `helper.user.js`, `SECURITY.md`
 **Betroffene Klassen:** keine
@@ -364,7 +364,7 @@ Verletzung von Datenminimierung / Least Privilege (OWASP ASVS V8 – Data Protec
 **ID:** TEST-001
 **Kategorie:** Tests
 **Priorität:** Mittel
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `package.json`, gesamtes Repository
 **Betroffene Klassen/Methoden:** alle
@@ -405,7 +405,7 @@ Die Kernlogik (Fehlercode-Protokoll zwischen den Scripts, Datenverlust-Klassifik
 **ID:** BUILD-001
 **Kategorie:** Build
 **Priorität:** Mittel
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `.github/workflows/issues_auto-close.yml` (einziger Workflow), `package.json`
 **Betroffene Klassen/Methoden:** n/a
@@ -445,7 +445,7 @@ Das Verzeichnis `.github/workflows/` enthält genau eine Datei: `issues_auto-clo
 **ID:** DOC-001
 **Kategorie:** Dokumentation
 **Priorität:** Mittel
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `INSTALL.md`
 **Betroffene Klassen/Methoden:** n/a
@@ -490,7 +490,7 @@ Installationsdokumentation ist der erste Kontaktpunkt für Nutzer; falsche Daten
 **ID:** BUILD-002
 **Kategorie:** Build
 **Priorität:** Niedrig
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `scripts/build.js`, `kleinanzeigen-duplizieren.user.js`
 **Betroffene Klassen:** keine
@@ -529,7 +529,7 @@ DRY-Verletzung mit Prozesslücke: Dieselbe Information (Versionsnummer) existier
 **ID:** DOC-002
 **Kategorie:** Dokumentation
 **Priorität:** Niedrig
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `README.md`
 **Betroffene Klassen/Methoden:** n/a
@@ -568,7 +568,7 @@ DRY-Verletzung mit Prozesslücke: Dieselbe Information (Versionsnummer) existier
 **ID:** DEBT-001
 **Kategorie:** Technical Debt
 **Priorität:** Niedrig
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `kleinanzeigen-duplizieren.user.js`
 **Betroffene Klassen:** keine
@@ -604,7 +604,7 @@ DRY-Verletzung mit Prozesslücke: Dieselbe Information (Versionsnummer) existier
 **ID:** DEBT-002
 **Kategorie:** Technical Debt / Architektur
 **Priorität:** Niedrig
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `kleinanzeigen-duplizieren.user.js`, `helper.user.js`
 **Betroffene Klassen:** keine
@@ -649,7 +649,7 @@ Es existiert keine gemeinsame Datei, kein Build-Schritt und keine Dokumentations
 **ID:** DEBT-003
 **Kategorie:** Technical Debt
 **Priorität:** Niedrig
-**Status:** Offen
+**Status:** Behoben (Branch `integration/review-findings`)
 
 **Betroffene Dateien:** `helper.user.js`
 **Betroffene Klassen:** keine

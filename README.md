@@ -97,6 +97,21 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Version 3.6.0 / Helper 1.4.0 (Juli 2026)
+
+Ergebnis eines vollständigen Code-Reviews (14 Findings, siehe `REVIEW.md`). Alle Änderungen sind Härtungen bestehender Abläufe — keine neuen Features, Happy Path unverändert.
+
+- **Fix (Datenverlust-Schutz)**: Smart-Republish prüft jetzt VOR der Löschung, ob Speichern-Button und adId-Feld vorhanden sind (Preflight); fehlt eines, wird ohne Löschung abgebrochen. Die Neutralisierung des adId-Felds ist Pflicht statt optional — kein stilles "Bearbeiten statt Duplizieren" mehr. Nach der Löschung werden veraltete Element-Referenzen neu aufgelöst; Fehlpfade melden datenverlust-korrekte Codes. (BUG-001, BUG-002)
+- **Fix (Datenverlust-Schutz)**: Recovery-Snapshot wird jetzt in BEIDEN Modi erstellt (bisher nur Batch); im manuellen Modus räumt der Worker ihn auf der Bestätigungs-Seite selbst wieder ab. (BUG-001)
+- **Fix (Datenverlust-Schutz)**: Der Batch löscht den Recovery-Snapshot bei Timeout nicht mehr — ein Timeout ist ein Zustand unbekannten Ausgangs. (BUG-003)
+- **Fix**: UI-Watchdog nach dem Save-Klick: Bleibt die Navigation aus, werden Spinner und Buttons nach 45s freigegeben statt die Seite dauerhaft zu blockieren. (BUG-004)
+- **Security**: Hidden-Inputs und das CSRF-Token (`_csrf`) werden nicht mehr in Recovery-Snapshots/ZIP-Exporten gespeichert; `SECURITY.md` beschreibt den Snapshot-Umfang jetzt korrekt. (SEC-001)
+- **Fix**: non-www-`@match`-Einträge entfernt — die Scripts sind funktional an `www.kleinanzeigen.de` gebunden (Fetch-Credentials, localStorage/IndexedDB sind origin-gebunden). (BUG-005)
+- **Fix**: ZIP-Export wirft bei Formatgrenzen (>65535 Dateien, ≥4 GiB) einen Fehler statt stillschweigend ein korruptes Archiv zu erzeugen. (DEBT-003)
+- **Neu (Qualität)**: Testinfrastruktur mit Vitest + jsdom, 32 Unit-Tests für Protokoll-, Datums-, ZIP- und Formularlogik; CI-Workflow validiert Build, Syntax, Versions-Sync und Tests bei jedem Push/PR. (TEST-001, BUILD-001)
+- **Neu (Doku)**: `PROTOCOL.md` definiert das Tab-Protokoll zwischen beiden Scripts verbindlich (inkl. Fehlercode-Grammatik und Datenverlust-Semantik). `INSTALL.md` neu geschrieben (korrektes Encoding, keine falschen Datenschutz-Aussagen). (DEBT-002, DOC-001)
+- **Cleanup**: Toter Code entfernt (`getFormElements`), Versionsliteral im Log wird von `scripts/build.js` synchronisiert, README-Fakten korrigiert. (DEBT-001, BUILD-002, DOC-002)
+
 ### Version 3.5.2 (Juli 2026)
 
 - **Fix**: Issue #39 — Popup-Dismisser klickt mit Cooldown erneut, solange das "Effektiver verkaufen"-Popup steht (vorher One-Shot, der Klick konnte verpuffen, bevor die Handler des Modals aktiv waren). Popup-Timeout von 10s auf 30s erhöht.

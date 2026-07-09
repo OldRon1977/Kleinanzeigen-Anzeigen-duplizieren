@@ -21,6 +21,10 @@ jobs:
         with:
           node-version: 'lts/*'
 
+      - run: npm ci
+
       - run: npm run validate
+
+      - run: npm test
 
       - run: git diff --exit-code
