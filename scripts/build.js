@@ -69,7 +69,21 @@ for (const t of targets) {
     changed++;
   }
 
-  const updated = updatedHeader + body;
+  let updatedBody = body;
+  if (t.label === "main") {
+    const scriptVersionRe = /^(\s*const SCRIPT_VERSION = ')([^']+)(';.*)$/m;
+    const bodyMatch = body.match(scriptVersionRe);
+    if (!bodyMatch) {
+      console.error(`ERROR: ${t.label}: no "const SCRIPT_VERSION = '...';" literal found in body.`);
+      process.exit(2);
+    }
+    if (bodyMatch[2] !== desired) {
+      updatedBody = body.replace(scriptVersionRe, `$1${desired}$3`);
+      changed++;
+    }
+  }
+
+  const updated = updatedHeader + updatedBody;
 
   if (updated === original) {
     console.log(`OK   ${t.label.padEnd(8)} @version=${current} (no change)`);

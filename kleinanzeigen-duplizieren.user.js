@@ -35,6 +35,8 @@
 (function () {
     'use strict';
 
+    const SCRIPT_VERSION = '3.5.2'; // wird von scripts/build.js synchron zu package.json gehalten
+
     // === KONSTANTEN ===
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,
@@ -750,7 +752,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.5.2)');
+        logger.log('UserScript initialisiert (v' + SCRIPT_VERSION + ')');
 
         // Wenn wir auf der Bestaetigungs-Seite gelandet sind und der Batch-Marker
         // im sessionStorage liegt: Erfolg an den Helper signalisieren. Den Tab
