@@ -20,7 +20,7 @@ mit einer URL, deren Hash das Verhalten des Worker-Scripts steuert:
 | Hash | Bedeutung | Ausgelöst von |
 |---|---|---|
 | `#smartRepublish` | Batch-/Smart-Republish-Flow: Snapshot erstellen, Original löschen, neu einstellen | Helper (`processOne`), auch manuell über den "Smart neu einstellen"-Button im Worker |
-| `#duplicate` | Reines Duplizieren ohne Löschung, kein Ergebnis-Signal, kein Snapshot | Worker-intern (Button-Klick), nicht vom Helper verwendet |
+| `#duplicate` | Reines Duplizieren ohne Löschung, kein Ergebnis-Signal, kein Snapshot | Externe Aufrufe per URL-Hash (historisch Helper 1.2.0); der Duplizieren-Button ruft `duplicateAd()` direkt auf, ohne Hash. Vom aktuellen Helper nicht verwendet |
 
 `isBatchMode()` im Worker prüft exakt `window.location.hash === '#smartRepublish'`.
 Nur in diesem Modus werden Snapshot, Result-Key und Watchdog aktiv.
@@ -48,7 +48,8 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
     title?, description?, price?, priceType?, location?
   },
   rawFields: {              // alle benannten input/textarea/select-Werte
-    [name: string]: string  // je auf 5000 Zeichen gekappt, keine Passwort-/File-Felder
+    [name: string]: string  // je auf 5000 Zeichen gekappt; ausgeschlossen sind
+                            // Passwort-, File- und Hidden-Felder sowie "_csrf"
   },
   images: [
     { url: string, blob: Blob|null, mime: string|null }
