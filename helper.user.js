@@ -777,7 +777,7 @@
             }, 1000);
 
             const timeoutId = setTimeout(function () {
-                finish({ ok: false, error: 'Timeout: kein Result vom Worker-Tab', code: 'timeout', dataLoss: false, keepTab: false });
+                finish({ ok: false, error: 'Timeout: kein Result vom Worker-Tab', code: 'timeout', dataLoss: false, keepTab: false, outcomeUnknown: true });
             }, RESULT_WAIT_TIMEOUT_MS);
         });
     }
@@ -844,8 +844,13 @@
                     log('Datenverlust erkannt -- Batch wird gestoppt. Snapshot bleibt erhalten.');
                     break;
                 }
-                // Kein Datenverlust: Snapshot kann weg
-                try { await deleteSnapshot(item.adId); } catch (e) { warn('Snapshot-Loeschung fehlgeschlagen', e); }
+                if (res.outcomeUnknown) {
+                    // BUG-003: Ausgang unbekannt (z. B. Timeout) -- Snapshot behalten
+                    log('Ausgang unbekannt: Snapshot behalten');
+                } else {
+                    // Kein Datenverlust: Snapshot kann weg
+                    try { await deleteSnapshot(item.adId); } catch (e) { warn('Snapshot-Loeschung fehlgeschlagen', e); }
+                }
             }
             renderProgress(state, onStop);
 
