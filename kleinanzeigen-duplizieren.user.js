@@ -317,19 +317,6 @@
     }
 
     // === HAUPTFUNKTIONEN ===
-    function getFormElements() {
-        let adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
-        const form = document.querySelector('form');
-        if (!form) throw new Error('Formular nicht gefunden');
-        if (!adIdInput) {
-            const urlMatch = window.location.search.match(/adId=(\d+)/);
-            if (!urlMatch) throw new Error('Anzeigen-ID nicht gefunden (weder Input noch URL)');
-            adIdInput = { value: urlMatch[1], _virtual: true };
-            logger.log('Ad-ID aus URL extrahiert: ' + urlMatch[1]);
-        }
-        return { adIdInput, form };
-    }
-
     function findSaveButton() {
         return Array.from(document.querySelectorAll('button')).find(
             b => b.textContent.trim().startsWith('Anzeige speichern')
