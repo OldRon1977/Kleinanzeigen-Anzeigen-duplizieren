@@ -32,7 +32,7 @@
     // Nach Saving kann Bilder-Verarbeitung lange dauern; 180s ist grosszuegig.
     const RESULT_WAIT_TIMEOUT_MS = 180 * 1000;
 
-    // Geteiltes Tab-Protokoll: siehe PROTOCOL.md
+    // Geteiltes Tab-Protokoll: Werte muessen in beiden Scripts synchron bleiben
     // localStorage-Schluessel
     const LS_RESULT_PREFIX = 'ka-batch-result-';
 
@@ -695,8 +695,8 @@
         return Math.max(60 * 1000, Math.round(DELAY_BASE_MS + offset));
     }
 
-    // Pure Klassifikation eines Result-Werts aus localStorage (siehe PROTOCOL.md,
-    // Abschnitt Datenverlust-Semantik). Gibt null zurueck, wenn der Wert nicht
+    // Pure Klassifikation eines Result-Werts aus localStorage (Vertrag mit dem
+    // Worker-Script: dataLoss nur bei save_failed:delete_ok). Gibt null zurueck, wenn der Wert nicht
     // verwertbar ist (leer oder unbekanntes Format), sonst das fertige
     // Ergebnis-Payload fuer finish().
     function classifyResultValue(raw) {

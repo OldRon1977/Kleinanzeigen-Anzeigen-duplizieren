@@ -392,7 +392,7 @@
     }
 
     // === BATCH-WORKER: Snapshot/Recovery via IndexedDB ===
-    // Geteiltes Tab-Protokoll: siehe PROTOCOL.md
+    // Geteiltes Tab-Protokoll: Werte muessen in beiden Scripts synchron bleiben
     const BATCH_IDB_NAME = 'ka-batch';
     const BATCH_IDB_VERSION = 1;
     const BATCH_IDB_STORE = 'snapshots';

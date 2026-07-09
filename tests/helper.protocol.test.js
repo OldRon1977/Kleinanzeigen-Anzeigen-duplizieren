@@ -3,7 +3,7 @@ import helper from '../helper.user.js';
 
 const { classifyResultValue } = helper;
 
-// Vertrag: PROTOCOL.md, Abschnitte "Wertgrammatik" und "Datenverlust-Semantik".
+// Vertrag: Wertgrammatik "ok" / "error:<code>[:<detail>]"; dataLoss nur bei save_failed:delete_ok.
 describe('classifyResultValue', () => {
     it('"ok" wird als Erfolg klassifiziert', () => {
         expect(classifyResultValue('ok')).toEqual({ ok: true });
