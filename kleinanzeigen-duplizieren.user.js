@@ -5,13 +5,11 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.5.2
+// @version       3.6.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
-// @match         https://kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://www.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
-// @match         https://kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
@@ -37,6 +35,8 @@
 (function () {
     'use strict';
 
+    const SCRIPT_VERSION = '3.6.0'; // wird von scripts/build.js synchron zu package.json gehalten
+
     // === KONSTANTEN ===
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,
@@ -47,7 +47,8 @@
         MAX_BUTTON_RETRIES: 5,
         POPUP_POLL_INTERVAL_MS: 200,
         POPUP_POLL_TIMEOUT_MS: 30000,
-        POPUP_RECLICK_COOLDOWN_MS: 1000
+        POPUP_RECLICK_COOLDOWN_MS: 1000,
+        SAVE_WATCHDOG_TIMEOUT_MS: 45000
     };
 
     // === LOGGING ===
@@ -317,19 +318,6 @@
     }
 
     // === HAUPTFUNKTIONEN ===
-    function getFormElements() {
-        let adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
-        const form = document.querySelector('form');
-        if (!form) throw new Error('Formular nicht gefunden');
-        if (!adIdInput) {
-            const urlMatch = window.location.search.match(/adId=(\d+)/);
-            if (!urlMatch) throw new Error('Anzeigen-ID nicht gefunden (weder Input noch URL)');
-            adIdInput = { value: urlMatch[1], _virtual: true };
-            logger.log('Ad-ID aus URL extrahiert: ' + urlMatch[1]);
-        }
-        return { adIdInput, form };
-    }
-
     function findSaveButton() {
         return Array.from(document.querySelectorAll('button')).find(
             b => b.textContent.trim().startsWith('Anzeige speichern')
@@ -348,6 +336,23 @@
         });
     }
 
+    // Verhindert einen dauerhaft blockierten Vollbild-Spinner: falls nach dem
+    // Klick auf "Anzeige speichern" die erwartete Seiten-Navigation ausbleibt
+    // (z.B. Serverfehler ohne Redirect), raeumt dieser Watchdog UI-Overlay
+    // und Buttons auf, statt die Seite dauerhaft klick-blockiert zu lassen.
+    function startSaveWatchdog() {
+        setTimeout(function () {
+            try {
+                if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
+                    logger.error('Save-Watchdog: Keine Navigation nach Speichern-Klick erkannt, gebe UI frei');
+                    showLoadingSpinner(false);
+                    document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                    showNotification('Speichern scheint fehlgeschlagen - bitte Seite prüfen und ggf. manuell speichern.', 'error');
+                }
+            } catch (e) {}
+        }, CONFIG.SAVE_WATCHDOG_TIMEOUT_MS);
+    }
+
     async function duplicateAd() {
         try {
             logger.log('Starte Duplikat-Prozess');
@@ -360,11 +365,15 @@
                 () => document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]'),
                 10000
             );
-            if (adIdInput) {
-                adIdInput.removeAttribute('name');
-                adIdInput.value = '';
-                logger.log('adId Input: name-Attribut entfernt und Wert geleert');
+            // Harter Abbruch, wenn das adId-Feld nicht auffindbar ist: ohne
+            // Neutralisierung haette der Submit Bearbeiten- statt Neuanlage-
+            // Semantik. Der catch-Block raeumt UI und Buttons auf.
+            if (!adIdInput) {
+                throw new Error('adId-Feld nicht gefunden - Abbruch, um versehentliches Bearbeiten zu verhindern');
             }
+            adIdInput.removeAttribute('name');
+            adIdInput.value = '';
+            logger.log('adId Input: name-Attribut entfernt und Wert geleert');
 
             logger.log('Anzeige-ID geleert, klicke Speichern-Button');
             showNotification('Anzeige wird dupliziert...');
@@ -372,6 +381,7 @@
             // Popup-Dismisser starten bevor wir klicken
             startPopupDismisser();
             saveBtn.click();
+            startSaveWatchdog();
 
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
@@ -382,6 +392,7 @@
     }
 
     // === BATCH-WORKER: Snapshot/Recovery via IndexedDB ===
+    // Geteiltes Tab-Protokoll: siehe PROTOCOL.md
     const BATCH_IDB_NAME = 'ka-batch';
     const BATCH_IDB_VERSION = 1;
     const BATCH_IDB_STORE = 'snapshots';
@@ -410,6 +421,17 @@
         });
     }
 
+    function batchDeleteSnapshot(adId) {
+        return batchOpenIDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                const tx = db.transaction(BATCH_IDB_STORE, 'readwrite');
+                const req = tx.objectStore(BATCH_IDB_STORE).delete(String(adId));
+                req.onsuccess = function () { resolve(); };
+                req.onerror = function () { reject(req.error); };
+            });
+        });
+    }
+
     function batchSetResult(adId, value) {
         try { localStorage.setItem('ka-batch-result-' + adId, value); }
         catch (e) { logger.warn('localStorage write fehlgeschlagen', e); }
@@ -426,7 +448,13 @@
             if (el.type === 'checkbox' || el.type === 'radio') {
                 if (!el.checked) return;
             }
-            if (el.type === 'password' || el.type === 'file') return;
+            // Sicherheits-Artefakte gehoeren nicht in den Snapshot: Der Snapshot/ZIP
+            // ist fuer die manuelle Wiederherstellung durch Menschen gedacht, nicht
+            // fuer Tokens. Hidden-Felder (u.a. das CSRF-Token in input[name="_csrf"],
+            // siehe getCsrfToken()) sowie Passwort-/Datei-Felder werden ausgeschlossen.
+            // "_csrf" zusaetzlich per Namens-Denylist, falls das Token je in einem
+            // nicht-hidden Feld auftauchen sollte.
+            if (el.type === 'password' || el.type === 'file' || el.type === 'hidden' || name === '_csrf') return;
             const v = el.value;
             if (v === undefined || v === null || v === '') return;
             rawFields[name] = String(v).slice(0, 5000);
@@ -500,28 +528,54 @@
 
             if (!originalId) throw new Error('Keine Anzeigen-ID in URL gefunden');
 
+            // PREFLIGHT: Bevor irgendetwas Destruktives (Loeschung) passiert,
+            // muessen Speichern-Button UND adId-Input vorhanden sein. Fehlt eines,
+            // wird OHNE Loeschung abgebrochen - so kann das Original nicht verloren
+            // gehen, wenn die Seite den Neuanlage-Submit gar nicht durchfuehren
+            // koennte.
+            const adIdSelector = 'input[name="adId"], #postad-id, input[name="postad-id"]';
+            let saveBtn = await waitForElement(findSaveButton, 10000);
+            let adIdInput = await waitForElement(
+                () => document.querySelector(adIdSelector),
+                10000
+            );
+            if (!saveBtn || !adIdInput) {
+                const missing = !saveBtn ? 'save_button_missing' : 'adid_input_missing';
+                logger.error('Preflight fehlgeschlagen, Abbruch vor Loeschung', { missing: missing });
+                showNotification('Voraussetzung fehlt (' + missing + ') - Abbruch, Original bleibt erhalten.', 'error');
+                showLoadingSpinner(false);
+                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                if (batchMode) {
+                    batchSetResult(originalId, 'error:precondition_failed:' + missing);
+                }
+                return;
+            }
+
             // Defensive: alten Result-Key abraeumen, falls ein vorheriger Run
             // crashte und einen Stale-Wert hinterlassen hat.
             if (batchMode) {
                 try { localStorage.removeItem('ka-batch-result-' + originalId); } catch (e) {}
             }
 
-            // Snapshot VOR Loeschung speichern (atomar, erst dann weiter)
-            if (batchMode) {
-                try {
-                    showNotification('Snapshot wird erstellt...');
-                    const snap = await buildSnapshot(originalId);
-                    await batchPutSnapshot(snap);
-                    phase = 'snapshot_done';
-                    logger.log('Snapshot gespeichert', { adId: originalId, images: snap.images.length });
-                } catch (e) {
-                    logger.error('Snapshot fehlgeschlagen, Abbruch vor Loeschung', e);
-                    showNotification('Snapshot fehlgeschlagen - Abbruch', 'error');
-                    showLoadingSpinner(false);
-                    document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+            // Snapshot VOR Loeschung speichern (atomar, erst dann weiter). Laeuft
+            // in BEIDEN Modi: im manuellen Modus dient er als Sicherung, wird aber
+            // nach erfolgreicher Neuanlage auf der Bestaetigungs-Seite wieder
+            // geloescht (siehe init()).
+            try {
+                showNotification('Snapshot wird erstellt...');
+                const snap = await buildSnapshot(originalId);
+                await batchPutSnapshot(snap);
+                phase = 'snapshot_done';
+                logger.log('Snapshot gespeichert', { adId: originalId, images: snap.images.length });
+            } catch (e) {
+                logger.error('Snapshot fehlgeschlagen, Abbruch vor Loeschung', e);
+                showNotification('Snapshot fehlgeschlagen - Abbruch', 'error');
+                showLoadingSpinner(false);
+                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                if (batchMode) {
                     batchSetResult(originalId, 'error:snapshot_failed:' + (e.message || 'unbekannt'));
-                    return;
                 }
+                return;
             }
 
             logger.log('Versuche Original-Anzeige ' + originalId + ' zu loeschen');
@@ -540,15 +594,32 @@
                 showNotification('Original konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
             }
 
-            const saveBtn = await waitForElement(findSaveButton, 10000);
-            if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
-
-            const adIdInput = document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]');
-            if (adIdInput) {
-                adIdInput.removeAttribute('name');
-                adIdInput.value = '';
-                logger.log('adId Input: name-Attribut entfernt und Wert geleert');
+            // Nach Loeschung koennen die im Preflight aufgeloesten Referenzen durch
+            // ein React-Re-Render veraltet sein. Bei getrennten Knoten einmal neu
+            // aufloesen. Schlaegt das JETZT fehl, ist das Original ggf. schon
+            // geloescht -> Datenverlust-korrekter Fehlercode.
+            if (!saveBtn.isConnected) {
+                saveBtn = await waitForElement(findSaveButton, 5000);
             }
+            if (!adIdInput.isConnected) {
+                adIdInput = await waitForElement(() => document.querySelector(adIdSelector), 5000);
+            }
+            if (!saveBtn || !adIdInput) {
+                logger.error('Referenzen nach Loeschung nicht mehr aufloesbar', { deleteFailed: deleteFailed });
+                showNotification('Formular nach Loeschung nicht auffindbar - bitte Seite pruefen.', 'error');
+                showLoadingSpinner(false);
+                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                if (batchMode) {
+                    batchSetResult(originalId, 'error:save_failed:' + (deleteFailed ? 'delete_failed' : 'delete_ok'));
+                }
+                return;
+            }
+
+            // Neutralisierung ist Pflicht: nur mit erfolgreich aufgeloestem Input
+            // wird der Submit als Neuanlage (statt Bearbeiten) interpretiert.
+            adIdInput.removeAttribute('name');
+            adIdInput.value = '';
+            logger.log('adId Input: name-Attribut entfernt und Wert geleert');
 
             const statusMsg = deleteFailed
                 ? 'Neue Anzeige wird erstellt (Original bleibt noch kurz sichtbar)...'
@@ -557,13 +628,19 @@
             showNotification(statusMsg);
 
             startPopupDismisser();
-            if (batchMode) {
-                // Marker fuer die Bestaetigungs-Seite: dort wird 'ok' an den Helper
-                // gemeldet. Der Helper schliesst den Tab via GM_openInTab.close().
-                try { sessionStorage.setItem('ka-batch-original-adid', originalId); } catch (e) {}
+            // Marker fuer die Bestaetigungs-Seite in BEIDEN Modi setzen:
+            // - Batch: dort wird 'ok' an den Helper gemeldet; der Helper schliesst
+            //   den Tab via GM_openInTab.close() und loescht den Snapshot.
+            // - Manuell: dort wird der eigene Snapshot wieder aus IndexedDB
+            //   geloescht (ka-manual-mode markiert diesen Fall), damit keine
+            //   Orphan-Snapshots das Recovery-UI des Helpers als Warnung anzeigen.
+            try { sessionStorage.setItem('ka-batch-original-adid', originalId); } catch (e) {}
+            if (!batchMode) {
+                try { sessionStorage.setItem('ka-manual-mode', '1'); } catch (e) {}
             }
             phase = 'save_clicked';
             saveBtn.click();
+            startSaveWatchdog();
 
             // B) Self-Watchdog: wenn der Tab nach 45s noch auf der Bearbeiten-Seite
             // ist, hat das Save serverseitig nicht durchgegriffen. Ohne diesen
@@ -675,7 +752,7 @@
 
     // === INITIALISIERUNG ===
     function init() {
-        logger.log('UserScript initialisiert (v3.5.2)');
+        logger.log('UserScript initialisiert (v' + SCRIPT_VERSION + ')');
 
         // Wenn wir auf der Bestaetigungs-Seite gelandet sind und der Batch-Marker
         // im sessionStorage liegt: Erfolg an den Helper signalisieren. Den Tab
@@ -683,10 +760,22 @@
         if (window.location.pathname.indexOf('/p-anzeige-aufgeben-bestaetigung.html') === 0) {
             try {
                 const origAdId = sessionStorage.getItem('ka-batch-original-adid');
+                const manualMode = sessionStorage.getItem('ka-manual-mode') === '1';
                 if (origAdId) {
                     sessionStorage.removeItem('ka-batch-original-adid');
-                    logger.log('Bestaetigungs-Seite erreicht, signalisiere ok an Helper', { origAdId: origAdId });
-                    try { localStorage.setItem('ka-batch-result-' + origAdId, 'ok'); } catch (e) {}
+                    sessionStorage.removeItem('ka-manual-mode');
+                    if (manualMode) {
+                        // Manueller Modus: kein Helper beteiligt. Den eigenen
+                        // Snapshot wieder abraeumen, damit keine Orphan-Snapshots
+                        // das Recovery-UI des Helpers spaeter als Warnung anzeigen.
+                        logger.log('Bestaetigungs-Seite (manuell) erreicht, loesche eigenen Snapshot', { origAdId: origAdId });
+                        batchDeleteSnapshot(origAdId).catch(function (e) {
+                            logger.warn('Snapshot-Loeschung (manuell) fehlgeschlagen', e);
+                        });
+                    } else {
+                        logger.log('Bestaetigungs-Seite erreicht, signalisiere ok an Helper', { origAdId: origAdId });
+                        try { localStorage.setItem('ka-batch-result-' + origAdId, 'ok'); } catch (e) {}
+                    }
                 }
             } catch (e) {
                 logger.warn('Bestaetigungs-Seite Hook fehlgeschlagen', e);
@@ -715,6 +804,15 @@
         } else {
             startOrRepublish();
         }
+    }
+
+    // Test-Exports: nur in Node (Vitest) aktiv, im Browser wirkungslos.
+    // Strenge Umgebungspruefung, damit eine Website mit globalem `module`
+    // das Script nicht versehentlich deaktivieren kann.
+    if (typeof module !== 'undefined' && module.exports &&
+        typeof process !== 'undefined' && process.versions && process.versions.node) {
+        module.exports = { CONFIG, getExponentialBackoffWait, readFormFields, collectImageUrls };
+        return; // im Test-Kontext keine Initialisierung/Timer
     }
 
     // Start

@@ -5,10 +5,9 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.3.1
+// @version       1.4.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
-// @match         https://kleinanzeigen.de/m-meine-anzeigen.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
@@ -33,6 +32,7 @@
     // Nach Saving kann Bilder-Verarbeitung lange dauern; 180s ist grosszuegig.
     const RESULT_WAIT_TIMEOUT_MS = 180 * 1000;
 
+    // Geteiltes Tab-Protokoll: siehe PROTOCOL.md
     // localStorage-Schluessel
     const LS_RESULT_PREFIX = 'ka-batch-result-';
 
@@ -146,6 +146,8 @@
      * Returns Blob (application/zip)
      */
     async function buildZip(files) {
+        if (files.length > 0xFFFF) throw new Error('ZIP-Limit: mehr als 65535 Dateien werden nicht unterstuetzt');
+
         const now = new Date();
         const dt = dosTime(now);
         const localParts = [];
@@ -156,6 +158,7 @@
             const nameBytes = utf8(f.name);
             const crc = crc32(f.data);
             const size = f.data.length;
+            if (f.data.length >= 0x100000000) throw new Error('ZIP-Limit: Datei "' + f.name + '" ist >= 4 GiB');
 
             // Local file header
             const lfh = new Uint8Array(30 + nameBytes.length);
@@ -200,12 +203,14 @@
             centralParts.push(cdh);
 
             offset += lfh.length + size;
+            if (offset >= 0x100000000) throw new Error('ZIP-Limit: Archiv >= 4 GiB wird nicht unterstuetzt');
         }
 
         // Central dir size + offset
         let cdSize = 0;
         for (const p of centralParts) cdSize += p.length;
         const cdOffset = offset;
+        if (cdOffset >= 0x100000000) throw new Error('ZIP-Limit: Archiv >= 4 GiB wird nicht unterstuetzt');
 
         // EOCD
         const eocd = new Uint8Array(22);
@@ -690,6 +695,28 @@
         return Math.max(60 * 1000, Math.round(DELAY_BASE_MS + offset));
     }
 
+    // Pure Klassifikation eines Result-Werts aus localStorage (siehe PROTOCOL.md,
+    // Abschnitt Datenverlust-Semantik). Gibt null zurueck, wenn der Wert nicht
+    // verwertbar ist (leer oder unbekanntes Format), sonst das fertige
+    // Ergebnis-Payload fuer finish().
+    function classifyResultValue(raw) {
+        if (!raw) return null;
+        if (raw === 'ok') {
+            return { ok: true };
+        }
+        if (raw.indexOf('error:') === 0) {
+            const tail = raw.slice(6);
+            let code = tail.split(':')[0] || 'unknown';
+            let dataLoss = false;
+            if (code === 'save_failed') {
+                const sub = tail.split(':')[1] || '';
+                dataLoss = (sub === 'delete_ok');
+            }
+            return { ok: false, error: tail, code: code, dataLoss: dataLoss, keepTab: dataLoss };
+        }
+        return null;
+    }
+
     function processOne(item) {
         return new Promise(function (resolve) {
             const adId = item.adId;
@@ -744,23 +771,10 @@
             };
 
             const handleValue = function (raw) {
-                if (!raw) return false;
-                if (raw === 'ok') {
-                    finish({ ok: true });
-                    return true;
-                }
-                if (raw.indexOf('error:') === 0) {
-                    const tail = raw.slice(6);
-                    let code = tail.split(':')[0] || 'unknown';
-                    let dataLoss = false;
-                    if (code === 'save_failed') {
-                        const sub = tail.split(':')[1] || '';
-                        dataLoss = (sub === 'delete_ok');
-                    }
-                    finish({ ok: false, error: tail, code: code, dataLoss: dataLoss, keepTab: dataLoss });
-                    return true;
-                }
-                return false;
+                const payload = classifyResultValue(raw);
+                if (!payload) return false;
+                finish(payload);
+                return true;
             };
 
             const onStorage = function (e) {
@@ -777,7 +791,7 @@
             }, 1000);
 
             const timeoutId = setTimeout(function () {
-                finish({ ok: false, error: 'Timeout: kein Result vom Worker-Tab', code: 'timeout', dataLoss: false, keepTab: false });
+                finish({ ok: false, error: 'Timeout: kein Result vom Worker-Tab', code: 'timeout', dataLoss: false, keepTab: false, outcomeUnknown: true });
             }, RESULT_WAIT_TIMEOUT_MS);
         });
     }
@@ -844,8 +858,13 @@
                     log('Datenverlust erkannt -- Batch wird gestoppt. Snapshot bleibt erhalten.');
                     break;
                 }
-                // Kein Datenverlust: Snapshot kann weg
-                try { await deleteSnapshot(item.adId); } catch (e) { warn('Snapshot-Loeschung fehlgeschlagen', e); }
+                if (res.outcomeUnknown) {
+                    // BUG-003: Ausgang unbekannt (z. B. Timeout) -- Snapshot behalten
+                    log('Ausgang unbekannt: Snapshot behalten');
+                } else {
+                    // Kein Datenverlust: Snapshot kann weg
+                    try { await deleteSnapshot(item.adId); } catch (e) { warn('Snapshot-Loeschung fehlgeschlagen', e); }
+                }
             }
             renderProgress(state, onStop);
 
@@ -867,6 +886,26 @@
     function tick() {
         addControlButtons();
         addBatchTriggerButton();
+    }
+
+    // Test-Exports: nur in Node (Vitest) aktiv, im Browser wirkungslos.
+    // Strenge Umgebungspruefung, damit eine Website mit globalem `module`
+    // das Script nicht versehentlich deaktivieren kann.
+    if (typeof module !== 'undefined' && module.exports &&
+        typeof process !== 'undefined' && process.versions && process.versions.node) {
+        module.exports = {
+            MIN_DAYS_TO_END,
+            parseEndDate,
+            daysUntil,
+            jitterDelay,
+            sanitize,
+            crc32,
+            utf8,
+            dosTime,
+            buildZip,
+            classifyResultValue
+        };
+        return; // im Test-Kontext keine Initialisierung/Timer
     }
 
     setTimeout(tick, 1500);

@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Environment
 .env
@@ -39,3 +38,6 @@ PROJEKTANWEISUNGEN.md
 
 # Kiro steering (local only)
 .kiro/steering/
+
+# Claude-Agent-Worktrees
+.claude/worktrees/

@@ -4,8 +4,8 @@
 
 | Version       | Unterstuetzt |
 |---------------|--------------|
-| 3.5.x / 1.3.x | Ja           |
-| < 3.5         | Nein         |
+| 3.6.x / 1.4.x | Ja           |
+| < 3.6         | Nein         |
 
 ## Schwachstelle melden
 
@@ -15,7 +15,7 @@ Wenn du eine Sicherheitsluecke findest:
 2. Beschreibe das Problem und wie es reproduziert werden kann.
 3. Bitte veroeffentliche keine Details, bevor ein Fix verfuegbar ist.
 
-Antwortzeit: innerhalb von 7 Tagen.
+Antwort: so schnell es geht - das ist ein Hobby-Projekt, es kann also auch mal etwas dauern.
 
 ## Berechtigungen und Datenfluesse
 
@@ -30,7 +30,8 @@ Beide Userscripts kommunizieren ausschliesslich mit `https://www.kleinanzeigen.d
 
 Im Batch-Modus speichert das Hauptscript vor jeder Loeschung einen Recovery-Snapshot in IndexedDB (`ka-batch.snapshots`):
 
-- Form-Felder (Titel, Beschreibung, Preis, Standort)
+- Kuratierte Form-Felder (Titel, Beschreibung, Preis, Preistyp, Standort)
+- Alle uebrigen sichtbaren, benannten Formularwerte des Bearbeiten-Formulars (`rawFields`, je Feld auf 5000 Zeichen gekuerzt) - ausgenommen Passwort-, Datei- und Hidden-Felder (inkl. des CSRF-Tokens `input[name="_csrf"]`), die explizit von der Erfassung ausgeschlossen sind
 - Anzeigen-Bilder als Blob (gefetcht mit `credentials: 'include'`)
 
 Bei erfolgreicher Neu-Anzeige werden Snapshots automatisch verworfen. Bei Datenverlust bleiben sie persistent und sind ueber das Recovery-UI als ZIP exportierbar oder loeschbar.
