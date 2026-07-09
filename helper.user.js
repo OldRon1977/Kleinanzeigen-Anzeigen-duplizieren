@@ -146,6 +146,8 @@
      * Returns Blob (application/zip)
      */
     async function buildZip(files) {
+        if (files.length > 0xFFFF) throw new Error('ZIP-Limit: mehr als 65535 Dateien werden nicht unterstuetzt');
+
         const now = new Date();
         const dt = dosTime(now);
         const localParts = [];
@@ -156,6 +158,7 @@
             const nameBytes = utf8(f.name);
             const crc = crc32(f.data);
             const size = f.data.length;
+            if (f.data.length >= 0x100000000) throw new Error('ZIP-Limit: Datei "' + f.name + '" ist >= 4 GiB');
 
             // Local file header
             const lfh = new Uint8Array(30 + nameBytes.length);
@@ -200,12 +203,14 @@
             centralParts.push(cdh);
 
             offset += lfh.length + size;
+            if (offset >= 0x100000000) throw new Error('ZIP-Limit: Archiv >= 4 GiB wird nicht unterstuetzt');
         }
 
         // Central dir size + offset
         let cdSize = 0;
         for (const p of centralParts) cdSize += p.length;
         const cdOffset = offset;
+        if (cdOffset >= 0x100000000) throw new Error('ZIP-Limit: Archiv >= 4 GiB wird nicht unterstuetzt');
 
         // EOCD
         const eocd = new Uint8Array(22);
