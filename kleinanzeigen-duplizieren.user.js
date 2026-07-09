@@ -804,6 +804,15 @@
         }
     }
 
+    // Test-Exports: nur in Node (Vitest) aktiv, im Browser wirkungslos.
+    // Strenge Umgebungspruefung, damit eine Website mit globalem `module`
+    // das Script nicht versehentlich deaktivieren kann.
+    if (typeof module !== 'undefined' && module.exports &&
+        typeof process !== 'undefined' && process.versions && process.versions.node) {
+        module.exports = { CONFIG, getExponentialBackoffWait, readFormFields, collectImageUrls };
+        return; // im Test-Kontext keine Initialisierung/Timer
+    }
+
     // Start
     init();
 
