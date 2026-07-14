@@ -268,7 +268,9 @@
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     }
 
-    // === EINZEL-BUTTON PRO ANZEIGE ===
+    // === EINZEL-BUTTONS PRO ANZEIGE ===
+    const BTN_STYLE = 'margin-left:8px;padding:4px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;font-size:12px;vertical-align:middle;display:inline-flex;align-items:center;';
+
     function addControlButtons() {
         const elements = document.querySelectorAll('a[href*="/p-anzeige-bearbeiten.html?adId="]');
         elements.forEach(function (element) {
@@ -291,8 +293,58 @@
                 openSmartRepublish(adId, btn);
             };
 
+            const dupBtn = document.createElement('button');
+            dupBtn.type = 'button';
+            dupBtn.textContent = '📋 Duplizieren';
+            dupBtn.title = 'Erstellt eine Kopie in neuem Tab, Original bleibt erhalten';
+            dupBtn.style.cssText = BTN_STYLE;
+            dupBtn.onclick = function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openDuplicate(adId, dupBtn);
+            };
+
+            // Reihenfolge im DOM: [Anzeige-Link] [Duplizieren] [Smart neu einstellen]
             element.after(btn);
+            element.after(dupBtn);
         });
+    }
+
+    // Duplizieren ist bewusst einfach gehalten: Das Hauptskript erkennt den
+    // Hash '#duplicate' auf der Bearbeiten-Seite und dupliziert selbststaendig
+    // (Original bleibt erhalten). Es gibt daher -- anders als beim Smart-
+    // Republish -- kein Loeschen, keinen Snapshot und keine Result-Rueckmeldung
+    // ueber localStorage. Der Tab wird nur geoeffnet.
+    function openDuplicate(adId, button) {
+        const url = 'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#duplicate';
+        const originalText = button.textContent;
+        let opened = false;
+        try {
+            if (typeof GM_openInTab === 'function') {
+                GM_openInTab(url, { active: true, insert: true, setParent: true });
+                opened = true;
+            }
+        } catch (e) {
+            warn('GM_openInTab fehlgeschlagen, fallback auf window.open', e);
+        }
+        if (!opened) {
+            const w = window.open(url, '_blank');
+            if (!w) {
+                button.style.color = '#e74c3c';
+                button.textContent = '❌ Popup blockiert';
+                setTimeout(function () {
+                    button.style.color = '';
+                    button.textContent = originalText;
+                }, 3000);
+                return;
+            }
+        }
+        button.style.color = '#27ae60';
+        button.textContent = '✅ Tab geöffnet';
+        setTimeout(function () {
+            button.style.color = '';
+            button.textContent = originalText;
+        }, 3000);
     }
 
     function openSmartRepublish(adId, button) {
