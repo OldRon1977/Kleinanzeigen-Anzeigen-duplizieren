@@ -44,6 +44,7 @@
         DELETE_WAIT_BEFORE_CREATE_MS: 2000,
         INITIAL_RETRY_WAIT_MS: 500,
         MAX_RETRY_WAIT_MS: 8000,
+        DUPLICATE_READY_SETTLE_MS: 1500,
         MAX_BUTTON_RETRIES: 5,
         POPUP_POLL_INTERVAL_MS: 200,
         POPUP_POLL_TIMEOUT_MS: 30000,
@@ -336,6 +337,20 @@
         });
     }
 
+    // Wartet auf vollstaendiges Laden der Seite (window 'load'). Wichtig beim
+    // Auto-Trigger via #duplicate-Hash: ein Klick auf "Anzeige speichern" bevor
+    // die React-Form hydratisiert ist verpufft (Spinner dreht endlos). Blockiert
+    // nie unbegrenzt -- ein Fallback-Timeout loest das Promise auf jeden Fall.
+    function waitUntilPageLoaded(fallbackMs) {
+        return new Promise(function (resolve) {
+            if (document.readyState === 'complete') { resolve(); return; }
+            let done = false;
+            const finish = function () { if (done) return; done = true; resolve(); };
+            window.addEventListener('load', finish, { once: true });
+            setTimeout(finish, fallbackMs || 10000);
+        });
+    }
+
     // Verhindert einen dauerhaft blockierten Vollbild-Spinner: falls nach dem
     // Klick auf "Anzeige speichern" die erwartete Seiten-Navigation ausbleibt
     // (z.B. Serverfehler ohne Redirect), raeumt dieser Watchdog UI-Overlay
@@ -358,11 +373,12 @@
             logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
 
-            const saveBtn = await waitForElement(findSaveButton, 10000);
+            const adIdSelector = 'input[name="adId"], #postad-id, input[name="postad-id"]';
+            let saveBtn = await waitForElement(findSaveButton, 10000);
             if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
-            const adIdInput = await waitForElement(
-                () => document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]'),
+            let adIdInput = await waitForElement(
+                () => document.querySelector(adIdSelector),
                 10000
             );
             // Harter Abbruch, wenn das adId-Feld nicht auffindbar ist: ohne
@@ -371,6 +387,29 @@
             if (!adIdInput) {
                 throw new Error('adId-Feld nicht gefunden - Abbruch, um versehentliches Bearbeiten zu verhindern');
             }
+
+            // Beim Auto-Trigger via #duplicate-Hash startet das Script direkt beim
+            // Laden. Ein zu frueher Speichern-Klick verpufft, weil die React-Form
+            // noch nicht hydratisiert ist -> der Vollbild-Spinner dreht endlos.
+            // Deshalb erst auf vollstaendiges Laden + kurze Settle-Zeit warten.
+            // Im manuellen Modus (Klick nach Laden) ist die Seite laengst bereit,
+            // der Wait ist dann faktisch ein No-Op.
+            await waitUntilPageLoaded();
+            await delay(CONFIG.DUPLICATE_READY_SETTLE_MS);
+
+            // Referenzen koennen durch React-Re-Render veraltet sein -> neu aufloesen.
+            if (!saveBtn.isConnected) {
+                saveBtn = await waitForElement(findSaveButton, 5000);
+            }
+            if (!adIdInput.isConnected) {
+                adIdInput = await waitForElement(() => document.querySelector(adIdSelector), 5000);
+            }
+            if (!saveBtn || !adIdInput) {
+                throw new Error('Formular nach Laden nicht auffindbar - Abbruch, um versehentliches Bearbeiten zu verhindern');
+            }
+
+            // Neutralisierung erst unmittelbar vor dem Klick, damit ein spaeter
+            // React-Re-Render das name-Attribut nicht wiederherstellt.
             adIdInput.removeAttribute('name');
             adIdInput.value = '';
             logger.log('adId Input: name-Attribut entfernt und Wert geleert');
