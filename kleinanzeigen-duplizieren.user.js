@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.6.0
+// @version       3.7.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -35,7 +35,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.6.0'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.7.0'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
@@ -44,6 +44,7 @@
         DELETE_WAIT_BEFORE_CREATE_MS: 2000,
         INITIAL_RETRY_WAIT_MS: 500,
         MAX_RETRY_WAIT_MS: 8000,
+        DUPLICATE_READY_SETTLE_MS: 1500,
         MAX_BUTTON_RETRIES: 5,
         POPUP_POLL_INTERVAL_MS: 200,
         POPUP_POLL_TIMEOUT_MS: 30000,
@@ -336,6 +337,20 @@
         });
     }
 
+    // Wartet auf vollstaendiges Laden der Seite (window 'load'). Wichtig beim
+    // Auto-Trigger via #duplicate-Hash: ein Klick auf "Anzeige speichern" bevor
+    // die React-Form hydratisiert ist verpufft (Spinner dreht endlos). Blockiert
+    // nie unbegrenzt -- ein Fallback-Timeout loest das Promise auf jeden Fall.
+    function waitUntilPageLoaded(fallbackMs) {
+        return new Promise(function (resolve) {
+            if (document.readyState === 'complete') { resolve(); return; }
+            let done = false;
+            const finish = function () { if (done) return; done = true; resolve(); };
+            window.addEventListener('load', finish, { once: true });
+            setTimeout(finish, fallbackMs || 10000);
+        });
+    }
+
     // Verhindert einen dauerhaft blockierten Vollbild-Spinner: falls nach dem
     // Klick auf "Anzeige speichern" die erwartete Seiten-Navigation ausbleibt
     // (z.B. Serverfehler ohne Redirect), raeumt dieser Watchdog UI-Overlay
@@ -358,11 +373,12 @@
             logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
 
-            const saveBtn = await waitForElement(findSaveButton, 10000);
+            const adIdSelector = 'input[name="adId"], #postad-id, input[name="postad-id"]';
+            let saveBtn = await waitForElement(findSaveButton, 10000);
             if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
-            const adIdInput = await waitForElement(
-                () => document.querySelector('input[name="adId"], #postad-id, input[name="postad-id"]'),
+            let adIdInput = await waitForElement(
+                () => document.querySelector(adIdSelector),
                 10000
             );
             // Harter Abbruch, wenn das adId-Feld nicht auffindbar ist: ohne
@@ -371,12 +387,48 @@
             if (!adIdInput) {
                 throw new Error('adId-Feld nicht gefunden - Abbruch, um versehentliches Bearbeiten zu verhindern');
             }
+
+            // Beim Auto-Trigger via #duplicate-Hash startet das Script direkt beim
+            // Laden. Ein zu frueher Speichern-Klick verpufft, weil die React-Form
+            // noch nicht hydratisiert ist -> der Vollbild-Spinner dreht endlos.
+            // Deshalb erst auf vollstaendiges Laden + kurze Settle-Zeit warten.
+            // Im manuellen Modus (Klick nach Laden) ist die Seite laengst bereit,
+            // der Wait ist dann faktisch ein No-Op.
+            await waitUntilPageLoaded();
+            await delay(CONFIG.DUPLICATE_READY_SETTLE_MS);
+
+            // Referenzen koennen durch React-Re-Render veraltet sein -> neu aufloesen.
+            if (!saveBtn.isConnected) {
+                saveBtn = await waitForElement(findSaveButton, 5000);
+            }
+            if (!adIdInput.isConnected) {
+                adIdInput = await waitForElement(() => document.querySelector(adIdSelector), 5000);
+            }
+            if (!saveBtn || !adIdInput) {
+                throw new Error('Formular nach Laden nicht auffindbar - Abbruch, um versehentliches Bearbeiten zu verhindern');
+            }
+
+            // Neutralisierung erst unmittelbar vor dem Klick, damit ein spaeter
+            // React-Re-Render das name-Attribut nicht wiederherstellt.
             adIdInput.removeAttribute('name');
             adIdInput.value = '';
             logger.log('adId Input: name-Attribut entfernt und Wert geleert');
 
             logger.log('Anzeige-ID geleert, klicke Speichern-Button');
             showNotification('Anzeige wird dupliziert...');
+
+            // Nur im Helper-Modus (aus "Meine Anzeigen" via #duplicate-Hash):
+            // Marker setzen, damit die Bestaetigungs-Seite dem Helper 'ok'
+            // signalisiert und dieser den Worker-Tab schliesst. Im manuellen
+            // On-Page-Modus (Button direkt auf der Bearbeiten-Seite) bleibt der
+            // Tab bewusst offen -- es gibt keinen Helper, der ihn schliessen soll,
+            // und es waere der Haupt-Tab des Users.
+            if (window.location.hash === '#duplicate') {
+                const dupMatch = window.location.search.match(/adId=(\d+)/);
+                if (dupMatch) {
+                    try { sessionStorage.setItem('ka-duplicate-adid', dupMatch[1]); } catch (e) {}
+                }
+            }
 
             // Popup-Dismisser starten bevor wir klicken
             startPopupDismisser();
@@ -759,6 +811,15 @@
         // schliesst der Helper-Tab per GM_openInTab.close().
         if (window.location.pathname.indexOf('/p-anzeige-aufgeben-bestaetigung.html') === 0) {
             try {
+                // Duplikat via Helper: 'ok' signalisieren, damit der Helper den
+                // Worker-Tab schliesst (analog Smart-Republish, aber ohne Snapshot).
+                const dupAdId = sessionStorage.getItem('ka-duplicate-adid');
+                if (dupAdId) {
+                    sessionStorage.removeItem('ka-duplicate-adid');
+                    logger.log('Bestaetigungs-Seite (Duplikat) erreicht, signalisiere ok an Helper', { dupAdId: dupAdId });
+                    try { localStorage.setItem('ka-duplicate-result-' + dupAdId, 'ok'); } catch (e) {}
+                }
+
                 const origAdId = sessionStorage.getItem('ka-batch-original-adid');
                 const manualMode = sessionStorage.getItem('ka-manual-mode') === '1';
                 if (origAdId) {
