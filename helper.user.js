@@ -310,24 +310,27 @@
         });
     }
 
-    // Duplizieren ist bewusst einfach gehalten: Das Hauptskript erkennt den
-    // Hash '#duplicate' auf der Bearbeiten-Seite und dupliziert selbststaendig
-    // (Original bleibt erhalten). Es gibt daher -- anders als beim Smart-
-    // Republish -- kein Loeschen, keinen Snapshot und keine Result-Rueckmeldung
-    // ueber localStorage. Der Tab wird nur geoeffnet.
+    // Duplizieren: Das Hauptskript erkennt den Hash '#duplicate' auf der
+    // Bearbeiten-Seite und dupliziert selbststaendig (Original bleibt erhalten).
+    // Anders als beim Smart-Republish gibt es kein Loeschen und keinen Snapshot.
+    // Der Helper behaelt aber das Tab-Handle und wartet auf das 'ok'-Signal, das
+    // das Hauptskript auf der Bestaetigungs-Seite ueber localStorage setzt --
+    // dann wird der Worker-Tab automatisch geschlossen.
     function openDuplicate(adId, button) {
         const url = 'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#duplicate';
         const originalText = button.textContent;
-        let opened = false;
+        const lsKey = 'ka-duplicate-result-' + adId;
+        try { localStorage.removeItem(lsKey); } catch (e) {}
+
+        let tabHandle = null;
         try {
             if (typeof GM_openInTab === 'function') {
-                GM_openInTab(url, { active: true, insert: true, setParent: true });
-                opened = true;
+                tabHandle = GM_openInTab(url, { active: true, insert: true, setParent: true });
             }
         } catch (e) {
             warn('GM_openInTab fehlgeschlagen, fallback auf window.open', e);
         }
-        if (!opened) {
+        if (!tabHandle) {
             const w = window.open(url, '_blank');
             if (!w) {
                 button.style.color = '#e74c3c';
@@ -338,13 +341,52 @@
                 }, 3000);
                 return;
             }
+            tabHandle = { close: function () { try { w.close(); } catch (e) {} } };
         }
-        button.style.color = '#27ae60';
-        button.textContent = '✅ Tab geöffnet';
-        setTimeout(function () {
+
+        button.disabled = true;
+        button.style.color = '#888';
+        button.textContent = '⏳ Dupliziere …';
+
+        let done = false;
+        const finishOk = function () {
+            if (done) return;
+            done = true;
+            window.removeEventListener('storage', onStorage);
+            clearInterval(pollId);
+            clearTimeout(timeoutId);
+            try { localStorage.removeItem(lsKey); } catch (e) {}
+            try { tabHandle.close(); } catch (e) {}
+            button.style.color = '#27ae60';
+            button.textContent = '✅ Dupliziert';
+            setTimeout(function () {
+                button.style.color = '';
+                button.textContent = originalText;
+                button.disabled = false;
+            }, 3000);
+        };
+
+        const onStorage = function (e) {
+            if (e.key === lsKey && e.newValue === 'ok') finishOk();
+        };
+        window.addEventListener('storage', onStorage);
+
+        const pollId = setInterval(function () {
+            try { if (localStorage.getItem(lsKey) === 'ok') finishOk(); } catch (e) {}
+        }, 1000);
+
+        // Kein Auto-Close bei Timeout: Tab offen lassen, damit der User sehen
+        // kann, was passiert ist (z.B. Fehler beim Speichern).
+        const timeoutId = setTimeout(function () {
+            if (done) return;
+            done = true;
+            window.removeEventListener('storage', onStorage);
+            clearInterval(pollId);
+            try { localStorage.removeItem(lsKey); } catch (e) {}
             button.style.color = '';
             button.textContent = originalText;
-        }, 3000);
+            button.disabled = false;
+        }, RESULT_WAIT_TIMEOUT_MS);
     }
 
     function openSmartRepublish(adId, button) {

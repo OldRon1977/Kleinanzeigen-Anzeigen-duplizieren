@@ -417,6 +417,19 @@
             logger.log('Anzeige-ID geleert, klicke Speichern-Button');
             showNotification('Anzeige wird dupliziert...');
 
+            // Nur im Helper-Modus (aus "Meine Anzeigen" via #duplicate-Hash):
+            // Marker setzen, damit die Bestaetigungs-Seite dem Helper 'ok'
+            // signalisiert und dieser den Worker-Tab schliesst. Im manuellen
+            // On-Page-Modus (Button direkt auf der Bearbeiten-Seite) bleibt der
+            // Tab bewusst offen -- es gibt keinen Helper, der ihn schliessen soll,
+            // und es waere der Haupt-Tab des Users.
+            if (window.location.hash === '#duplicate') {
+                const dupMatch = window.location.search.match(/adId=(\d+)/);
+                if (dupMatch) {
+                    try { sessionStorage.setItem('ka-duplicate-adid', dupMatch[1]); } catch (e) {}
+                }
+            }
+
             // Popup-Dismisser starten bevor wir klicken
             startPopupDismisser();
             saveBtn.click();
@@ -798,6 +811,15 @@
         // schliesst der Helper-Tab per GM_openInTab.close().
         if (window.location.pathname.indexOf('/p-anzeige-aufgeben-bestaetigung.html') === 0) {
             try {
+                // Duplikat via Helper: 'ok' signalisieren, damit der Helper den
+                // Worker-Tab schliesst (analog Smart-Republish, aber ohne Snapshot).
+                const dupAdId = sessionStorage.getItem('ka-duplicate-adid');
+                if (dupAdId) {
+                    sessionStorage.removeItem('ka-duplicate-adid');
+                    logger.log('Bestaetigungs-Seite (Duplikat) erreicht, signalisiere ok an Helper', { dupAdId: dupAdId });
+                    try { localStorage.setItem('ka-duplicate-result-' + dupAdId, 'ok'); } catch (e) {}
+                }
+
                 const origAdId = sessionStorage.getItem('ka-batch-original-adid');
                 const manualMode = sessionStorage.getItem('ka-manual-mode') === '1';
                 if (origAdId) {
