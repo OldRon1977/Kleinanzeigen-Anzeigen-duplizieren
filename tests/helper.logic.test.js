@@ -5,6 +5,7 @@ const {
     MIN_DAYS_TO_END,
     parseEndDate,
     daysUntil,
+    estimateRuntimeMinutes,
     jitterDelay,
     sanitize,
     crc32,
@@ -59,6 +60,25 @@ describe('daysUntil', () => {
 
     it('MIN_DAYS_TO_END ist der dokumentierte Schwellwert 53', () => {
         expect(MIN_DAYS_TO_END).toBe(53);
+    });
+});
+
+describe('estimateRuntimeMinutes', () => {
+    it('liefert 0 fuer leere Auswahl', () => {
+        expect(estimateRuntimeMinutes(0)).toBe(0);
+    });
+
+    it('liefert 0 fuer eine einzelne Anzeige (keine Pause danach)', () => {
+        expect(estimateRuntimeMinutes(1)).toBe(0);
+    });
+
+    it('rechnet die Pausen ZWISCHEN den Anzeigen', () => {
+        expect(estimateRuntimeMinutes(2)).toBe(3);   // 1 Pause
+        expect(estimateRuntimeMinutes(8)).toBe(21);  // 7 Pausen
+    });
+
+    it('liefert 0 fuer negative Werte', () => {
+        expect(estimateRuntimeMinutes(-3)).toBe(0);
     });
 });
 
