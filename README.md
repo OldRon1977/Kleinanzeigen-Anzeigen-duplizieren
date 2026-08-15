@@ -97,6 +97,10 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Version 3.7.2 (August 2026)
+
+- **Diagnose**: Das Log weist jetzt aus, ob das Ad-ID-Feld über einen bekannten Selektor oder über den Fallback (Feldwert) gefunden wurde. Greift nur noch der Fallback, hat Kleinanzeigen das Feld umbenannt — das steht dann als Warnung samt neuem Feldnamen in der Konsole, statt erst beim nächsten Bruch aufzufallen.
+
 ### Version 3.7.1 (August 2026)
 
 - **Fix**: Das versteckte Ad-ID-Feld wird jetzt auch dann gefunden, wenn Kleinanzeigen es umbenennt. Greifen die bekannten Selektoren nicht, wird namensunabhängig das Hidden-Feld gesucht, dessen Wert exakt der `adId` aus der URL entspricht — auf der Bearbeiten-Seite ist dieser Treffer eindeutig. Bleibt er mehrdeutig, wird weiterhin abgebrochen statt geraten. (Issue #49)

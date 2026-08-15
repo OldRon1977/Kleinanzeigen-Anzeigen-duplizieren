@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.7.1
+// @version       3.7.2
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -35,7 +35,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.7.1'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.7.2'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
@@ -363,6 +363,35 @@
     }
 
     /**
+     * Beschreibt, ueber welchen Weg ein Feld aufgeloest wurde. Muss VOR der
+     * Neutralisierung aufgerufen werden -- das Entfernen des name-Attributs
+     * veraendert das Selektor-Matching.
+     *
+     * Ein Treffer per Fallback bedeutet: Kleinanzeigen hat den Feldnamen
+     * geaendert. Das soll im Log stehen, bevor der naechste Selektor-Bruch
+     * kommt -- sonst ist aus einem erfolgreichen Lauf nicht ablesbar, dass die
+     * bekannten Selektoren nicht mehr greifen (Issue #49).
+     */
+    function describeAdIdResolution(el) {
+        const perSelektor = el.matches(AD_ID_SELECTOR);
+        return {
+            weg: perSelektor ? 'bekannter Selektor' : 'Fallback ueber Feldwert',
+            feldName: el.name || el.id || '(ohne name)',
+            selektorVeraltet: !perSelektor
+        };
+    }
+
+    function logAdIdResolution(el) {
+        const info = describeAdIdResolution(el);
+        logger.log('adId-Feld aufgeloest', info);
+        if (info.selektorVeraltet) {
+            logger.warn('Bekannte adId-Selektoren greifen nicht mehr, Feld heisst jetzt "' +
+                info.feldName + '" - bitte im Repository melden');
+        }
+        return info;
+    }
+
+    /**
      * Bestandsaufnahme fuer den Abbruch-Fall. Ohne die Feldnamen aus der
      * betroffenen Umgebung ist nicht entscheidbar, ob das Feld nur umbenannt
      * wurde oder ganz fehlt (Issue #49) -- die Ausgabe ist bewusst so knapp,
@@ -468,6 +497,7 @@
 
             // Neutralisierung erst unmittelbar vor dem Klick, damit ein spaeter
             // React-Re-Render das name-Attribut nicht wiederherstellt.
+            logAdIdResolution(adIdInput);
             adIdInput.removeAttribute('name');
             adIdInput.value = '';
             logger.log('adId Input: name-Attribut entfernt und Wert geleert');
@@ -726,6 +756,7 @@
 
             // Neutralisierung ist Pflicht: nur mit erfolgreich aufgeloestem Input
             // wird der Submit als Neuanlage (statt Bearbeiten) interpretiert.
+            logAdIdResolution(adIdInput);
             adIdInput.removeAttribute('name');
             adIdInput.value = '';
             logger.log('adId Input: name-Attribut entfernt und Wert geleert');
@@ -931,7 +962,7 @@
         typeof process !== 'undefined' && process.versions && process.versions.node) {
         module.exports = {
             CONFIG, getExponentialBackoffWait, readFormFields, collectImageUrls,
-            findAdIdInput, describeAdIdLookup, getUrlAdId
+            findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId
         };
         return; // im Test-Kontext keine Initialisierung/Timer
     }
