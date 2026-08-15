@@ -8,7 +8,9 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Smart neu einstellen**: Löscht das Original und erstellt eine neue Anzeige
 - **Automatische Bilderhaltung**: Alle Bilder bleiben bei beiden Funktionen erhalten
 - **Banner & Popup-Blocker**: Blendet störende Upsell-Banner und Popups automatisch aus
-- **Helper-Script**: Buttons direkt auf der "Meine Anzeigen"-Seite
+- **Helper-Script**: Buttons "Duplizieren" und "Smart neu einstellen" direkt auf der "Meine Anzeigen"-Seite
+- **Batch mit Auswahl**: Mehrere Anzeigen in einem Durchgang neu einstellen — ausgewählt per Checkbox, mit Farbcodierung nach Alter
+- **Recovery-Snapshot**: Vor jeder Löschung werden Texte, Felder und Bilder lokal gesichert
 - **Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
 
 ## Installation
@@ -28,7 +30,7 @@ Fügt auf der **Bearbeiten-Seite** einer Anzeige die Buttons "Duplizieren" und "
 
 [![Install Helper](https://img.shields.io/badge/Install-Helper_Script-0077cc?style=for-the-badge&logo=tampermonkey)](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js)
 
-Fügt auf der **Meine Anzeigen**-Seite neben jeder Anzeige den Button "Smart neu einstellen" hinzu. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus.
+Fügt auf der **Meine Anzeigen**-Seite neben jeder Anzeige die Buttons "Duplizieren" und "Smart neu einstellen" hinzu. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus. Dazu kommt der Batch über der Anzeigenliste.
 
 > **Hinweis**: Beide Scripts müssen in Tampermonkey aktiviert sein, damit der Helper korrekt funktioniert.
 
@@ -43,17 +45,20 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 3. **Duplizieren**: Erstellt eine Kopie, Original bleibt bestehen
 4. **Smart neu einstellen**: Löscht Original, erstellt neue Anzeige
 
-### über die Meine-Anzeigen-Seite (Helper)
+### Über die Meine-Anzeigen-Seite (Helper)
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
-2. Neben jedem "Bearbeiten"-Link erscheint der Button "Smart neu einstellen"
-3. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus
+2. Neben jedem "Bearbeiten"-Link erscheinen zwei Buttons: **Duplizieren** (ab Helper v1.5.0) und **Smart neu einstellen**
+3. Ein Klick öffnet die Bearbeiten-Seite in einem neuen Tab und führt die Aktion automatisch aus; nach Erfolg schließt sich der Tab von selbst
 
-### Batch-Modus (Helper ab v1.3.0)
+### Batch mit Auswahl (Helper ab v1.7.0)
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
-2. Über der Anzeigenliste erscheint der Batch-Button
-3. Das Bestätigungs-Overlay listet alle Anzeigen auf, die älter als 7 Tage sind — **alle vorausgewählt**
-4. Ab Helper v1.6.0: Einzelne Anzeigen lassen sich abwählen (Checkbox), z.B. Daueranzeigen wie Dienstleistungen. "Alle" / "Keine" setzen die komplette Auswahl. Zusammenfassung und geschätzte Laufzeit aktualisieren sich mit
-5. **Start** verarbeitet nur die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+2. Über der Anzeigenliste erscheint der Button **"Anzeigen auswählen & neu einstellen"**
+3. Das Overlay listet **alle** Anzeigen mit Checkbox. Beim Öffnen ist **nichts angehakt** — ein versehentlicher Start kann also nichts löschen
+4. **Schnellwahl** unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl
+5. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
+6. **Start** verarbeitet die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+
+> **Zum Alter**: Die Anzeigenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird daher aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende im Overlay weist darauf hin.
 
 ### Banner & Popup-Blocker (ab v3.4.0)
 Das Script blendet automatisch aus:
@@ -109,6 +114,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - **Fix**: Die `adId` wird über `URLSearchParams` statt per Regex aus der URL gelesen. Das bisherige Muster kannte keine Parametergrenze und hätte auch in `?myadId=123` getroffen. Die Ziffernprüfung bleibt, weil der Wert in Fetch-URLs und Storage-Schlüssel wandert.
 - **Fix**: `readFormFields()` liest nur noch innerhalb des Anzeigen-Formulars statt im ganzen Dokument — Felder aus Suchleiste, Newsletter-Box oder Cookie-Bannern landen damit nicht mehr im Snapshot. Ohne auffindbares Formular bleibt das bisherige Verhalten als Rückfallebene.
 - **Barrierefreiheit**: Meldungen sind jetzt Live-Regionen (`role="status"` / bei Fehlern `role="alert"`), sodass Screenreader sie ohne Fokuswechsel vorlesen. Die Toolbar-Buttons haben `aria-label`, die die Konsequenz des Klicks nennen statt nur den Namen.
+- **Doku**: README, INSTALL und SECURITY auf den aktuellen Stand gebracht — der Duplizieren-Button auf "Meine Anzeigen" (seit Helper 1.5.0) fehlte in der Anleitung ganz, der Batch-Abschnitt beschrieb noch die alte Vorauswahl.
 
 ### Version 3.8.0 / Helper 1.7.0 (August 2026)
 

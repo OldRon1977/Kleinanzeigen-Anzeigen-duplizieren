@@ -22,8 +22,9 @@ Buttons "Duplizieren" und "Smart neu einstellen" hinzu.
 
 [Helper-Script installieren](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js)
 
-Fügt auf der "Meine Anzeigen"-Seite den Button "Smart neu einstellen"
-direkt neben jeder Anzeige hinzu, inklusive Batch-Modus.
+Fügt auf der "Meine Anzeigen"-Seite die Buttons "Duplizieren" und
+"Smart neu einstellen" direkt neben jeder Anzeige hinzu, dazu den Batch
+mit Auswahl über der Liste.
 
 ## Manuelle Installation (Alternative)
 
