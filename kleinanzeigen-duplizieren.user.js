@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.8.0
+// @version       3.8.1
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -35,7 +35,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.8.0'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.8.1'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
@@ -161,6 +161,11 @@
 
         const notification = document.createElement('div');
         notification.className = `ka-notification ${type}`;
+        // Ohne Live-Region bleibt die Meldung fuer Screenreader unsichtbar --
+        // sie erscheint ohne Fokuswechsel irgendwo am Bildschirmrand. Fehler
+        // unterbrechen (assertive), normale Hinweise warten (polite).
+        notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        notification.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
         notification.textContent = message;
 
         document.body.appendChild(notification);
@@ -330,10 +335,18 @@
     // -> name="adId"), deshalb ist die Liste kumulativ.
     const AD_ID_SELECTOR = 'input[name="adId"], #postad-id, input[name="postad-id"], input[name="id"]';
 
+    // Liest die adId aus der Query. Bewusst ueber URLSearchParams statt per
+    // Regex: ein Muster wie /adId=(\d+)/ kennt keine Parametergrenze und wuerde
+    // auch in "?myadId=123" treffen. Die Ziffernpruefung bleibt, weil der Wert
+    // in Fetch-URLs und Storage-Schluessel wandert.
     function getUrlAdId(loc) {
         const search = (loc || window.location).search || '';
-        const m = search.match(/adId=(\d+)/);
-        return m ? m[1] : null;
+        try {
+            const value = new URLSearchParams(search).get('adId');
+            return value && /^\d{1,20}$/.test(value) ? value : null;
+        } catch (e) {
+            return null;
+        }
     }
 
     /**
@@ -576,10 +589,26 @@
 
     function isBatchMode() { return window.location.hash === '#smartRepublish'; }
 
-    function readFormFields() {
+    /**
+     * Wurzel fuer alle Formular-Lesevorgaenge: das Formular der Anzeige, nicht
+     * das ganze Dokument. Sonst landen Felder aus Suchleiste, Newsletter-Box
+     * oder Cookie-Bannern im Snapshot. Bevorzugt wird das Formular, in dem das
+     * Ad-ID-Feld haengt; erst wenn das nicht aufloesbar ist, wird auf das erste
+     * Formular und zuletzt auf das Dokument zurueckgefallen -- damit wird die
+     * Erfassung nie schlechter als vorher.
+     */
+    function getAdFormRoot(doc, urlAdId) {
+        const d = doc || document;
+        const adIdInput = findAdIdInput(d, urlAdId !== undefined ? urlAdId : getUrlAdId());
+        if (adIdInput && adIdInput.form) return adIdInput.form;
+        return d.querySelector('form') || d;
+    }
+
+    function readFormFields(doc, urlAdId) {
         const fields = {};
         const rawFields = {};
-        document.querySelectorAll('input, textarea, select').forEach(function (el) {
+        const root = getAdFormRoot(doc, urlAdId);
+        root.querySelectorAll('input, textarea, select').forEach(function (el) {
             const name = el.getAttribute('name');
             if (!name) return;
             if (el.type === 'checkbox' || el.type === 'radio') {
@@ -596,15 +625,15 @@
             if (v === undefined || v === null || v === '') return;
             rawFields[name] = String(v).slice(0, 5000);
         });
-        const titleInput = document.querySelector('input[name="title"], input#title');
+        const titleInput = root.querySelector('input[name="title"], input#title');
         if (titleInput) fields.title = titleInput.value;
-        const descTa = document.querySelector('textarea[name="description"], textarea#description');
+        const descTa = root.querySelector('textarea[name="description"], textarea#description');
         if (descTa) fields.description = descTa.value;
-        const priceInput = document.querySelector('input[name="price"], input#price');
+        const priceInput = root.querySelector('input[name="price"], input#price');
         if (priceInput) fields.price = priceInput.value;
-        const priceTypeSel = document.querySelector('select[name="priceType"], select#priceType');
+        const priceTypeSel = root.querySelector('select[name="priceType"], select#priceType');
         if (priceTypeSel) fields.priceType = priceTypeSel.value;
-        const locInput = document.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
+        const locInput = root.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
         if (locInput) fields.location = locInput.value;
         return { fields: fields, rawFields: rawFields };
     }
@@ -841,6 +870,8 @@
 
         const toolbar = document.createElement('div');
         toolbar.id = TOOLBAR_ID;
+        toolbar.setAttribute('role', 'toolbar');
+        toolbar.setAttribute('aria-label', 'Anzeige duplizieren oder neu einstellen');
         toolbar.style.cssText = [
             'position:fixed',
             'bottom:20px',
@@ -859,12 +890,16 @@
         dupButton.className = 'ka-duplicate-btn';
         dupButton.textContent = 'Duplizieren';
         dupButton.title = 'Erstellt eine Kopie, Original bleibt erhalten';
+        // title allein wird von Screenreadern nicht zuverlaessig vorgelesen;
+        // aria-label traegt die Konsequenz des Klicks, nicht nur den Namen.
+        dupButton.setAttribute('aria-label', 'Anzeige duplizieren - erstellt eine Kopie, das Original bleibt erhalten');
 
         const smartButton = document.createElement('button');
         smartButton.type = 'button';
         smartButton.className = 'ka-smart-btn';
         smartButton.textContent = 'Smart neu einstellen';
         smartButton.title = 'Löscht Original und erstellt neue Anzeige';
+        smartButton.setAttribute('aria-label', 'Smart neu einstellen - löscht das Original und erstellt eine neue Anzeige');
 
         dupButton.onclick = (e) => {
             e.preventDefault();
@@ -961,7 +996,7 @@
     if (typeof module !== 'undefined' && module.exports &&
         typeof process !== 'undefined' && process.versions && process.versions.node) {
         module.exports = {
-            CONFIG, getExponentialBackoffWait, readFormFields, collectImageUrls,
+            CONFIG, getExponentialBackoffWait, readFormFields, getAdFormRoot, collectImageUrls,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId
         };
         return; // im Test-Kontext keine Initialisierung/Timer

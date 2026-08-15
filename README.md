@@ -104,6 +104,12 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Version 3.8.1 (August 2026)
+
+- **Fix**: Die `adId` wird über `URLSearchParams` statt per Regex aus der URL gelesen. Das bisherige Muster kannte keine Parametergrenze und hätte auch in `?myadId=123` getroffen. Die Ziffernprüfung bleibt, weil der Wert in Fetch-URLs und Storage-Schlüssel wandert.
+- **Fix**: `readFormFields()` liest nur noch innerhalb des Anzeigen-Formulars statt im ganzen Dokument — Felder aus Suchleiste, Newsletter-Box oder Cookie-Bannern landen damit nicht mehr im Snapshot. Ohne auffindbares Formular bleibt das bisherige Verhalten als Rückfallebene.
+- **Barrierefreiheit**: Meldungen sind jetzt Live-Regionen (`role="status"` / bei Fehlern `role="alert"`), sodass Screenreader sie ohne Fokuswechsel vorlesen. Die Toolbar-Buttons haben `aria-label`, die die Konsequenz des Klicks nennen statt nur den Namen.
+
 ### Version 3.8.0 / Helper 1.7.0 (August 2026)
 
 Das Batch-Overlay ist von "alles Alte, ein Klick" auf eine bewusste Auswahl umgestellt.
