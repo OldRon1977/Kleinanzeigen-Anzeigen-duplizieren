@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.5.0
+// @version       1.6.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
@@ -565,10 +565,15 @@
         parent.appendChild(sec);
     }
 
+    // Geschaetzte Batch-Laufzeit in Minuten. Zwischen zwei Anzeigen liegt eine
+    // Pause von DELAY_BASE_MS; nach der letzten Anzeige wird nicht mehr gewartet.
+    function estimateRuntimeMinutes(count) {
+        if (count <= 0) return 0;
+        return Math.round((count - 1) * DELAY_BASE_MS / 60000);
+    }
+
     async function renderConfirm(matches, skipped, onStart) {
         const overlay = ensureOverlay();
-        const totalMs = matches.length * (DELAY_BASE_MS);
-        const minutes = Math.round(totalMs / 60000);
 
         overlay.innerHTML = '';
 
@@ -597,34 +602,72 @@
             } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
             return;
         }
+        // Auswahl: standardmaessig sind alle Treffer angehakt. Einzelne Anzeigen
+        // lassen sich abwaehlen (z.B. Daueranzeigen, die nicht erneuert werden
+        // sollen); gestartet wird nur mit den angehakten Eintraegen.
+        const selected = new Set(matches.map(function (m) { return m.adId; }));
+        const checkboxes = [];
+
         const line1 = document.createElement('div');
-        const strong = document.createElement('strong');
-        strong.textContent = matches.length;
-        line1.appendChild(strong);
-        line1.appendChild(document.createTextNode(' Anzeige(n) werden bearbeitet.'));
         summary.appendChild(line1);
         const line2 = document.createElement('div');
         line2.style.cssText = 'color:#666;margin-top:4px;';
-        line2.textContent = 'Geschätzte Laufzeit: ca. ' + minutes + ' Minuten (3 ± 1 min Pause pro Anzeige).';
         summary.appendChild(line2);
         overlay.appendChild(summary);
 
-        const list = document.createElement('ol');
-        list.style.cssText = 'margin:0;padding:8px 14px 8px 32px;max-height:240px;overflow-y:auto;';
+        const list = document.createElement('ul');
+        list.style.cssText = 'margin:0;padding:8px 14px;max-height:240px;overflow-y:auto;list-style:none;';
         matches.forEach(function (m) {
             const li = document.createElement('li');
             li.style.cssText = 'margin:4px 0;line-height:1.3;';
+
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;gap:8px;align-items:flex-start;cursor:pointer;';
+
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = true;
+            cb.style.cssText = 'margin-top:2px;flex:none;cursor:pointer;';
+            cb.onchange = function () {
+                if (cb.checked) selected.add(m.adId);
+                else selected.delete(m.adId);
+                updateSummary();
+            };
+            checkboxes.push(cb);
+
+            const texts = document.createElement('div');
             const t = document.createElement('div');
             t.style.cssText = 'font-weight:500;';
             t.textContent = m.title;
             const meta = document.createElement('div');
             meta.style.cssText = 'color:#666;font-size:12px;';
             meta.textContent = 'ID ' + m.adId + ' \u00B7 endet ' + m.endText + ' (' + m.daysLeft + ' Tage)';
-            li.appendChild(t);
-            li.appendChild(meta);
+            texts.appendChild(t);
+            texts.appendChild(meta);
+
+            label.appendChild(cb);
+            label.appendChild(texts);
+            li.appendChild(label);
             list.appendChild(li);
         });
         overlay.appendChild(list);
+
+        const bulk = document.createElement('div');
+        bulk.style.cssText = 'padding:0 14px 8px;display:flex;gap:12px;font-size:12px;';
+        [['Alle', true], ['Keine', false]].forEach(function (pair) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = pair[0];
+            b.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:12px;text-decoration:underline;';
+            b.onclick = function () {
+                checkboxes.forEach(function (c) { c.checked = pair[1]; });
+                selected.clear();
+                if (pair[1]) matches.forEach(function (m) { selected.add(m.adId); });
+                updateSummary();
+            };
+            bulk.appendChild(b);
+        });
+        overlay.appendChild(bulk);
 
         if (skipped.length > 0) {
             const sk = document.createElement('div');
@@ -644,10 +687,31 @@
         const cancel = makeButton('Abbrechen', false);
         cancel.onclick = closeOverlay;
         const start = makeButton('Start', true);
-        start.onclick = function () { onStart(matches); };
+        start.onclick = function () {
+            const chosen = matches.filter(function (m) { return selected.has(m.adId); });
+            if (!chosen.length) return;
+            onStart(chosen);
+        };
         actions.appendChild(cancel);
         actions.appendChild(start);
         overlay.appendChild(actions);
+
+        // Haelt Zusammenfassung und Start-Button im Einklang mit der Auswahl.
+        function updateSummary() {
+            const count = selected.size;
+            line1.textContent = '';
+            const strong = document.createElement('strong');
+            strong.textContent = count;
+            line1.appendChild(strong);
+            line1.appendChild(document.createTextNode(' von ' + matches.length + ' Anzeige(n) ausgewählt.'));
+            line2.textContent = count > 0
+                ? 'Geschätzte Laufzeit: ca. ' + estimateRuntimeMinutes(count) + ' Minuten (3 ± 1 min Pause pro Anzeige).'
+                : 'Keine Anzeige ausgewählt.';
+            start.disabled = (count === 0);
+            start.style.opacity = count === 0 ? '0.5' : '1';
+            start.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+        }
+        updateSummary();
     }
 
     function renderProgress(state, onStop) {
@@ -991,6 +1055,8 @@
             MIN_DAYS_TO_END,
             parseEndDate,
             daysUntil,
+            estimateRuntimeMinutes,
+            renderConfirm,
             jitterDelay,
             sanitize,
             crc32,

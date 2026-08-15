@@ -48,6 +48,13 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 2. Neben jedem "Bearbeiten"-Link erscheint der Button "Smart neu einstellen"
 3. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus
 
+### Batch-Modus (Helper ab v1.3.0)
+1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
+2. Über der Anzeigenliste erscheint der Batch-Button
+3. Das Bestätigungs-Overlay listet alle Anzeigen auf, die älter als 7 Tage sind — **alle vorausgewählt**
+4. Ab Helper v1.6.0: Einzelne Anzeigen lassen sich abwählen (Checkbox), z.B. Daueranzeigen wie Dienstleistungen. "Alle" / "Keine" setzen die komplette Auswahl. Zusammenfassung und geschätzte Laufzeit aktualisieren sich mit
+5. **Start** verarbeitet nur die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+
 ### Banner & Popup-Blocker (ab v3.4.0)
 Das Script blendet automatisch aus:
 - **Kostenpflichtige Feature-Optionen** (Highlight, Galerie, Bumpup) auf der Bearbeiten-Seite
@@ -96,6 +103,15 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Helper 1.6.0 (August 2026)
+
+- **Neu**: Auswahl im Batch-Bestätigungs-Overlay. Jeder Treffer hat eine Checkbox (standardmäßig angehakt), dazu "Alle"/"Keine". Gestartet wird nur mit den ausgewählten Anzeigen — Daueranzeigen lassen sich so vom Batch ausnehmen, ohne den Schwellwert zu ändern. Die Trefferliste selbst ändert sich nicht: abwählen geht, hinzufügen nicht.
+- **Neu**: Zusammenfassung und Laufzeitschätzung aktualisieren sich live ("3 von 8 ausgewählt"); der Start-Button ist gesperrt, solange nichts ausgewählt ist.
+- **Fix**: Die Laufzeitschätzung zählt die Pausen *zwischen* den Anzeigen statt einer Pause pro Anzeige — nach der letzten Anzeige wird nicht mehr gewartet (8 Anzeigen: 21 statt 24 Minuten).
+- **Tests**: `estimateRuntimeMinutes` als reine Funktion herausgezogen und getestet; neue jsdom-Suite `helper.confirm.dom.test.js` prüft das Overlay gegen den echten Produktivcode (Vorauswahl, Abwählen, Alle/Keine, gesperrter Start).
+
+  Beigetragen von @karlvonbonin (PR #48).
 
 ### Version 3.7.1 (August 2026)
 
