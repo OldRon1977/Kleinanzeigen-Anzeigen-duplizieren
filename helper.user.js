@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.6.0
+// @version       1.7.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
@@ -23,6 +23,22 @@
     // als "aelter als 7 Tage", wenn das Enddatum hoechstens (60 - 7) = 53 Tage
     // in der Zukunft liegt.
     const MIN_DAYS_TO_END = 53;
+
+    // Regellaufzeit einer Kleinanzeige. Die Kartenliste nennt nur das ENDdatum,
+    // kein Erstelldatum -- das Alter ist daher immer abgeleitet:
+    // Alter = AD_RUNTIME_DAYS - Restlaufzeit. Dieselbe Annahme steckt seit jeher
+    // in MIN_DAYS_TO_END (60 - 7 = 53). Bei abweichender Laufzeit (verlaengert,
+    // gewerblich) ist das Alter entsprechend ungenau; die UI weist darauf hin.
+    const AD_RUNTIME_DAYS = 60;
+
+    // Farbcodierung nach Alter. Untergrenze inklusive, nach oben offen bis zum
+    // naechsten Band: rot 0-4, gelb 5-6, gruen 7-13, dunkelgruen ab 14 Tagen.
+    const AGE_BANDS = [
+        { key: 'sehr-alt', minAge: 14, color: '#1b5e20', label: 'ab 14 Tagen' },
+        { key: 'alt', minAge: 7, color: '#43a047', label: '7-13 Tage' },
+        { key: 'mittel', minAge: 5, color: '#f9a825', label: '5-6 Tage' },
+        { key: 'frisch', minAge: 0, color: '#e53935', label: 'bis 4 Tage' }
+    ];
 
     // Jitter-Delay zwischen zwei Smart-Republish-Vorgaengen: 3 +- 1 Minuten.
     const DELAY_BASE_MS = 3 * 60 * 1000;
@@ -422,8 +438,8 @@
         const btn = document.createElement('button');
         btn.id = TRIGGER_BTN_ID;
         btn.type = 'button';
-        btn.textContent = '\u23F0 Alle alten neu einstellen';
-        btn.title = 'Stellt alle Anzeigen älter als 7 Tage nacheinander mit Zeitabstand neu ein';
+        btn.textContent = '\u2611 Anzeigen auswählen & neu einstellen';
+        btn.title = 'Öffnet die Auswahl aller Anzeigen; die ausgewählten werden nacheinander mit Zeitabstand neu eingestellt';
         btn.style.cssText = [
             'margin: 0 0 12px 0',
             'padding: 8px 16px',
@@ -476,10 +492,17 @@
                 return;
             }
 
+            // Es werden ALLE Anzeigen mit lesbarem Datum gelistet, nicht mehr nur
+            // die aelteren. Was tatsaechlich laeuft, entscheidet die Auswahl im
+            // Overlay -- dort ist beim Oeffnen nichts angehakt.
             const days = daysUntil(endDate);
-            if (days <= MIN_DAYS_TO_END) {
-                matches.push({ adId: adId, title: title, endText: endText, daysLeft: days });
-            }
+            matches.push({
+                adId: adId,
+                title: title,
+                endText: endText,
+                daysLeft: days,
+                ageDays: ageFromDaysLeft(days)
+            });
         });
 
         return { matches: matches, skipped: skipped };
@@ -565,6 +588,18 @@
         parent.appendChild(sec);
     }
 
+    // Abgeleitetes Alter in Tagen (siehe AD_RUNTIME_DAYS). Nie negativ: eine
+    // frisch verlaengerte Anzeige kann mehr Restlaufzeit haben als die
+    // Regellaufzeit, das waere sonst ein negatives Alter.
+    function ageFromDaysLeft(daysLeft) {
+        return Math.max(0, AD_RUNTIME_DAYS - daysLeft);
+    }
+
+    function ageBand(ageDays) {
+        return AGE_BANDS.find(function (b) { return ageDays >= b.minAge; }) ||
+            AGE_BANDS[AGE_BANDS.length - 1];
+    }
+
     // Geschaetzte Batch-Laufzeit in Minuten. Zwischen zwei Anzeigen liegt eine
     // Pause von DELAY_BASE_MS; nach der letzten Anzeige wird nicht mehr gewartet.
     function estimateRuntimeMinutes(count) {
@@ -593,7 +628,7 @@
         const summary = document.createElement('div');
         summary.style.cssText = 'padding:10px 14px;border-bottom:1px solid #eee;';
         if (matches.length === 0) {
-            summary.textContent = 'Keine Anzeigen älter als 7 Tage gefunden.';
+            summary.textContent = 'Keine Anzeigen mit lesbarem Enddatum gefunden.';
             overlay.appendChild(summary);
             // Trotzdem Recovery-Section anzeigen, falls Snapshots da sind
             try {
@@ -602,11 +637,12 @@
             } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
             return;
         }
-        // Auswahl: standardmaessig sind alle Treffer angehakt. Einzelne Anzeigen
-        // lassen sich abwaehlen (z.B. Daueranzeigen, die nicht erneuert werden
-        // sollen); gestartet wird nur mit den angehakten Eintraegen.
-        const selected = new Set(matches.map(function (m) { return m.adId; }));
-        const checkboxes = [];
+        // Auswahl startet LEER. Gelistet sind alle Anzeigen, auch frische --
+        // deshalb waere "alles vorangehakt" ein scharfes Messer: ein Klick auf
+        // Start wuerde jede Anzeige loeschen und neu anlegen. Die Schnellwahl
+        // unter der Liste nimmt die Klickarbeit fuer die ueblichen Faelle ab.
+        const selected = new Set();
+        const entries = [];
 
         const line1 = document.createElement('div');
         summary.appendChild(line1);
@@ -626,14 +662,24 @@
 
             const cb = document.createElement('input');
             cb.type = 'checkbox';
-            cb.checked = true;
+            cb.checked = false;
             cb.style.cssText = 'margin-top:2px;flex:none;cursor:pointer;';
             cb.onchange = function () {
                 if (cb.checked) selected.add(m.adId);
                 else selected.delete(m.adId);
                 updateSummary();
             };
-            checkboxes.push(cb);
+            entries.push({ match: m, cb: cb });
+
+            // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
+            // Text daneben), damit sie nicht allein an der Farbe haengt.
+            const age = typeof m.ageDays === 'number' ? m.ageDays : ageFromDaysLeft(m.daysLeft);
+            const band = ageBand(age);
+            const dot = document.createElement('span');
+            dot.className = 'ka-age-dot';
+            dot.dataset.band = band.key;
+            dot.title = 'Alter ' + band.label;
+            dot.style.cssText = 'width:10px;height:10px;border-radius:50%;flex:none;margin-top:5px;background:' + band.color + ';';
 
             const texts = document.createElement('div');
             const t = document.createElement('div');
@@ -641,33 +687,71 @@
             t.textContent = m.title;
             const meta = document.createElement('div');
             meta.style.cssText = 'color:#666;font-size:12px;';
-            meta.textContent = 'ID ' + m.adId + ' \u00B7 endet ' + m.endText + ' (' + m.daysLeft + ' Tage)';
+            meta.textContent = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt \u00B7 endet ' + m.endText +
+                ' (' + m.daysLeft + ' Tage)';
             texts.appendChild(t);
             texts.appendChild(meta);
 
             label.appendChild(cb);
+            label.appendChild(dot);
             label.appendChild(texts);
             li.appendChild(label);
             list.appendChild(li);
         });
         overlay.appendChild(list);
 
+        // Schnellwahl: setzt die Auswahl auf alles, was das Praedikat erfuellt.
+        // Checkboxen werden programmatisch gesetzt (feuert kein onchange),
+        // deshalb wird `selected` hier mitgefuehrt.
+        function applySelection(predicate) {
+            selected.clear();
+            entries.forEach(function (e) {
+                const age = typeof e.match.ageDays === 'number'
+                    ? e.match.ageDays
+                    : ageFromDaysLeft(e.match.daysLeft);
+                const hit = predicate(e.match, age);
+                e.cb.checked = hit;
+                if (hit) selected.add(e.match.adId);
+            });
+            updateSummary();
+        }
+
         const bulk = document.createElement('div');
-        bulk.style.cssText = 'padding:0 14px 8px;display:flex;gap:12px;font-size:12px;';
-        [['Alle', true], ['Keine', false]].forEach(function (pair) {
+        bulk.style.cssText = 'padding:0 14px 8px;display:flex;gap:12px;font-size:12px;flex-wrap:wrap;';
+        [
+            ['Alle', function () { return true; }],
+            ['Keine', function () { return false; }],
+            ['älter als 7 Tage', function (m, age) { return age >= 7; }],
+            ['älter als 14 Tage', function (m, age) { return age >= 14; }]
+        ].forEach(function (pair) {
             const b = document.createElement('button');
             b.type = 'button';
             b.textContent = pair[0];
             b.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:12px;text-decoration:underline;';
-            b.onclick = function () {
-                checkboxes.forEach(function (c) { c.checked = pair[1]; });
-                selected.clear();
-                if (pair[1]) matches.forEach(function (m) { selected.add(m.adId); });
-                updateSummary();
-            };
+            b.onclick = function () { applySelection(pair[1]); };
             bulk.appendChild(b);
         });
         overlay.appendChild(bulk);
+
+        // Legende: erklaert die Farbpunkte und macht transparent, dass das Alter
+        // aus der Restlaufzeit abgeleitet ist (die Karte nennt kein Erstelldatum).
+        const legend = document.createElement('div');
+        legend.style.cssText = 'padding:0 14px 8px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#666;';
+        AGE_BANDS.forEach(function (band) {
+            const item = document.createElement('span');
+            item.style.cssText = 'display:flex;gap:4px;align-items:center;';
+            const dot = document.createElement('span');
+            dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + band.color + ';';
+            item.appendChild(dot);
+            item.appendChild(document.createTextNode(band.label));
+            legend.appendChild(item);
+        });
+        const hint = document.createElement('div');
+        hint.style.cssText = 'padding:0 14px 8px;font-size:11px;color:#999;';
+        hint.textContent = 'Alter geschätzt aus der Restlaufzeit (' + AD_RUNTIME_DAYS +
+            ' Tage Regellaufzeit) – bei verlängerten Anzeigen ungenau.';
+        overlay.appendChild(legend);
+        overlay.appendChild(hint);
 
         if (skipped.length > 0) {
             const sk = document.createElement('div');
@@ -705,8 +789,8 @@
             line1.appendChild(strong);
             line1.appendChild(document.createTextNode(' von ' + matches.length + ' Anzeige(n) ausgewählt.'));
             line2.textContent = count > 0
-                ? 'Geschätzte Laufzeit: ca. ' + estimateRuntimeMinutes(count) + ' Minuten (3 ± 1 min Pause pro Anzeige).'
-                : 'Keine Anzeige ausgewählt.';
+                ? 'Geschätzte Laufzeit: ca. ' + estimateRuntimeMinutes(count) + ' Minuten (3 ± 1 min Pause zwischen zwei Anzeigen).'
+                : 'Nichts ausgewählt – Schnellwahl unter der Liste nutzen.';
             start.disabled = (count === 0);
             start.style.opacity = count === 0 ? '0.5' : '1';
             start.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
@@ -1053,8 +1137,12 @@
         typeof process !== 'undefined' && process.versions && process.versions.node) {
         module.exports = {
             MIN_DAYS_TO_END,
+            AD_RUNTIME_DAYS,
+            AGE_BANDS,
             parseEndDate,
             daysUntil,
+            ageFromDaysLeft,
+            ageBand,
             estimateRuntimeMinutes,
             renderConfirm,
             jitterDelay,

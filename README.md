@@ -104,14 +104,18 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
-### Version 3.8.0 / Helper 1.6.0 (August 2026)
+### Version 3.8.0 / Helper 1.7.0 (August 2026)
 
-- **Neu**: Auswahl im Batch-Bestätigungs-Overlay. Jeder Treffer hat eine Checkbox (standardmäßig angehakt), dazu "Alle"/"Keine". Gestartet wird nur mit den ausgewählten Anzeigen — Daueranzeigen lassen sich so vom Batch ausnehmen, ohne den Schwellwert zu ändern. Die Trefferliste selbst ändert sich nicht: abwählen geht, hinzufügen nicht.
-- **Neu**: Zusammenfassung und Laufzeitschätzung aktualisieren sich live ("3 von 8 ausgewählt"); der Start-Button ist gesperrt, solange nichts ausgewählt ist.
-- **Fix**: Die Laufzeitschätzung zählt die Pausen *zwischen* den Anzeigen statt einer Pause pro Anzeige — nach der letzten Anzeige wird nicht mehr gewartet (8 Anzeigen: 21 statt 24 Minuten).
-- **Tests**: `estimateRuntimeMinutes` als reine Funktion herausgezogen und getestet; neue jsdom-Suite `helper.confirm.dom.test.js` prüft das Overlay gegen den echten Produktivcode (Vorauswahl, Abwählen, Alle/Keine, gesperrter Start).
+Das Batch-Overlay ist von "alles Alte, ein Klick" auf eine bewusste Auswahl umgestellt.
 
-  Beigetragen von @karlvonbonin (PR #48).
+- **Neu**: Jede Anzeige bekommt eine Checkbox. Gestartet wird ausschließlich, was angehakt ist. Grundlage beigetragen von @karlvonbonin (PR #48).
+- **Neu**: Die Liste zeigt **alle** Anzeigen, nicht mehr nur die älter als 7 Tage. Beim Öffnen ist **nichts** vorangehakt — ein versehentlicher Start kann damit nichts löschen. Der Button heißt entsprechend "Anzeigen auswählen & neu einstellen".
+- **Neu**: Schnellwahl unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl.
+- **Neu**: Farbcodierung nach Alter — dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag, hängt also nicht allein an der Farbe.
+- **Neu**: Zusammenfassung und Laufzeitschätzung laufen mit ("3 von 8 ausgewählt"); der Start-Button bleibt gesperrt, solange nichts ausgewählt ist.
+- **Fix**: Die Laufzeitschätzung zählt die Pausen *zwischen* den Anzeigen statt einer Pause pro Anzeige — nach der letzten Anzeige wird nicht mehr gewartet (8 Anzeigen: 21 statt 24 Minuten). (@karlvonbonin, PR #48)
+- **Hinweis**: Die Kartenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird deshalb aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende weist darauf hin.
+- **Tests**: `estimateRuntimeMinutes`, `ageFromDaysLeft` und `ageBand` als reine Funktionen getestet; die jsdom-Suite `helper.confirm.dom.test.js` prüft das Overlay gegen den echten Produktivcode (leere Vorauswahl, Schnellwahl, Farbbänder, gesperrter Start).
 
 ### Version 3.7.1 (August 2026)
 

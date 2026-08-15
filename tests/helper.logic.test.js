@@ -5,6 +5,9 @@ const {
     MIN_DAYS_TO_END,
     parseEndDate,
     daysUntil,
+    AGE_BANDS,
+    ageFromDaysLeft,
+    ageBand,
     estimateRuntimeMinutes,
     jitterDelay,
     sanitize,
@@ -60,6 +63,38 @@ describe('daysUntil', () => {
 
     it('MIN_DAYS_TO_END ist der dokumentierte Schwellwert 53', () => {
         expect(MIN_DAYS_TO_END).toBe(53);
+    });
+});
+
+describe('ageFromDaysLeft', () => {
+    it('leitet das Alter aus der Restlaufzeit ab (60 Tage Regellaufzeit)', () => {
+        expect(ageFromDaysLeft(60)).toBe(0);
+        expect(ageFromDaysLeft(53)).toBe(7);
+        expect(ageFromDaysLeft(46)).toBe(14);
+    });
+
+    it('wird nie negativ, auch bei verlaengerten Anzeigen', () => {
+        expect(ageFromDaysLeft(75)).toBe(0);
+    });
+});
+
+describe('ageBand', () => {
+    it('trifft die Grenzen der vier Baender', () => {
+        expect(ageBand(0).key).toBe('frisch');     // rot: bis 4 Tage
+        expect(ageBand(4).key).toBe('frisch');
+        expect(ageBand(5).key).toBe('mittel');     // gelb: 5-6 Tage
+        expect(ageBand(6).key).toBe('mittel');
+        expect(ageBand(7).key).toBe('alt');        // gruen: 7-13 Tage
+        expect(ageBand(13).key).toBe('alt');
+        expect(ageBand(14).key).toBe('sehr-alt');  // dunkelgruen: ab 14 Tagen
+        expect(ageBand(365).key).toBe('sehr-alt');
+    });
+
+    it('liefert zu jedem Band eine Farbe und ein Label', () => {
+        AGE_BANDS.forEach((band) => {
+            expect(band.color).toMatch(/^#[0-9a-f]{6}$/i);
+            expect(band.label.length).toBeGreaterThan(0);
+        });
     });
 });
 
