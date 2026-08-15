@@ -48,6 +48,13 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 2. Neben jedem "Bearbeiten"-Link erscheint der Button "Smart neu einstellen"
 3. Ein Klick öffnet die Bearbeiten-Seite und führt die Aktion automatisch aus
 
+### Batch-Modus (Helper ab v1.3.0)
+1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
+2. Über der Anzeigenliste erscheint der Batch-Button
+3. Das Bestätigungs-Overlay listet alle Anzeigen auf, die älter als 7 Tage sind — **alle vorausgewählt**
+4. Ab Helper v1.6.0: Einzelne Anzeigen lassen sich abwählen (Checkbox), z.B. Daueranzeigen wie Dienstleistungen. "Alle" / "Keine" setzen die komplette Auswahl. Zusammenfassung und geschätzte Laufzeit aktualisieren sich mit
+5. **Start** verarbeitet nur die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+
 ### Banner & Popup-Blocker (ab v3.4.0)
 Das Script blendet automatisch aus:
 - **Kostenpflichtige Feature-Optionen** (Highlight, Galerie, Bumpup) auf der Bearbeiten-Seite
@@ -97,6 +104,18 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Version 3.8.0 / Helper 1.7.0 (August 2026)
+
+Das Batch-Overlay ist von "alles Alte, ein Klick" auf eine bewusste Auswahl umgestellt.
+
+- **Neu**: Jede Anzeige bekommt eine Checkbox. Gestartet wird ausschließlich, was angehakt ist. Grundlage beigetragen von @karlvonbonin (PR #48).
+- **Neu**: Die Liste zeigt **alle** Anzeigen, nicht mehr nur die älter als 7 Tage. Beim Öffnen ist **nichts** vorangehakt — ein versehentlicher Start kann damit nichts löschen. Der Button heißt entsprechend "Anzeigen auswählen & neu einstellen".
+- **Neu**: Schnellwahl unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl.
+- **Neu**: Farbcodierung nach Alter — dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag, hängt also nicht allein an der Farbe.
+- **Neu**: Zusammenfassung und Laufzeitschätzung laufen mit ("3 von 8 ausgewählt"); der Start-Button bleibt gesperrt, solange nichts ausgewählt ist.
+- **Fix**: Die Laufzeitschätzung zählt die Pausen *zwischen* den Anzeigen statt einer Pause pro Anzeige — nach der letzten Anzeige wird nicht mehr gewartet (8 Anzeigen: 21 statt 24 Minuten). (@karlvonbonin, PR #48)
+- **Hinweis**: Die Kartenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird deshalb aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende weist darauf hin.
+- **Tests**: `estimateRuntimeMinutes`, `ageFromDaysLeft` und `ageBand` als reine Funktionen getestet; die jsdom-Suite `helper.confirm.dom.test.js` prüft das Overlay gegen den echten Produktivcode (leere Vorauswahl, Schnellwahl, Farbbänder, gesperrter Start).
 ### Version 3.7.2 (August 2026)
 
 - **Diagnose**: Das Log weist jetzt aus, ob das Ad-ID-Feld über einen bekannten Selektor oder über den Fallback (Feldwert) gefunden wurde. Greift nur noch der Fallback, hat Kleinanzeigen das Feld umbenannt — das steht dann als Warnung samt neuem Feldnamen in der Konsole, statt erst beim nächsten Bruch aufzufallen.
