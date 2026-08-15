@@ -7,6 +7,7 @@
 // @license       MIT
 // @version       1.7.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
+// @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
