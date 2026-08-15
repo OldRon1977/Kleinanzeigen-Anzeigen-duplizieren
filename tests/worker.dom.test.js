@@ -5,6 +5,7 @@ const {
     CONFIG,
     getExponentialBackoffWait,
     readFormFields,
+    getAdFormRoot,
     collectImageUrls
 } = worker;
 
@@ -105,5 +106,47 @@ describe('collectImageUrls', () => {
         expect(collectImageUrls()).toEqual([
             'https://img.kleinanzeigen.de/api/v1/prod-ads/images/xx?rule=$_57.JPG'
         ]);
+    });
+});
+
+describe('getAdFormRoot / readFormFields - Formular-Scoping', () => {
+    it('waehlt das Formular, in dem das adId-Feld haengt', () => {
+        document.body.innerHTML = `
+            <form id="suche"><input name="query" value="fahrrad"></form>
+            <form id="anzeige">
+                <input type="hidden" name="adId" value="3485590892">
+                <input name="title" value="Mein Titel">
+            </form>
+        `;
+        expect(getAdFormRoot(document, '3485590892').id).toBe('anzeige');
+    });
+
+    it('erfasst keine Felder ausserhalb des Anzeigen-Formulars', () => {
+        document.body.innerHTML = `
+            <input name="globales-feld" value="nicht erfassen">
+            <form id="suche"><input name="query" value="fahrrad"></form>
+            <form id="anzeige">
+                <input type="hidden" name="adId" value="3485590892">
+                <input name="title" value="Mein Titel">
+                <textarea name="description">Beschreibung</textarea>
+            </form>
+        `;
+        const { fields, rawFields } = readFormFields(document, '3485590892');
+
+        expect(rawFields.title).toBe('Mein Titel');
+        expect(fields.description).toBe('Beschreibung');
+        expect(rawFields.query).toBeUndefined();
+        expect(rawFields['globales-feld']).toBeUndefined();
+    });
+
+    it('faellt auf das erste Formular zurueck, wenn kein adId-Feld da ist', () => {
+        document.body.innerHTML = `<form id="erstes"><input name="title" value="T"></form>`;
+        expect(getAdFormRoot(document, null).id).toBe('erstes');
+        expect(readFormFields(document, null).rawFields.title).toBe('T');
+    });
+
+    it('faellt auf das Dokument zurueck, wenn es gar kein Formular gibt', () => {
+        document.body.innerHTML = `<input name="title" value="Ohne Formular">`;
+        expect(readFormFields(document, null).rawFields.title).toBe('Ohne Formular');
     });
 });

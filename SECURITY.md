@@ -4,8 +4,8 @@
 
 | Version       | Unterstuetzt |
 |---------------|--------------|
-| 3.6.x / 1.4.x | Ja           |
-| < 3.6         | Nein         |
+| 3.8.x / 1.7.x | Ja           |
+| < 3.8         | Nein         |
 
 ## Schwachstelle melden
 

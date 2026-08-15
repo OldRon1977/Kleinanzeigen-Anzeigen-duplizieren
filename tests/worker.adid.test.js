@@ -18,6 +18,23 @@ describe('getUrlAdId', () => {
         expect(getUrlAdId({ search: '?foo=1' })).toBeNull();
         expect(getUrlAdId({ search: '' })).toBeNull();
     });
+
+    it('trifft nicht auf Parameter, die nur auf adId enden', () => {
+        // Die frueher genutzte Regex /adId=(\d+)/ kannte keine Parametergrenze
+        // und lieferte hier faelschlich "123".
+        expect(getUrlAdId({ search: '?myadId=123' })).toBeNull();
+        expect(getUrlAdId({ search: '?foo=1&otheradId=999' })).toBeNull();
+    });
+
+    it('findet die adId unabhaengig von der Parameter-Reihenfolge', () => {
+        expect(getUrlAdId({ search: '?foo=1&adId=3485590892&bar=2' })).toBe(AD_ID);
+    });
+
+    it('weist nicht-numerische Werte ab', () => {
+        expect(getUrlAdId({ search: '?adId=abc' })).toBeNull();
+        expect(getUrlAdId({ search: '?adId=' })).toBeNull();
+        expect(getUrlAdId({ search: '?adId=12345678901234567890123' })).toBeNull();
+    });
 });
 
 describe('findAdIdInput - bekannte Selektoren', () => {
