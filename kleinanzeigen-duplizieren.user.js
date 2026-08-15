@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.7.0
+// @version       3.7.1
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -35,7 +35,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.7.0'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.7.1'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
@@ -325,6 +325,62 @@
         );
     }
 
+    // Bekannte Namen/IDs des versteckten Ad-ID-Felds. Kleinanzeigen hat den
+    // Feldnamen historisch schon zweimal geaendert (#postad-id -> name="id"
+    // -> name="adId"), deshalb ist die Liste kumulativ.
+    const AD_ID_SELECTOR = 'input[name="adId"], #postad-id, input[name="postad-id"], input[name="id"]';
+
+    function getUrlAdId(loc) {
+        const search = (loc || window.location).search || '';
+        const m = search.match(/adId=(\d+)/);
+        return m ? m[1] : null;
+    }
+
+    /**
+     * Loest das versteckte Ad-ID-Feld auf.
+     *
+     * Primaer ueber die bekannten Selektoren. Greift keiner, wird
+     * namensunabhaengig das Input gesucht, dessen Wert exakt der adId aus der
+     * URL entspricht -- auf der Bearbeiten-Seite ist dieser Treffer eindeutig,
+     * weil der Wert die ID der gerade bearbeiteten Anzeige ist. Damit ueberlebt
+     * die Aufloesung eine weitere Umbenennung des Feldnamens (Issue #49).
+     *
+     * Bleibt der Treffer mehrdeutig, wird bewusst null geliefert: lieber
+     * abbrechen als das falsche Feld neutralisieren.
+     */
+    function findAdIdInput(doc, urlAdId) {
+        const direct = doc.querySelector(AD_ID_SELECTOR);
+        if (direct) return direct;
+        if (!urlAdId) return null;
+
+        // Bewusst nur Hidden-Felder: das Ad-ID-Feld war in jeder bisherigen
+        // Variante versteckt. Ein sichtbares Feld mit zufaellig gleichem Wert
+        // (etwa ein Titel, der nur aus der ID besteht) wuerde durch die
+        // Neutralisierung geleert -- die Kopie waere beschaedigt.
+        const candidates = Array.from(doc.querySelectorAll('input[type="hidden"]'))
+            .filter(function (i) { return i.value === urlAdId; });
+        return candidates.length === 1 ? candidates[0] : null;
+    }
+
+    /**
+     * Bestandsaufnahme fuer den Abbruch-Fall. Ohne die Feldnamen aus der
+     * betroffenen Umgebung ist nicht entscheidbar, ob das Feld nur umbenannt
+     * wurde oder ganz fehlt (Issue #49) -- die Ausgabe ist bewusst so knapp,
+     * dass sie gefahrlos in ein Issue kopiert werden kann: nur Feldnamen und
+     * Wertlaengen, keine Feldinhalte.
+     */
+    function describeAdIdLookup(doc, urlAdId) {
+        return {
+            urlAdId: urlAdId ? 'vorhanden' : 'fehlt',
+            speichernButton: !!Array.from(doc.querySelectorAll('button')).find(
+                function (b) { return b.textContent.trim().indexOf('Anzeige speichern') === 0; }
+            ),
+            inputs: doc.querySelectorAll('input').length,
+            hiddenFelder: Array.from(doc.querySelectorAll('input[type="hidden"]'))
+                .map(function (i) { return (i.name || i.id || '(ohne name)') + ':' + (i.value || '').length; })
+        };
+    }
+
     function waitForElement(finderFn, timeoutMs) {
         return new Promise(function (resolve) {
             const el = finderFn();
@@ -373,18 +429,20 @@
             logger.log('Starte Duplikat-Prozess');
             showLoadingSpinner();
 
-            const adIdSelector = 'input[name="adId"], #postad-id, input[name="postad-id"]';
+            const urlAdId = getUrlAdId();
             let saveBtn = await waitForElement(findSaveButton, 10000);
             if (!saveBtn) throw new Error('Speichern-Button nicht gefunden (Timeout)');
 
             let adIdInput = await waitForElement(
-                () => document.querySelector(adIdSelector),
+                () => findAdIdInput(document, urlAdId),
                 10000
             );
             // Harter Abbruch, wenn das adId-Feld nicht auffindbar ist: ohne
             // Neutralisierung haette der Submit Bearbeiten- statt Neuanlage-
             // Semantik. Der catch-Block raeumt UI und Buttons auf.
             if (!adIdInput) {
+                logger.error('adId-Feld nicht auffindbar - Bestandsaufnahme fuer Issue-Meldung',
+                    describeAdIdLookup(document, urlAdId));
                 throw new Error('adId-Feld nicht gefunden - Abbruch, um versehentliches Bearbeiten zu verhindern');
             }
 
@@ -402,7 +460,7 @@
                 saveBtn = await waitForElement(findSaveButton, 5000);
             }
             if (!adIdInput.isConnected) {
-                adIdInput = await waitForElement(() => document.querySelector(adIdSelector), 5000);
+                adIdInput = await waitForElement(() => findAdIdInput(document, urlAdId), 5000);
             }
             if (!saveBtn || !adIdInput) {
                 throw new Error('Formular nach Laden nicht auffindbar - Abbruch, um versehentliches Bearbeiten zu verhindern');
@@ -423,11 +481,8 @@
             // On-Page-Modus (Button direkt auf der Bearbeiten-Seite) bleibt der
             // Tab bewusst offen -- es gibt keinen Helper, der ihn schliessen soll,
             // und es waere der Haupt-Tab des Users.
-            if (window.location.hash === '#duplicate') {
-                const dupMatch = window.location.search.match(/adId=(\d+)/);
-                if (dupMatch) {
-                    try { sessionStorage.setItem('ka-duplicate-adid', dupMatch[1]); } catch (e) {}
-                }
+            if (window.location.hash === '#duplicate' && urlAdId) {
+                try { sessionStorage.setItem('ka-duplicate-adid', urlAdId); } catch (e) {}
             }
 
             // Popup-Dismisser starten bevor wir klicken
@@ -567,8 +622,7 @@
     }
 
     async function smartRepublish() {
-        const urlMatch = window.location.search.match(/adId=(\d+)/);
-        const originalId = urlMatch ? urlMatch[1] : null;
+        const originalId = getUrlAdId();
         const batchMode = isBatchMode();
         // Lifecycle-Marker fuer differenzierte Fehlerklassifikation:
         // wenn nach erfolgreichem Delete etwas schief geht, ist das Datenverlust.
@@ -585,15 +639,18 @@
             // wird OHNE Loeschung abgebrochen - so kann das Original nicht verloren
             // gehen, wenn die Seite den Neuanlage-Submit gar nicht durchfuehren
             // koennte.
-            const adIdSelector = 'input[name="adId"], #postad-id, input[name="postad-id"]';
             let saveBtn = await waitForElement(findSaveButton, 10000);
             let adIdInput = await waitForElement(
-                () => document.querySelector(adIdSelector),
+                () => findAdIdInput(document, originalId),
                 10000
             );
             if (!saveBtn || !adIdInput) {
                 const missing = !saveBtn ? 'save_button_missing' : 'adid_input_missing';
                 logger.error('Preflight fehlgeschlagen, Abbruch vor Loeschung', { missing: missing });
+                if (!adIdInput) {
+                    logger.error('adId-Feld nicht auffindbar - Bestandsaufnahme fuer Issue-Meldung',
+                        describeAdIdLookup(document, originalId));
+                }
                 showNotification('Voraussetzung fehlt (' + missing + ') - Abbruch, Original bleibt erhalten.', 'error');
                 showLoadingSpinner(false);
                 document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
@@ -654,7 +711,7 @@
                 saveBtn = await waitForElement(findSaveButton, 5000);
             }
             if (!adIdInput.isConnected) {
-                adIdInput = await waitForElement(() => document.querySelector(adIdSelector), 5000);
+                adIdInput = await waitForElement(() => findAdIdInput(document, originalId), 5000);
             }
             if (!saveBtn || !adIdInput) {
                 logger.error('Referenzen nach Loeschung nicht mehr aufloesbar', { deleteFailed: deleteFailed });
@@ -872,7 +929,10 @@
     // das Script nicht versehentlich deaktivieren kann.
     if (typeof module !== 'undefined' && module.exports &&
         typeof process !== 'undefined' && process.versions && process.versions.node) {
-        module.exports = { CONFIG, getExponentialBackoffWait, readFormFields, collectImageUrls };
+        module.exports = {
+            CONFIG, getExponentialBackoffWait, readFormFields, collectImageUrls,
+            findAdIdInput, describeAdIdLookup, getUrlAdId
+        };
         return; // im Test-Kontext keine Initialisierung/Timer
     }
 

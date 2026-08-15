@@ -97,6 +97,18 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Version 3.7.1 (August 2026)
+
+- **Fix**: Das versteckte Ad-ID-Feld wird jetzt auch dann gefunden, wenn Kleinanzeigen es umbenennt. Greifen die bekannten Selektoren nicht, wird namensunabhängig das Hidden-Feld gesucht, dessen Wert exakt der `adId` aus der URL entspricht — auf der Bearbeiten-Seite ist dieser Treffer eindeutig. Bleibt er mehrdeutig, wird weiterhin abgebrochen statt geraten. (Issue #49)
+- **Fix (Diagnose)**: Bricht die Auflösung trotzdem ab, protokolliert das Script eine Bestandsaufnahme der vorhandenen Hidden-Felder (nur Feldnamen und Wertlängen, keine Inhalte) — ohne diese Angaben ist von außen nicht unterscheidbar, ob das Feld umbenannt wurde oder fehlt. (Issue #49)
+- **Hinweis**: Der harte Abbruch bei fehlendem Feld bleibt bestehen. Er ist nicht die Ursache des Fehlers, sondern macht ihn sichtbar: ohne Neutralisierung würde der Submit das Original überschreiben statt eine Kopie anzulegen.
+
+### Version 3.7.0 / Helper 1.5.0 (Juli 2026)
+
+- **Neu**: "Duplizieren"-Button direkt auf "Meine Anzeigen" — dupliziert eine Anzeige ohne Umweg über die Bearbeiten-Seite; das Original bleibt erhalten, es wird nichts gelöscht. (Issue #46)
+- **Fix**: Endloser Spinner beim Auto-Trigger via `#duplicate`. Der Klick auf "Anzeige speichern" wartet jetzt auf das vollständige Laden der Seite — vorher konnte er verpuffen, solange die Form noch nicht hydratisiert war.
+- **Neu**: Der Worker-Tab schließt sich nach erfolgreicher Duplizierung selbst (Signal über die Bestätigungs-Seite an den Helper).
+
 ### Version 3.6.0 / Helper 1.4.0 (Juli 2026)
 
 Ergebnis eines vollständigen Code-Reviews (14 Findings). Alle Änderungen sind Härtungen bestehender Abläufe — keine neuen Features, Happy Path unverändert.
