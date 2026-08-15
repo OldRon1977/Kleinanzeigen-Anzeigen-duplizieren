@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import worker from '../kleinanzeigen-duplizieren.user.js';
 
-const { findAdIdInput, describeAdIdLookup, getUrlAdId } = worker;
+const { findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId } = worker;
 
 const AD_ID = '3485590892';
 
@@ -84,6 +84,26 @@ describe('findAdIdInput - Fallback ueber den Feldwert (Issue #49)', () => {
     it('liefert null ohne adId in der URL', () => {
         document.body.innerHTML = `<form><input type="hidden" name="unbekannt" value="${AD_ID}"></form>`;
         expect(findAdIdInput(document, null)).toBeNull();
+    });
+});
+
+describe('describeAdIdResolution', () => {
+    it('meldet den bekannten Selektor als Weg', () => {
+        document.body.innerHTML = `<form><input type="hidden" name="adId" value="${AD_ID}"></form>`;
+        const info = describeAdIdResolution(findAdIdInput(document, AD_ID));
+
+        expect(info.weg).toBe('bekannter Selektor');
+        expect(info.feldName).toBe('adId');
+        expect(info.selektorVeraltet).toBe(false);
+    });
+
+    it('meldet den Fallback samt neuem Feldnamen - das Signal fuer eine Umbenennung', () => {
+        document.body.innerHTML = `<form><input type="hidden" name="neuer-name" value="${AD_ID}"></form>`;
+        const info = describeAdIdResolution(findAdIdInput(document, AD_ID));
+
+        expect(info.weg).toBe('Fallback ueber Feldwert');
+        expect(info.feldName).toBe('neuer-name');
+        expect(info.selektorVeraltet).toBe(true);
     });
 });
 

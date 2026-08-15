@@ -116,6 +116,9 @@ Das Batch-Overlay ist von "alles Alte, ein Klick" auf eine bewusste Auswahl umge
 - **Fix**: Die Laufzeitschätzung zählt die Pausen *zwischen* den Anzeigen statt einer Pause pro Anzeige — nach der letzten Anzeige wird nicht mehr gewartet (8 Anzeigen: 21 statt 24 Minuten). (@karlvonbonin, PR #48)
 - **Hinweis**: Die Kartenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird deshalb aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende weist darauf hin.
 - **Tests**: `estimateRuntimeMinutes`, `ageFromDaysLeft` und `ageBand` als reine Funktionen getestet; die jsdom-Suite `helper.confirm.dom.test.js` prüft das Overlay gegen den echten Produktivcode (leere Vorauswahl, Schnellwahl, Farbbänder, gesperrter Start).
+### Version 3.7.2 (August 2026)
+
+- **Diagnose**: Das Log weist jetzt aus, ob das Ad-ID-Feld über einen bekannten Selektor oder über den Fallback (Feldwert) gefunden wurde. Greift nur noch der Fallback, hat Kleinanzeigen das Feld umbenannt — das steht dann als Warnung samt neuem Feldnamen in der Konsole, statt erst beim nächsten Bruch aufzufallen.
 
 ### Version 3.7.1 (August 2026)
 
