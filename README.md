@@ -104,7 +104,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
-### Helper 1.6.0 (August 2026)
+### Version 3.8.0 / Helper 1.6.0 (August 2026)
 
 - **Neu**: Auswahl im Batch-Bestätigungs-Overlay. Jeder Treffer hat eine Checkbox (standardmäßig angehakt), dazu "Alle"/"Keine". Gestartet wird nur mit den ausgewählten Anzeigen — Daueranzeigen lassen sich so vom Batch ausnehmen, ohne den Schwellwert zu ändern. Die Trefferliste selbst ändert sich nicht: abwählen geht, hinzufügen nicht.
 - **Neu**: Zusammenfassung und Laufzeitschätzung aktualisieren sich live ("3 von 8 ausgewählt"); der Start-Button ist gesperrt, solange nichts ausgewählt ist.
