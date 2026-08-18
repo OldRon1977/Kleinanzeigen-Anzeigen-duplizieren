@@ -10,6 +10,7 @@
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
 // @match         https://www.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*
+// @match         https://www.kleinanzeigen.de/*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
 // @downloadURL   https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js
@@ -60,6 +61,68 @@
     };
 
     // === BANNER & POPUP DISMISSER ===
+
+    /**
+     * Domainweiter Werbeblocker. Reines CSS, kein JavaScript: Das Script laeuft
+     * dadurch zwar auf jeder Seite von kleinanzeigen.de, greift dort aber nur
+     * ueber ein <style>-Element ein und fasst das DOM nicht an. Schlaegt ein
+     * Selektor daneben, verschwindet schlimmstenfalls ein Layout-Element -- es
+     * kann nichts klicken, nichts senden und nichts loeschen.
+     *
+     * Selektoren adaptiert aus dem Userscript von Andi (Zer089), MIT-Lizenz:
+     * https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
+     */
+    function injectSiteAdBlockerStyles() {
+        if (document.querySelector('#ka-site-adblocker')) return;
+
+        const style = document.createElement('style');
+        style.id = 'ka-site-adblocker';
+        style.textContent = `
+            /* Seitenbanner links/rechts */
+            .site-base--left-banner--full,
+            .site-base--right-banner--full,
+
+            /* Billboards auf Startseite und Detailansicht */
+            #home-billboard, #btf-billboard,
+            #vip-billboard, #vip-belly, #vip-middle, #vip-bottom,
+
+            /* Werbung ueber den Suchergebnissen */
+            #srchrslt-adtop, #srchrslt-adtop--flex, #srpb-top-banner,
+            [data-testid="top-banner"],
+
+            /* Above-the-fold-Werbung in Merkliste, Nachrichten, Konto */
+            #my-watchlist-atf, #my-msgbox-atf, #my-atf,
+
+            /* Liberty-Ad-Slots (Werbevermarkter von Kleinanzeigen) */
+            .liberty-filled, .j-liberty-wrapper,
+
+            /* Werbe-Kacheln innerhalb der Trefferliste */
+            ul#srchrslt-adtable > li:has([data-liberty-position-name]),
+            ul#srchrslt-adtable > li:has([id^="srps-result-list"]),
+            li[id^="home-teaser-ads-"],
+
+            /* Gesponserte Blöcke auf der Detailseite */
+            [id^="vip-similar-ads-"], #pvap-featrs,
+
+            /* Generische Werbecontainer -- Cookie-Banner explizit ausgenommen */
+            .ad-module,
+            div[data-testid*="ad-wrapper"],
+            div[data-testid*="banner"]:not([data-testid*="gdpr"]) {
+                display: none !important;
+            }
+
+            /* Cookie-Banner nicht versehentlich mitnehmen: Ohne Zustimmung
+               laedt die Seite sonst gar nicht erst weiter. */
+            #gdpr-banner-container, dialog#gdpr-banner {
+                display: block !important;
+                visibility: visible !important;
+            }
+        `;
+
+        const target = document.head || document.documentElement;
+        target.appendChild(style);
+        logger.log('Werbeblocker-CSS injiziert');
+    }
 
     /**
      * Injiziert CSS um störende Elemente sofort auszublenden:
@@ -929,6 +992,9 @@
     function init() {
         logger.log('UserScript initialisiert (v' + SCRIPT_VERSION + ')');
 
+        // Der Werbeblocker ist das Einzige, was auf JEDER Seite laeuft.
+        injectSiteAdBlockerStyles();
+
         // Wenn wir auf der Bestaetigungs-Seite gelandet sind und der Batch-Marker
         // im sessionStorage liegt: Erfolg an den Helper signalisieren. Den Tab
         // schliesst der Helper-Tab per GM_openInTab.close().
@@ -967,6 +1033,13 @@
             return;
         }
 
+        // Ab hier nur noch die Bearbeiten-Seite. Auf allen uebrigen Seiten der
+        // Domain bleibt es beim Werbeblocker oben -- keine Buttons, keine
+        // Observer, kein Zugriff auf Formulare.
+        if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') !== 0) {
+            return;
+        }
+
         // Banner-Blocker sofort injizieren
         injectBannerBlockerStyles();
 
@@ -997,6 +1070,7 @@
         typeof process !== 'undefined' && process.versions && process.versions.node) {
         module.exports = {
             CONFIG, getExponentialBackoffWait, readFormFields, getAdFormRoot, collectImageUrls,
+            injectSiteAdBlockerStyles,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId
         };
         return; // im Test-Kontext keine Initialisierung/Timer

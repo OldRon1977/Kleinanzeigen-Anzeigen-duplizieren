@@ -66,12 +66,21 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 > **Zum Alter**: Die Anzeigenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird daher aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende im Overlay weist darauf hin.
 
 ### Banner & Popup-Blocker (ab v3.4.0)
-Das Script blendet automatisch aus:
-- **Kostenpflichtige Feature-Optionen** (Highlight, Galerie, Bumpup) auf der Bearbeiten-Seite
+Auf der Bearbeiten-Seite blendet das Script automatisch aus:
+- **Kostenpflichtige Feature-Optionen** (Highlight, Galerie, Bumpup)
 - **Info-Banner** ("Das Bearbeiten deiner Anzeige schiebt sie nicht wieder hoch")
 - **Upsell-Popups** ("Ohne Hochschieben weiter", "Ohne Highlight weiter") nach dem Speichern
 
 Kein manuelles Wegklicken mehr nötig.
+
+### Werbeblocker (ab v3.10.0)
+Zusätzlich blendet das Script Werbung auf **allen** Seiten von kleinanzeigen.de aus: Seitenbanner links und rechts, Billboards auf Startseite und Detailansicht, Werbung über den Suchergebnissen, Werbe-Kacheln innerhalb der Trefferliste, gesponserte Blöcke unter Anzeigen sowie die Above-the-fold-Werbung in Merkliste, Nachrichten und Konto.
+
+Dafür ist der `@match` auf `https://www.kleinanzeigen.de/*` erweitert. Wichtig zum Einordnen: Auf allen Seiten außer der Bearbeiten-Seite tut das Script **ausschließlich** dieses eine — es hängt ein `<style>`-Element an und kehrt sofort zurück. Keine Buttons, keine Observer, kein Zugriff auf Formulare, kein JavaScript, das ins Seiten-DOM eingreift. Trifft ein Selektor daneben, verschwindet schlimmstenfalls ein Layout-Element; klicken oder senden kann der Blocker nichts.
+
+Der Cookie-Banner ist ausdrücklich von der Ausblendung ausgenommen — ohne Zustimmung lädt die Seite sonst nicht weiter.
+
+Die Selektoren sind adaptiert aus dem [Userscript von Andi (Zer089)](https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen), MIT-lizenziert.
 
 ## Technische Details
 
