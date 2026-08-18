@@ -65,6 +65,8 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 
 > **Zur Merkliste**: Der Zähler wird aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt"). Lässt er sich nicht lesen — etwa nach einem Layout-Umbau bei Kleinanzeigen —, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter mit ausgeblendet, also **nicht** neu eingestellt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
 
+> **Woher das Alter kommt**: In dieser Reihenfolge — (1) `adLifeTimeInSeconds`, das der Server direkt mitliefert, ganz ohne Datumsrechnung und unabhängig von der Uhr des Browsers; (2) das Erstelldatum `creationDate`; (3) als Notnagel die alte Schätzung aus der Restlaufzeit. Nur im dritten Fall steht "(geschätzt)" am Eintrag. Live gegengeprüft: (1) und (2) liefern dieselben Werte.
+
 > **Zum Alter**: Aus der JSON-Quelle ist das Alter exakt. Nur wenn auf die Seitenansicht zurückgefallen wird, muss es aus der Restlaufzeit abgeleitet werden (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es dann ungenau. Betroffene Einträge sind im Overlay mit "(geschätzt)" markiert, und die Fußnote erscheint nur dann.
 
 ### Reihenfolge beim Neu-Einstellen (geändert in v3.10.0)

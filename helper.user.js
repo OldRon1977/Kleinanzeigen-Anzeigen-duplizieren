@@ -532,6 +532,24 @@
         return ads;
     }
 
+    // Alter einer Anzeige aus der JSON-Antwort, in dieser Reihenfolge:
+    //
+    // 1. adLifeTimeInSeconds -- der Server nennt das Alter direkt. Kein
+    //    Datumsparsen, keine Abhaengigkeit von der lokalen Uhr oder Zeitzone.
+    //    Live gegengeprueft: liefert exakt dieselben Werte wie die Rechnung aus
+    //    creationDate (0 Tage fuer heute erstellte, 3 fuer die vom 15.08.).
+    // 2. creationDate -- das echte Erstelldatum, lokal verrechnet.
+    // 3. Restlaufzeit -- die alte Schaetzung ueber AD_RUNTIME_DAYS. Nur noch
+    //    Notnagel, entsprechend als ungenau markiert.
+    function ageFromJsonAd(ad, created, daysLeft) {
+        if (ad && typeof ad.adLifeTimeInSeconds === 'number' && ad.adLifeTimeInSeconds >= 0) {
+            // Abgerundet: eine heute erstellte Anzeige ist 0 Tage alt, nicht 1.
+            return { ageDays: Math.floor(ad.adLifeTimeInSeconds / 86400), exact: true };
+        }
+        if (created) return { ageDays: daysSince(created), exact: true };
+        return { ageDays: ageFromDaysLeft(daysLeft), exact: false };
+    }
+
     // Ein JSON-Objekt in dieselbe Form bringen, die das Overlay vom DOM kennt.
     // Rueckgabe null = unbrauchbar (fehlende ID oder gar kein Datum).
     function mapJsonAd(ad) {
@@ -543,9 +561,9 @@
         const end = parseJsonDate(ad.endDate);
         if (!created && !end) return null;
 
-        // Echtes Erstelldatum schlaegt die Schaetzung aus der Restlaufzeit.
         const daysLeft = end ? daysUntil(end) : null;
-        const ageDays = created ? daysSince(created) : ageFromDaysLeft(daysLeft);
+        const age = ageFromJsonAd(ad, created, daysLeft);
+        const ageDays = age.ageDays;
 
         return {
             adId: adId,
@@ -553,7 +571,7 @@
             endText: end ? formatDate(end) : '',
             daysLeft: daysLeft,
             ageDays: ageDays,
-            ageExact: !!created,
+            ageExact: age.exact,
             favCount: typeof ad.watchCount === 'number' ? ad.watchCount : null,
             viewCount: typeof ad.viewCount === 'number' ? ad.viewCount : null
         };
@@ -1493,6 +1511,7 @@
             daysSince,
             formatDate,
             mapJsonAd,
+            ageFromJsonAd,
             fetchAdListJson,
             collectCandidatesJson,
             collectCandidatesResilient,
