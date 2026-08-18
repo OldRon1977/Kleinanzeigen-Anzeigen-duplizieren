@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import helper from '../helper.user.js';
 
 const {
+    ageFromJsonAd,
     parseJsonDate,
     daysSince,
     formatDate,
@@ -75,6 +76,42 @@ describe('parseJsonDate', () => {
         expect(parseJsonDate(null)).toBeNull();
         expect(parseJsonDate('')).toBeNull();
         expect(parseJsonDate('irgendwas')).toBeNull();
+    });
+});
+
+// Reihenfolge der Altersquellen. Die drei Wege muessen sich unterscheiden
+// lassen, sonst beweist der Test nichts -- deshalb bewusst widerspruechliche
+// Werte: 30 Tage laut Server, 20 laut Erstelldatum, 5 laut Restlaufzeit.
+describe('ageFromJsonAd', () => {
+    const created = new Date();
+    created.setHours(0, 0, 0, 0);
+    created.setDate(created.getDate() - 20);
+
+    it('nimmt zuerst die Server-Angabe adLifeTimeInSeconds', () => {
+        const r = ageFromJsonAd({ adLifeTimeInSeconds: 30 * 86400 }, created, 55);
+        expect(r).toEqual({ ageDays: 30, exact: true });
+    });
+
+    it('rundet ab: heute erstellt heisst 0 Tage alt', () => {
+        expect(ageFromJsonAd({ adLifeTimeInSeconds: 3600 }, null, 60).ageDays).toBe(0);
+        expect(ageFromJsonAd({ adLifeTimeInSeconds: 86399 }, null, 60).ageDays).toBe(0);
+        expect(ageFromJsonAd({ adLifeTimeInSeconds: 86400 }, null, 60).ageDays).toBe(1);
+    });
+
+    it('faellt ohne Server-Angabe auf das Erstelldatum zurueck', () => {
+        const r = ageFromJsonAd({}, created, 55);
+        expect(r).toEqual({ ageDays: 20, exact: true });
+    });
+
+    it('faellt ohne beides auf die Restlaufzeit-Schaetzung zurueck und sagt das', () => {
+        const r = ageFromJsonAd({}, null, 55);
+        expect(r).toEqual({ ageDays: 5, exact: false });   // 60 - 55
+    });
+
+    it('ignoriert unbrauchbare Server-Angaben', () => {
+        expect(ageFromJsonAd({ adLifeTimeInSeconds: null }, created, 55).ageDays).toBe(20);
+        expect(ageFromJsonAd({ adLifeTimeInSeconds: 'viele' }, created, 55).ageDays).toBe(20);
+        expect(ageFromJsonAd({ adLifeTimeInSeconds: -5 }, created, 55).ageDays).toBe(20);
     });
 });
 
