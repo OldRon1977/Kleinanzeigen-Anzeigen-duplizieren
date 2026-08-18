@@ -38,6 +38,11 @@ function buttonByText(text) {
         .find((b) => b.textContent === text);
 }
 
+function checkboxes() {
+    // ohne die unsichtbaren Gate-Checkboxen des Merk-Filters
+    return Array.from(overlay().querySelectorAll('input[type="checkbox"]:not([data-ka-gate])'));
+}
+
 function gates() {
     return Array.from(overlay().querySelectorAll('input[data-ka-gate="fav"]'));
 }
@@ -120,5 +125,99 @@ describe('Kette Markup -> Auswahl -> Start', () => {
 
         await renderConfirm(matches, skipped, () => {});
         expect(favToggle()).toBeUndefined();
+    });
+});
+
+// Das vom Nutzer benannte Szenario, wortwoertlich nachgestellt:
+//   Anzeige 1 - 1x gemerkt | Anzeige 2 - 0x gemerkt
+//   "Alle" klicken -> beide angehakt
+//   "nur nicht gemerkte" aktivieren -> Anzeige 2 bleibt uebrig
+//   Start -> Anzeige 1 darf unter KEINEN Umstaenden mitlaufen,
+//            obwohl sie vorher angehakt war und nur ausgeblendet wurde.
+describe('Szenario: erst "Alle", dann filtern, dann starten', () => {
+    beforeEach(() => {
+        document.body.innerHTML =
+            '<ul>' +
+            adCard('1', 'Anzeige 1', endDateInDays(40), '1 mal gemerkt') +
+            adCard('2', 'Anzeige 2', endDateInDays(40), '0 mal gemerkt') +
+            '</ul>';
+    });
+
+    it('uebergibt ausschliesslich die sichtbar verbliebene Anzeige', async () => {
+        const { matches, skipped } = collectCandidates();
+        expect(matches.map((m) => [m.adId, m.favCount])).toEqual([['1', 1], ['2', 0]]);
+
+        let started = null;
+        await renderConfirm(matches, skipped, (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        expect(overlay().textContent).toContain('2 von 2');
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        expect(overlay().textContent).toContain('1 von 1');
+
+        buttonByText('Start').click();
+
+        expect(started).toHaveLength(1);
+        expect(started[0].adId).toBe('2');
+        expect(started.map((m) => m.adId)).not.toContain('1');
+    });
+
+    it('laesst Anzeige 1 in jeder einzelnen Pruefschicht durchfallen', async () => {
+        const { matches, skipped } = collectCandidates();
+        await renderConfirm(matches, skipped, () => {});
+
+        buttonByText('Alle').click();
+        favToggle().checked = true;
+        favToggle().onchange();
+
+        const row = gates()[0].closest('li');
+        expect(gates()[0].dataset.adid).toBe('1');
+        expect(row.hidden).toBe(true);                  // ausgeblendet
+        expect(row.style.display).toBe('none');         // auch per Style
+        expect(checkboxes()[0].checked).toBe(false);    // sichtbarer Haken weg
+        expect(gates()[0].checked).toBe(false);         // zweiter Haken weg
+    });
+
+    it('bleibt dabei, auch wenn die Zeile nachtraeglich wieder eingeblendet wird', async () => {
+        const { matches, skipped } = collectCandidates();
+
+        let started = null;
+        await renderConfirm(matches, skipped, (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        favToggle().checked = true;
+        favToggle().onchange();
+
+        // Am Filter vorbei: Zeile sichtbar machen und BEIDE Haken von Hand
+        // setzen. Nur die Ableitung aus favCount widerspricht dann noch.
+        const row = gates()[0].closest('li');
+        row.hidden = false;
+        row.style.display = '';
+        checkboxes()[0].checked = true;
+        checkboxes()[0].onchange();
+        gates()[0].checked = true;
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).toEqual(['2']);
+    });
+
+    it('startet gar nicht, wenn nur die gemerkte Anzeige angehakt war', async () => {
+        const { matches, skipped } = collectCandidates();
+
+        let started = null;
+        await renderConfirm(matches, skipped, (chosen) => { started = chosen; });
+
+        checkboxes()[0].checked = true;      // nur Anzeige 1 (gemerkt)
+        checkboxes()[0].onchange();
+        expect(overlay().textContent).toContain('1 von 2');
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        expect(overlay().textContent).toContain('0 von 1');
+
+        buttonByText('Start').click();
+        expect(started).toBeNull();          // Start bleibt wirkungslos
     });
 });
