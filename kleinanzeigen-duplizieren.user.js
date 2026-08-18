@@ -71,6 +71,14 @@
      *
      * Selektoren adaptiert aus dem Userscript von Andi (Zer089), MIT-Lizenz:
      * https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
+     *
+     * Live geprueft am 18.08.2026 auf Startseite, Suchergebnis und Detailseite
+     * (jeweils ohne Login). [live] = hat dort echte Werbung getroffen,
+     * [ungeprueft] = kein Treffer auf den erreichbaren Seiten. Ungeprueftes
+     * bleibt drin, weil es entweder eingeloggte Seiten betrifft oder folgenlos
+     * ist -- ein Selektor ohne Treffer tut nichts. Gegenrichtung ebenfalls
+     * geprueft: In einer Trefferliste mit 34 Eintraegen blieben alle 27 echten
+     * Anzeigen sichtbar, ausgeblendet wurden genau die 7 Werbekacheln.
      */
     function injectSiteAdBlockerStyles() {
         if (document.querySelector('#ka-site-adblocker')) return;
@@ -78,33 +86,36 @@
         const style = document.createElement('style');
         style.id = 'ka-site-adblocker';
         style.textContent = `
-            /* Seitenbanner links/rechts */
+            /* [live] Seitenbanner links/rechts (Detailseite: je 1 Treffer) */
             .site-base--left-banner--full,
             .site-base--right-banner--full,
 
-            /* Billboards auf Startseite und Detailansicht */
+            /* [live] #home-billboard (Startseite: 6), #btf-billboard (Suche: 1) */
             #home-billboard, #btf-billboard,
+            /* [ungeprueft] vip-Slots -- auf der getesteten Detailseite kein Treffer */
             #vip-billboard, #vip-belly, #vip-middle, #vip-bottom,
 
-            /* Werbung ueber den Suchergebnissen */
+            /* [ungeprueft] Werbung ueber den Suchergebnissen */
             #srchrslt-adtop, #srchrslt-adtop--flex, #srpb-top-banner,
             [data-testid="top-banner"],
 
-            /* Above-the-fold-Werbung in Merkliste, Nachrichten, Konto */
+            /* [ungeprueft] nur eingeloggt erreichbar: Merkliste, Nachrichten, Konto */
             #my-watchlist-atf, #my-msgbox-atf, #my-atf,
 
-            /* Liberty-Ad-Slots (Werbevermarkter von Kleinanzeigen) */
+            /* [live] Liberty-Ad-Slots -- der wirksamste Selektor ueberhaupt
+               (Startseite 4, Suche 16, Detailseite 5 Treffer) */
             .liberty-filled, .j-liberty-wrapper,
 
-            /* Werbe-Kacheln innerhalb der Trefferliste */
+            /* [live] Werbe-Kacheln in der Trefferliste (je 7 Treffer bei 34
+               Eintraegen); li[id^="home-teaser-ads-"] Startseite: 1 Treffer */
             ul#srchrslt-adtable > li:has([data-liberty-position-name]),
             ul#srchrslt-adtable > li:has([id^="srps-result-list"]),
             li[id^="home-teaser-ads-"],
 
-            /* Gesponserte Blöcke auf der Detailseite */
+            /* [ungeprueft] gesponserte Bloecke auf der Detailseite */
             [id^="vip-similar-ads-"], #pvap-featrs,
 
-            /* Generische Werbecontainer -- Cookie-Banner explizit ausgenommen */
+            /* [ungeprueft] generische Werbecontainer -- Cookie-Banner ausgenommen */
             .ad-module,
             div[data-testid*="ad-wrapper"],
             div[data-testid*="banner"]:not([data-testid*="gdpr"]) {

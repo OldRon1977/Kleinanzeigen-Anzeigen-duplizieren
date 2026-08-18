@@ -94,6 +94,10 @@ Der Cookie-Banner ist ausdrücklich von der Ausblendung ausgenommen — ohne Zus
 
 Die Selektoren sind adaptiert aus dem [Userscript von Andi (Zer089)](https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen), MIT-lizenziert.
 
+**Live geprüft** (18.08.2026, Startseite / Suchergebnis / Detailseite, ohne Login): Getroffen haben `.liberty-filled` (4 / 16 / 5 Treffer), `#home-billboard` (6), `#btf-billboard` (1), die Werbe-Kacheln in der Trefferliste (7) und die Seitenbanner der Detailseite (je 1). Die übrigen Selektoren fanden auf den erreichbaren Seiten nichts — sie betreffen entweder eingeloggte Seiten (Merkliste, Nachrichten) oder stammen aus einer älteren Fassung der Seite. Sie bleiben drin, weil ein Selektor ohne Treffer folgenlos ist; im Code sind sie als `[ungeprueft]` markiert.
+
+**Gegenprobe**: In einer Trefferliste mit 34 Einträgen blieben nach dem Blocker alle **27 echten Anzeigen** sichtbar, ausgeblendet wurden genau die **7 Werbekacheln**. Auf der Detailseite blieben Titel, Preis und Bild unverändert sichtbar.
+
 ## Technische Details
 
 ### Berechtigungen
