@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.9.0
+// @version       3.10.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*
@@ -36,7 +36,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.9.0'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.10.0'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {

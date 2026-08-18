@@ -141,6 +141,17 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Version 3.10.0 / Helper 1.9.0 (August 2026)
+
+Drei Änderungen, die aus dem Vergleich mit anderen Kleinanzeigen-Tools entstanden sind (Issue #32).
+
+- **Neu (Sicherheit): Erst anlegen, dann löschen.** Bisher wurde das Original zuerst gelöscht und dann die neue Anzeige erstellt — scheiterte der zweite Schritt, war die Anzeige weg. Jetzt bleibt das Original bestehen, bis der Server die Neuanlage bestätigt hat; gelöscht wird erst auf der Bestätigungsseite. Ein Abbruch mittendrin kann damit keine Anzeige mehr kosten, der schlimmste Fall ist ein Duplikat. Tritt der ein, meldet ihn der Batch als Hinweis mit ID zum manuellen Löschen (`ok:delete_failed`).
+- **Neu: Anzeigenliste aus der JSON-Schnittstelle.** `/m-meine-anzeigen-verwalten.json` liefert **alle Seiten** statt nur der sichtbaren, das **echte Alter** statt einer Schätzung und den Merk-Zähler als Zahl. Fällt die Schnittstelle aus, arbeitet der Batch wie bisher mit der Seitenansicht weiter.
+- **Neu: Das Alter kommt vom Server.** `adLifeTimeInSeconds` statt eigener Datumsrechnung — unabhängig von Uhr und Zeitzone des Browsers. Nur wenn weder das noch ein Erstelldatum vorliegt, wird geschätzt; solche Einträge sind mit "(geschätzt)" markiert.
+- **Neu: Werbeblocker auf allen Seiten.** Seitenbanner, Billboards, Werbung über den Suchergebnissen, Werbe-Kacheln in der Trefferliste. Reines CSS: Auf allen Seiten außer der Bearbeiten-Seite hängt das Script nur ein `<style>` an und kehrt zurück. Live geprüft — von 34 Einträgen einer Trefferliste blieben alle 27 echten Anzeigen sichtbar, ausgeblendet wurden genau die 7 Werbekacheln.
+- **Fix**: `smartRepublish` wartet jetzt explizit darauf, dass die React-Form bedienbar ist. Diese Wartezeit war vorher ein Nebeneffekt der Löschung und fiel mit der neuen Reihenfolge weg — im Batch klickte der Ablauf dadurch in eine noch nicht fertige Form. `duplicateAd` hatte den Wait bereits; er steht jetzt als `awaitFormReady()` in beiden Abläufen.
+- **Tests**: 151 Tests. Neu sind die JSON-Quelle (Mehrseitigkeit, Feld-Mapping, Rückfallebene), die Altersreihenfolge, die Löschung auf der Bestätigungsseite inklusive Reload-Schutz und ein Regressionsschutz für das Bereitschafts-Gate.
+
 ### Version 3.9.0 / Helper 1.8.0 (August 2026)
 
 Das Batch-Overlay kann jetzt Anzeigen aussparen, die jemand auf die Merkliste gesetzt hat — Wunsch aus Issue #54. Wer eine gemerkte Anzeige neu einstellt, reißt sie aus der Merkliste des Interessenten; eine spätere Preisanpassung erreicht ihn dann nicht mehr.
