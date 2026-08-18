@@ -67,6 +67,16 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 
 > **Zum Alter**: Aus der JSON-Quelle ist das Alter exakt. Nur wenn auf die Seitenansicht zurückgefallen wird, muss es aus der Restlaufzeit abgeleitet werden (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es dann ungenau. Betroffene Einträge sind im Overlay mit "(geschätzt)" markiert, und die Fußnote erscheint nur dann.
 
+### Reihenfolge beim Neu-Einstellen (geändert in v3.10.0)
+Bis v3.9.0 löschte das Script zuerst die alte Anzeige und legte danach die neue an. Scheiterte der zweite Schritt, war die Anzeige weg — dagegen halfen nur der Recovery-Snapshot und der Auto-Stop.
+
+Ab v3.10.0 ist es umgekehrt: **Erst wird die neue Anzeige angelegt, dann die alte gelöscht.** Das Original bleibt bestehen, bis der Server die Neuanlage bestätigt hat; gelöscht wird erst auf der Bestätigungsseite, deren Erreichen der Beweis für die erfolgreiche Anlage ist.
+
+Was das praktisch ändert:
+- **Ein Abbruch mitten im Vorgang kann keine Anzeige mehr kosten.** Der schlimmste Fall ist ein Duplikat: beide Anzeigen stehen online.
+- Tritt dieser Fall ein, meldet der Batch ihn im Abschlussbildschirm als Hinweis mit der betroffenen Anzeigen-ID zum manuellen Löschen — er verschweigt ihn nicht.
+- Der Recovery-Snapshot bleibt trotzdem erhalten. Er kostet nichts und deckt Fälle ab, die außerhalb dieses Ablaufs liegen.
+
 ### Banner & Popup-Blocker (ab v3.4.0)
 Auf der Bearbeiten-Seite blendet das Script automatisch aus:
 - **Kostenpflichtige Feature-Optionen** (Highlight, Galerie, Bumpup)

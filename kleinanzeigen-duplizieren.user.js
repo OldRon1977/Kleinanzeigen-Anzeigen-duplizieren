@@ -42,7 +42,7 @@
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,
         DELETE_REQUEST_TIMEOUT_MS: 8000,
-        DELETE_WAIT_BEFORE_CREATE_MS: 2000,
+        DELETE_WAIT_AFTER_CREATE_MS: 2000,
         INITIAL_RETRY_WAIT_MS: 500,
         MAX_RETRY_WAIT_MS: 8000,
         DUPLICATE_READY_SETTLE_MS: 1500,
@@ -340,6 +340,25 @@
         throw new Error('CSRF-Token nicht gefunden (weder meta noch input)');
     }
 
+    // Auf der Bestaetigungs-Seite steht das CSRF-Meta nicht zwingend im DOM.
+    // Dann wird es aus "Meine Anzeigen" nachgeladen, statt die Loeschung
+    // scheitern zu lassen.
+    async function resolveCsrfToken() {
+        try {
+            return getCsrfToken();
+        } catch (e) {
+            logger.log('CSRF-Token nicht im Dokument, lade aus "Meine Anzeigen" nach');
+        }
+        const res = await fetch('https://www.kleinanzeigen.de/m-meine-anzeigen.html', {
+            credentials: 'same-origin'
+        });
+        if (!res.ok) throw new Error('CSRF-Token nicht ermittelbar (HTTP ' + res.status + ')');
+        const html = await res.text();
+        const m = html.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/i);
+        if (!m) throw new Error('CSRF-Token nicht ermittelbar (kein meta-Tag)');
+        return m[1];
+    }
+
     async function deleteAd(adId) {
         if (!adId || !/^\d{1,20}$/.test(adId)) {
             throw new Error('Ungültige Anzeigen-ID');
@@ -351,11 +370,12 @@
         try {
             logger.log(`Lösche Anzeige mit ID: ${adId}`);
 
+            const csrfToken = await resolveCsrfToken();
             const response = await fetch(`https://www.kleinanzeigen.de/m-anzeigen-loeschen.json?ids=${adId}`, {
                 method: 'POST',
                 headers: {
                     'accept': 'application/json',
-                    'x-csrf-token': getCsrfToken(),
+                    'x-csrf-token': csrfToken,
                     'content-type': 'application/json'
                 },
                 signal: controller.signal
@@ -809,26 +829,15 @@
                 return;
             }
 
-            logger.log('Versuche Original-Anzeige ' + originalId + ' zu loeschen');
-            showNotification('Original wird gelöscht...');
+            // REIHENFOLGE: erst anlegen, dann loeschen.
+            // Bis Helper 1.8.0 wurde das Original zuerst geloescht und danach die
+            // neue Anzeige angelegt. Scheiterte der zweite Schritt, war die
+            // Anzeige weg -- der Snapshot war die einzige Rettung. Jetzt bleibt
+            // das Original bestehen, bis der Server die Neuanlage bestaetigt hat;
+            // geloescht wird erst auf der Bestaetigungs-Seite. Der schlimmste
+            // Fall ist damit ein Duplikat, kein verlorener Datensatz.
 
-            let deleteFailed = false;
-            try {
-                await deleteAd(originalId);
-                await delay(CONFIG.DELETE_WAIT_BEFORE_CREATE_MS);
-                phase = 'delete_ok';
-                logger.log('Original-Anzeige erfolgreich gelöscht');
-            } catch (error) {
-                deleteFailed = true;
-                phase = 'delete_failed';
-                logger.warn('Loeschung fehlgeschlagen', error);
-                showNotification('Original konnte nicht gelöscht werden - erstelle trotzdem neue.', 'error');
-            }
-
-            // Nach Loeschung koennen die im Preflight aufgeloesten Referenzen durch
-            // ein React-Re-Render veraltet sein. Bei getrennten Knoten einmal neu
-            // aufloesen. Schlaegt das JETZT fehl, ist das Original ggf. schon
-            // geloescht -> Datenverlust-korrekter Fehlercode.
+            // Referenzen koennen durch ein React-Re-Render veraltet sein.
             if (!saveBtn.isConnected) {
                 saveBtn = await waitForElement(findSaveButton, 5000);
             }
@@ -836,12 +845,12 @@
                 adIdInput = await waitForElement(() => findAdIdInput(document, originalId), 5000);
             }
             if (!saveBtn || !adIdInput) {
-                logger.error('Referenzen nach Loeschung nicht mehr aufloesbar', { deleteFailed: deleteFailed });
-                showNotification('Formular nach Loeschung nicht auffindbar - bitte Seite pruefen.', 'error');
+                logger.error('Referenzen vor dem Speichern nicht mehr aufloesbar');
+                showNotification('Formular nicht auffindbar - Abbruch, das Original bleibt bestehen.', 'error');
                 showLoadingSpinner(false);
                 document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
                 if (batchMode) {
-                    batchSetResult(originalId, 'error:save_failed:' + (deleteFailed ? 'delete_failed' : 'delete_ok'));
+                    batchSetResult(originalId, 'error:save_failed:not_deleted');
                 }
                 return;
             }
@@ -853,11 +862,8 @@
             adIdInput.value = '';
             logger.log('adId Input: name-Attribut entfernt und Wert geleert');
 
-            const statusMsg = deleteFailed
-                ? 'Neue Anzeige wird erstellt (Original bleibt noch kurz sichtbar)...'
-                : 'Neue Anzeige wird erstellt (mit allen Bildern)...';
-            logger.log('Erstelle neue Anzeige', { deleteFailed });
-            showNotification(statusMsg);
+            logger.log('Erstelle neue Anzeige (Original bleibt bis zur Bestaetigung bestehen)');
+            showNotification('Neue Anzeige wird erstellt (mit allen Bildern)...');
 
             startPopupDismisser();
             // Marker fuer die Bestaetigungs-Seite in BEIDEN Modi setzen:
@@ -870,6 +876,10 @@
             if (!batchMode) {
                 try { sessionStorage.setItem('ka-manual-mode', '1'); } catch (e) {}
             }
+            // Auftrag an die Bestaetigungs-Seite: DIESE Anzeige loeschen, sobald
+            // die neue nachweislich existiert. Ohne diesen Marker wird nichts
+            // geloescht -- ein verlorener Marker kostet ein Duplikat, kein Original.
+            try { sessionStorage.setItem('ka-delete-after-create', originalId); } catch (e) {}
             phase = 'save_clicked';
             saveBtn.click();
             startSaveWatchdog();
@@ -881,9 +891,11 @@
                 setTimeout(function () {
                     try {
                         if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
-                            const sub = (deleteFailed) ? 'delete_failed' : 'delete_ok';
-                            logger.error('Watchdog: Save scheint nicht navigiert zu haben', { sub: sub });
-                            batchSetResult(originalId, 'error:save_failed:' + sub);
+                            logger.error('Watchdog: Save scheint nicht navigiert zu haben');
+                            // Nicht navigiert heisst: nie bei der Bestaetigungs-Seite
+                            // angekommen, also wurde auch nichts geloescht.
+                            try { sessionStorage.removeItem('ka-delete-after-create'); } catch (e) {}
+                            batchSetResult(originalId, 'error:save_failed:not_deleted');
                         }
                     } catch (e) {}
                 }, 45 * 1000);
@@ -895,12 +907,13 @@
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
             if (batchMode && originalId) {
-                // Wenn Original bereits geloescht wurde, ist das Datenverlust.
-                // Helper soll Snapshot behalten und Batch stoppen.
-                if (phase === 'delete_ok' || phase === 'save_clicked') {
-                    batchSetResult(originalId, 'error:save_failed:delete_ok');
-                } else if (phase === 'delete_failed') {
-                    batchSetResult(originalId, 'error:save_failed:delete_failed');
+                // Kein Datenverlust mehr moeglich: Geloescht wird erst auf der
+                // Bestaetigungs-Seite, und dorthin kommt der Ablauf nur, wenn die
+                // neue Anzeige existiert. Scheitert hier etwas, steht das
+                // Original noch.
+                try { sessionStorage.removeItem('ka-delete-after-create'); } catch (e) {}
+                if (phase === 'save_clicked') {
+                    batchSetResult(originalId, 'error:save_failed:not_deleted');
                 } else {
                     batchSetResult(originalId, 'error:exception:' + (error.message || 'unbekannt'));
                 }
@@ -988,6 +1001,73 @@
         showNotification('Duplikations-Buttons bereit!', 'success');
     }
 
+    /**
+     * Bestaetigungs-Seite nach erfolgreicher Neuanlage.
+     *
+     * Dass diese Seite ueberhaupt erreicht wurde, IST der Beweis, dass die neue
+     * Anzeige serverseitig existiert. Deshalb faellt hier die Loeschung des
+     * Originals -- und nur hier. Fehlt der Marker, wird nichts geloescht.
+     */
+    async function handleConfirmationPage() {
+        try {
+            // Duplikat via Helper: 'ok' signalisieren, damit der Helper den
+            // Worker-Tab schliesst (kein Original zu loeschen, kein Snapshot).
+            const dupAdId = sessionStorage.getItem('ka-duplicate-adid');
+            if (dupAdId) {
+                sessionStorage.removeItem('ka-duplicate-adid');
+                logger.log('Bestaetigungs-Seite (Duplikat) erreicht, signalisiere ok an Helper', { dupAdId: dupAdId });
+                try { localStorage.setItem('ka-duplicate-result-' + dupAdId, 'ok'); } catch (e) {}
+            }
+
+            const origAdId = sessionStorage.getItem('ka-batch-original-adid');
+            const manualMode = sessionStorage.getItem('ka-manual-mode') === '1';
+            const deleteTarget = sessionStorage.getItem('ka-delete-after-create');
+
+            // Marker sofort abraeumen: Ein Reload dieser Seite darf nicht ein
+            // zweites Mal loeschen.
+            try {
+                sessionStorage.removeItem('ka-batch-original-adid');
+                sessionStorage.removeItem('ka-manual-mode');
+                sessionStorage.removeItem('ka-delete-after-create');
+            } catch (e) {}
+
+            let deleteFailed = false;
+            if (deleteTarget) {
+                logger.log('Neue Anzeige bestaetigt, loesche jetzt das Original', { adId: deleteTarget });
+                showNotification('Neue Anzeige steht - Original wird gelöscht...');
+                try {
+                    await delay(CONFIG.DELETE_WAIT_AFTER_CREATE_MS);
+                    await deleteAd(deleteTarget);
+                    logger.log('Original geloescht', { adId: deleteTarget });
+                } catch (e) {
+                    // Kein Datenverlust, aber ein Duplikat: die neue Anzeige
+                    // steht, das Original ebenfalls. Das muss der Nutzer wissen.
+                    deleteFailed = true;
+                    logger.error('Original konnte nach der Neuanlage nicht geloescht werden', e);
+                    showNotification('Neue Anzeige steht, aber das Original blieb bestehen - bitte manuell löschen.', 'error');
+                }
+            }
+
+            if (origAdId) {
+                if (manualMode) {
+                    // Manueller Modus: kein Helper beteiligt. Den eigenen
+                    // Snapshot wieder abraeumen, damit keine Orphan-Snapshots
+                    // das Recovery-UI des Helpers spaeter als Warnung anzeigen.
+                    logger.log('Bestaetigungs-Seite (manuell) erreicht, loesche eigenen Snapshot', { origAdId: origAdId });
+                    batchDeleteSnapshot(origAdId).catch(function (e) {
+                        logger.warn('Snapshot-Loeschung (manuell) fehlgeschlagen', e);
+                    });
+                } else {
+                    const value = deleteFailed ? 'ok:delete_failed' : 'ok';
+                    logger.log('Bestaetigungs-Seite erreicht, signalisiere an Helper', { origAdId: origAdId, value: value });
+                    try { localStorage.setItem('ka-batch-result-' + origAdId, value); } catch (e) {}
+                }
+            }
+        } catch (e) {
+            logger.warn('Bestaetigungs-Seite Hook fehlgeschlagen', e);
+        }
+    }
+
     // === INITIALISIERUNG ===
     function init() {
         logger.log('UserScript initialisiert (v' + SCRIPT_VERSION + ')');
@@ -995,41 +1075,11 @@
         // Der Werbeblocker ist das Einzige, was auf JEDER Seite laeuft.
         injectSiteAdBlockerStyles();
 
-        // Wenn wir auf der Bestaetigungs-Seite gelandet sind und der Batch-Marker
-        // im sessionStorage liegt: Erfolg an den Helper signalisieren. Den Tab
-        // schliesst der Helper-Tab per GM_openInTab.close().
+        // Wenn wir auf der Bestaetigungs-Seite gelandet sind: Hier steht fest,
+        // dass die neue Anzeige existiert -- erst jetzt wird das Original
+        // geloescht und das Ergebnis an den Helper gemeldet.
         if (window.location.pathname.indexOf('/p-anzeige-aufgeben-bestaetigung.html') === 0) {
-            try {
-                // Duplikat via Helper: 'ok' signalisieren, damit der Helper den
-                // Worker-Tab schliesst (analog Smart-Republish, aber ohne Snapshot).
-                const dupAdId = sessionStorage.getItem('ka-duplicate-adid');
-                if (dupAdId) {
-                    sessionStorage.removeItem('ka-duplicate-adid');
-                    logger.log('Bestaetigungs-Seite (Duplikat) erreicht, signalisiere ok an Helper', { dupAdId: dupAdId });
-                    try { localStorage.setItem('ka-duplicate-result-' + dupAdId, 'ok'); } catch (e) {}
-                }
-
-                const origAdId = sessionStorage.getItem('ka-batch-original-adid');
-                const manualMode = sessionStorage.getItem('ka-manual-mode') === '1';
-                if (origAdId) {
-                    sessionStorage.removeItem('ka-batch-original-adid');
-                    sessionStorage.removeItem('ka-manual-mode');
-                    if (manualMode) {
-                        // Manueller Modus: kein Helper beteiligt. Den eigenen
-                        // Snapshot wieder abraeumen, damit keine Orphan-Snapshots
-                        // das Recovery-UI des Helpers spaeter als Warnung anzeigen.
-                        logger.log('Bestaetigungs-Seite (manuell) erreicht, loesche eigenen Snapshot', { origAdId: origAdId });
-                        batchDeleteSnapshot(origAdId).catch(function (e) {
-                            logger.warn('Snapshot-Loeschung (manuell) fehlgeschlagen', e);
-                        });
-                    } else {
-                        logger.log('Bestaetigungs-Seite erreicht, signalisiere ok an Helper', { origAdId: origAdId });
-                        try { localStorage.setItem('ka-batch-result-' + origAdId, 'ok'); } catch (e) {}
-                    }
-                }
-            } catch (e) {
-                logger.warn('Bestaetigungs-Seite Hook fehlgeschlagen', e);
-            }
+            handleConfirmationPage();
             return;
         }
 
@@ -1071,6 +1121,7 @@
         module.exports = {
             CONFIG, getExponentialBackoffWait, readFormFields, getAdFormRoot, collectImageUrls,
             injectSiteAdBlockerStyles,
+            handleConfirmationPage,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId
         };
         return; // im Test-Kontext keine Initialisierung/Timer

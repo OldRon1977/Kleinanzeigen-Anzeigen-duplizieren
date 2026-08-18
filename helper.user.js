@@ -1204,6 +1204,29 @@
         failLine.appendChild(failStrong);
         body.appendChild(failLine);
 
+        // Hinweise sind kein Fehler (die neue Anzeige steht), duerfen aber nicht
+        // untergehen: 'delete_failed' heisst, dass das Original noch online ist.
+        const warnings = state.warnings || [];
+        if (warnings.length > 0) {
+            const note = document.createElement('div');
+            note.style.cssText = 'background:#fff7e6;border:1px solid #ffd591;padding:8px;border-radius:4px;margin-top:8px;color:#a06200;font-size:12px;';
+            const head = document.createElement('div');
+            head.style.cssText = 'font-weight:600;margin-bottom:4px;';
+            head.textContent = '\u26A0 ' + warnings.length + ' Anzeige(n) mit Hinweis';
+            note.appendChild(head);
+            const ul = document.createElement('ul');
+            ul.style.cssText = 'margin:0 0 0 16px;padding:0;';
+            warnings.forEach(function (w) {
+                const li = document.createElement('li');
+                li.textContent = w.warning === 'delete_failed'
+                    ? (w.title || 'ID ' + w.adId) + ': neue Anzeige steht, Original blieb bestehen – bitte manuell löschen (ID ' + w.adId + ')'
+                    : (w.title || 'ID ' + w.adId) + ': ' + w.warning;
+                ul.appendChild(li);
+            });
+            note.appendChild(ul);
+            body.appendChild(note);
+        }
+
         if (state.failed.length > 0) {
             const ul = document.createElement('ul');
             ul.style.cssText = 'margin:6px 0 0 18px;color:#e74c3c;font-size:12px;';
@@ -1258,6 +1281,12 @@
         if (!raw) return null;
         if (raw === 'ok') {
             return { ok: true };
+        }
+        // 'ok:<hinweis>' = die neue Anzeige steht, aber etwas ist erwaehnenswert.
+        // Aktuell nur 'delete_failed': das Original blieb bestehen, es existiert
+        // also ein Duplikat. Kein Datenverlust, aber der Nutzer muss es wissen.
+        if (raw.indexOf('ok:') === 0) {
+            return { ok: true, warning: raw.slice(3) || 'unbekannt' };
         }
         if (raw.indexOf('error:') === 0) {
             const tail = raw.slice(6);
@@ -1377,6 +1406,7 @@
             queue: matches.slice(),
             processed: [],
             failed: [],
+            warnings: [],
             currentLabel: '',
             nextEtaText: '',
             aborted: false,
@@ -1400,8 +1430,13 @@
 
             const res = await processOne(item);
             if (res.ok) {
-                state.processed.push({ adId: item.adId });
-                log('OK adId ' + item.adId);
+                state.processed.push({ adId: item.adId, warning: res.warning || null });
+                if (res.warning) {
+                    state.warnings.push({ adId: item.adId, title: item.title, warning: res.warning });
+                    warn('OK mit Hinweis adId ' + item.adId + ': ' + res.warning);
+                } else {
+                    log('OK adId ' + item.adId);
+                }
                 // Snapshot kann gelöscht werden -- kein Datenverlust
                 try { await deleteSnapshot(item.adId); } catch (e) { warn('Snapshot-Loeschung fehlgeschlagen', e); }
             } else {
