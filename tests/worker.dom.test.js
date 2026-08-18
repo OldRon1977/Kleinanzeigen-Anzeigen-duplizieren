@@ -6,7 +6,8 @@ const {
     getExponentialBackoffWait,
     readFormFields,
     getAdFormRoot,
-    collectImageUrls
+    collectImageUrls,
+    injectSiteAdBlockerStyles
 } = worker;
 
 beforeEach(() => {
@@ -148,5 +149,48 @@ describe('getAdFormRoot / readFormFields - Formular-Scoping', () => {
     it('faellt auf das Dokument zurueck, wenn es gar kein Formular gibt', () => {
         document.body.innerHTML = `<input name="title" value="Ohne Formular">`;
         expect(readFormFields(document, null).rawFields.title).toBe('Ohne Formular');
+    });
+});
+
+// Der Werbeblocker ist reines CSS. jsdom wendet :has()-Selektoren nicht
+// zuverlaessig an, deshalb pruefen diese Tests die Beschaffenheit der Regel --
+// nicht, ob im Browser am Ende wirklich etwas verschwindet. Das zeigt nur der
+// Blick auf die echte Seite.
+describe('injectSiteAdBlockerStyles', () => {
+    it('haengt genau ein <style> an und wiederholt sich nicht', () => {
+        injectSiteAdBlockerStyles();
+        injectSiteAdBlockerStyles();
+        injectSiteAdBlockerStyles();
+
+        expect(document.querySelectorAll('#ka-site-adblocker')).toHaveLength(1);
+    });
+
+    it('blendet die bekannten Werbecontainer aus', () => {
+        injectSiteAdBlockerStyles();
+        const css = document.querySelector('#ka-site-adblocker').textContent;
+
+        ['.site-base--left-banner--full', '#home-billboard', '#srchrslt-adtop',
+         '.liberty-filled', '#my-watchlist-atf', '[id^="vip-similar-ads-"]']
+            .forEach((sel) => expect(css).toContain(sel));
+    });
+
+    it('nimmt den Cookie-Banner ausdruecklich aus', () => {
+        injectSiteAdBlockerStyles();
+        const css = document.querySelector('#ka-site-adblocker').textContent;
+
+        // Ohne diese Ausnahme wuerde der generische banner-Selektor den
+        // GDPR-Dialog treffen -- die Seite laedt dann gar nicht erst weiter.
+        expect(css).toContain('div[data-testid*="banner"]:not([data-testid*="gdpr"])');
+        expect(css).toMatch(/#gdpr-banner-container[^}]*display: block !important/s);
+    });
+
+    it('fasst das DOM nicht an ausser dem eigenen <style>', () => {
+        document.body.innerHTML = '<div id="home-billboard">Werbung</div>';
+        injectSiteAdBlockerStyles();
+
+        // Kein Entfernen, kein Umschreiben: das Element steht noch da,
+        // sichtbar ist es nur wegen der CSS-Regel nicht mehr.
+        expect(document.getElementById('home-billboard')).not.toBeNull();
+        expect(document.getElementById('home-billboard').getAttribute('style')).toBeNull();
     });
 });
