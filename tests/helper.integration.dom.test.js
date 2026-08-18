@@ -38,6 +38,10 @@ function buttonByText(text) {
         .find((b) => b.textContent === text);
 }
 
+function gates() {
+    return Array.from(overlay().querySelectorAll('input[data-ka-gate="fav"]'));
+}
+
 function favToggle() {
     return Array.from(overlay().querySelectorAll('label'))
         .filter((l) => l.textContent.includes('nur nicht gemerkte'))

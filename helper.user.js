@@ -691,7 +691,22 @@
                 else selected.delete(m.adId);
                 updateSummary();
             };
-            entries.push({ match: m, cb: cb, li: li, hiddenSelected: false });
+            // Zweiter, unsichtbarer Haken. Wird NIE vom Nutzer gesetzt, sondern
+            // ausschliesslich vom Merk-Filter. Verarbeitet wird nur, was beide
+            // Haken hat. Er steht bewusst als echtes Element im DOM und traegt
+            // data-ka-gate="fav": so laesst sich die Absicherung im Browser
+            // nachpruefen, statt dass man ihr glauben muss.
+            const gate = document.createElement('input');
+            gate.type = 'checkbox';
+            gate.dataset.kaGate = 'fav';
+            gate.dataset.adid = m.adId;
+            gate.checked = true;
+            gate.hidden = true;
+            gate.tabIndex = -1;
+            gate.setAttribute('aria-hidden', 'true');
+            gate.style.cssText = 'display:none;';
+
+            entries.push({ match: m, cb: cb, gate: gate, li: li, hiddenSelected: false });
 
             // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
             // Text daneben), damit sie nicht allein an der Farbe haengt.
@@ -726,6 +741,7 @@
             label.appendChild(dot);
             label.appendChild(texts);
             li.appendChild(label);
+            li.appendChild(gate);
             list.appendChild(li);
         });
         overlay.appendChild(list);
@@ -740,6 +756,14 @@
         // Preisanpassung wartet.
         function passesFavFilter(m) {
             return !onlyUnfavored || m.favCount === 0;
+        }
+
+        // Setzt den zweiten Haken. Einzige Quelle sind der Merk-Zaehler der
+        // Anzeige und der Zustand des Filters -- nie die Auswahl des Nutzers.
+        function applyFavGates() {
+            entries.forEach(function (e) {
+                e.gate.checked = passesFavFilter(e.match);
+            });
         }
 
         // Der Filter blendet aus, statt nur abzuwaehlen: eine ausgeblendete
@@ -816,6 +840,7 @@
                         e.hiddenSelected = false;
                     }
                 });
+                applyFavGates();
                 applyVisibility();
                 updateSummary();
             };
@@ -869,16 +894,26 @@
             return true;
         }
 
-        // Was tatsaechlich verarbeitet wird. Eine Anzeige muss DREI Bedingungen
-        // erfuellen: im Auswahl-Set, Checkbox angehakt UND sichtbar in der
-        // Liste. Die drei sind redundant -- genau das ist der Zweck. Laufen
-        // Modell und Darstellung je auseinander, gewinnt die restriktivere
-        // Seite: lieber eine Anzeige zu wenig neu einstellen als eine, die der
-        // Nutzer gar nicht sehen konnte.
+        // Was tatsaechlich verarbeitet wird. Eine Anzeige muss FUENF Bedingungen
+        // gleichzeitig erfuellen:
+        //   1. im Auswahl-Set (Modell)
+        //   2. sichtbarer Haken angehakt (was der Nutzer geklickt hat)
+        //   3. zweiter, unsichtbarer Haken gesetzt (was der Filter erlaubt hat)
+        //   4. dieselbe Erlaubnis JETZT neu abgeleitet, direkt aus favCount
+        //   5. Zeile sichtbar in der Liste
+        // 3 und 4 sind absichtlich zwei verschiedene Dinge: 3 ist gespeicherter
+        // Zustand von damals, 4 ist die Ableitung von jetzt aus den Rohdaten.
+        // Nur wenn beide zum selben Ergebnis kommen, laeuft die Anzeige. Damit
+        // schuetzt die Pruefung auch gegen einen Fehler in ihrer eigenen
+        // Buchfuehrung -- ein einzelnes falsches Bit reicht nicht mehr aus.
         function confirmedSelection() {
             return entries
                 .filter(function (e) {
-                    return selected.has(e.match.adId) && e.cb.checked && isVisible(e.li);
+                    return selected.has(e.match.adId) &&
+                        e.cb.checked &&
+                        e.gate.checked &&
+                        passesFavFilter(e.match) &&
+                        isVisible(e.li);
                 })
                 .map(function (e) { return e.match; });
         }

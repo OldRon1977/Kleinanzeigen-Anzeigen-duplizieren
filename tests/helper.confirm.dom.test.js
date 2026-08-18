@@ -21,7 +21,12 @@ function overlay() {
 }
 
 function checkboxes() {
-    return Array.from(overlay().querySelectorAll('input[type="checkbox"]'));
+    // ohne die unsichtbaren Gate-Checkboxen des Merk-Filters
+    return Array.from(overlay().querySelectorAll('input[type="checkbox"]:not([data-ka-gate])'));
+}
+
+function gates() {
+    return Array.from(overlay().querySelectorAll('input[data-ka-gate="fav"]'));
 }
 
 function buttonByText(text) {
@@ -389,5 +394,76 @@ describe('renderConfirm – Sicherheitsnetz sichtbar UND angehakt', () => {
 
         buttonByText('Start').click();
         expect(started).toBeNull();
+    });
+});
+
+// Der zweite Haken ist nur dann ein Sicherheitsnetz, wenn er NICHT dasselbe Bit
+// wie der sichtbare Haken ist. Diese Tests trennen die beiden gezielt.
+describe('renderConfirm – zweiter, unsichtbarer Haken', () => {
+    it('existiert je Anzeige, unsichtbar und ausserhalb der Tastaturreihenfolge', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        expect(gates()).toHaveLength(MATCHES_FAV.length);
+        gates().forEach((g) => {
+            expect(g.hidden).toBe(true);
+            expect(g.tabIndex).toBe(-1);
+            expect(g.getAttribute('aria-hidden')).toBe('true');
+        });
+    });
+
+    it('haengt am Merk-Filter, nicht an der Auswahl des Nutzers', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        // Ohne Filter erlaubt der zweite Haken alles ...
+        expect(gates().map((g) => g.checked)).toEqual([true, true, true, true]);
+
+        // ... auch dann, wenn der Nutzer gar nichts angehakt hat.
+        buttonByText('Keine').click();
+        expect(gates().map((g) => g.checked)).toEqual([true, true, true, true]);
+
+        // Erst der Filter schliesst das gemerkte 1002.
+        favToggle().checked = true;
+        favToggle().onchange();
+        expect(gates().map((g) => g.checked)).toEqual([true, false, true, true]);
+
+        favToggle().checked = false;
+        favToggle().onchange();
+        expect(gates().map((g) => g.checked)).toEqual([true, true, true, true]);
+    });
+
+    it('verarbeitet keine Anzeige, deren zweiter Haken fehlt', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        // Sichtbar angehakt, sichtbar in der Liste, im Auswahl-Set --
+        // nur der zweite Haken fehlt.
+        gates()[2].checked = false;
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).toEqual(['1001', '1002', '1004']);
+    });
+
+    it('verarbeitet auch dann nichts Gemerktes, wenn der zweite Haken faelschlich gesetzt ist', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        favToggle().checked = true;
+        favToggle().onchange();
+
+        // Buchfuehrungsfehler simulieren: gemerkte Anzeige wieder sichtbar,
+        // beide Haken gesetzt, im Auswahl-Set. Nur die Ableitung aus favCount
+        // widerspricht noch.
+        const li = checkboxes()[1].closest('li');
+        li.hidden = false;
+        li.style.display = '';
+        checkboxes()[1].checked = true;
+        checkboxes()[1].onchange();
+        gates()[1].checked = true;
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).not.toContain('1002');
+        expect(started.map((m) => m.adId)).toEqual(['1001', '1003', '1004']);
     });
 });
