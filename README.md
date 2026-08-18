@@ -50,13 +50,18 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 2. Neben jedem "Bearbeiten"-Link erscheinen zwei Buttons: **Duplizieren** (ab Helper v1.5.0) und **Smart neu einstellen**
 3. Ein Klick öffnet die Bearbeiten-Seite in einem neuen Tab und führt die Aktion automatisch aus; nach Erfolg schließt sich der Tab von selbst
 
-### Batch mit Auswahl (Helper ab v1.7.0)
+### Batch mit Auswahl (Helper ab v1.7.0, Merk-Filter ab v1.8.0)
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
 2. Über der Anzeigenliste erscheint der Button **"Anzeigen auswählen & neu einstellen"**
 3. Das Overlay listet **alle** Anzeigen mit Checkbox. Beim Öffnen ist **nichts angehakt** — ein versehentlicher Start kann also nichts löschen
 4. **Schnellwahl** unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl
-5. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
-6. **Start** verarbeitet die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+5. **Zusatzfilter "nur nicht gemerkte"**: die Checkbox rechts neben der Schnellwahl **blendet gemerkte Anzeigen aus der Liste aus** und wirkt *zusätzlich* zur Schnellwahl, nicht anstelle. "älter als 7 Tage" plus Häkchen wählt also genau die alten Anzeigen, die niemand auf der Merkliste hat. Der Haken ist umkehrbar: Ausgeblendete Anzeigen werden abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Die Zusammenfassung zählt nur die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten
+6. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
+7. **Start** verarbeitet die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+
+> **Sicherheitsnetz (zwei Haken)**: Jede Zeile trägt neben der sichtbaren Checkbox einen zweiten, unsichtbaren Haken (`input[data-ka-gate="fav"]`), den ausschließlich der Merk-Filter setzt — nie ein Klick. Verarbeitet wird eine Anzeige nur, wenn **fünf** Bedingungen zugleich gelten: im Auswahl-Set, sichtbarer Haken gesetzt, zweiter Haken gesetzt, dieselbe Erlaubnis beim Start noch einmal frisch aus dem Merk-Zähler abgeleitet, und Zeile sichtbar in der Liste. Der zweite Haken ist gespeicherter Zustand, die frische Ableitung ist die Rechnung von jetzt — ein einzelnes falsches Bit reicht damit nicht mehr aus, um eine gemerkte Anzeige durchzulassen. Der Haken steht als echtes Element im DOM und lässt sich in den Entwicklertools nachprüfen. Die Zahl in der Zusammenfassung stammt aus derselben Prüfung, ist also exakt die Zahl der Anzeigen, die neu eingestellt werden.
+
+> **Zur Merkliste**: Der Zähler wird aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt"). Lässt er sich nicht lesen — etwa nach einem Layout-Umbau bei Kleinanzeigen —, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter mit ausgeblendet, also **nicht** neu eingestellt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
 
 > **Zum Alter**: Die Anzeigenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird daher aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende im Overlay weist darauf hin.
 
@@ -108,6 +113,17 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Version 3.9.0 / Helper 1.8.0 (August 2026)
+
+Das Batch-Overlay kann jetzt Anzeigen aussparen, die jemand auf die Merkliste gesetzt hat — Wunsch aus Issue #54. Wer eine gemerkte Anzeige neu einstellt, reißt sie aus der Merkliste des Interessenten; eine spätere Preisanpassung erreicht ihn dann nicht mehr.
+
+- **Neu**: Zusatzfilter **"nur nicht gemerkte"** neben der Schnellwahl. Er *ergänzt* die Schnellwahl, statt sie zu ersetzen: "älter als 7 Tage" plus Häkchen wählt genau die alten Anzeigen, die niemand gemerkt hat.
+- **Neu**: Der Filter blendet die betroffenen Zeilen aus, statt sie nur abzuwählen — und ist umkehrbar. Beim Ausblenden werden sie abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Hinzugefügt wird dabei nie etwas, das nicht vorher schon angehakt war.
+- **Neu**: Der Merk-Status steht im Klartext an jeder Anzeige ("nicht gemerkt" / "2× gemerkt"), damit nachvollziehbar bleibt, warum eine Anzeige aussortiert wurde. Die Zusammenfassung zählt die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten.
+- **Sicherheit**: Verarbeitet wird eine Anzeige nur, wenn **fünf** Bedingungen zugleich gelten — im Auswahl-Set, sichtbarer Haken gesetzt, zweiter (unsichtbarer) Haken des Filters gesetzt, dieselbe Erlaubnis beim Start noch einmal frisch aus dem Merk-Zähler abgeleitet, und Zeile sichtbar in der Liste. Der zweite Haken ist gespeicherter Zustand, die frische Ableitung die Rechnung von jetzt: Ein einzelnes falsches Bit lässt damit keine ausgeblendete Anzeige mehr durch. Weichen Auswahl und Darstellung voneinander ab, wird die Differenz verworfen und protokolliert.
+- **Sicherheit**: Lässt sich der Merk-Zähler nicht lesen, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter mit ausgeblendet — nicht als "nicht gemerkt" behandelt. Findet sich bei keiner Karte ein Zähler, erscheint die Checkbox gar nicht erst.
+- **Tests**: 109 Tests. Neu sind `parseFavCount` gegen echtes Karten-Markup, die Integrationssuite `helper.integration.dom.test.js` über die ganze Kette (Markup → `collectCandidates` → Overlay → Übergabe an den Batch) und das Szenario "Alle → filtern → Start" mit allen Prüfschichten einzeln. Die Wirksamkeit ist per Mutationsproben belegt: Wird eine der Schichten entfernt, fallen Tests.
 
 ### Version 3.8.1 (August 2026)
 

@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.7.0
+// @version       1.8.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
@@ -475,6 +475,26 @@
         return Math.round((date.getTime() - today.getTime()) / dayMs);
     }
 
+    // Merklisten-Zaehler der Karte. Die Statistikzeile enthaelt immer einen
+    // Eintrag "N mal gemerkt" -- auch bei null ("0 mal gemerkt"), das Element
+    // fehlt also nicht. Aufgehaengt am Icon-Attribut data-title, weil die
+    // Klassen daneben Utility-Klassen sind und sich bei jedem Redesign aendern.
+    // Rueckgabe null = nicht lesbar (NICHT 0): sonst wuerde ein Markup-Umbau
+    // jede gemerkte Anzeige stillschweigend als "nicht gemerkt" durchwinken.
+    function parseFavCount(card) {
+        const icon = card.querySelector('svg[data-title="favoriteOutline"]');
+        let host = icon ? icon.closest('li') : null;
+        if (!host) {
+            host = Array.prototype.find.call(card.querySelectorAll('li'), function (li) {
+                return /mal gemerkt/i.test(li.textContent || '');
+            }) || null;
+        }
+        const m = (host ? host.textContent : '').match(/([\d.]+)\s*mal gemerkt/i);
+        if (!m) return null;
+        const n = parseInt(m[1].replace(/\./g, ''), 10);
+        return isNaN(n) ? null : n;
+    }
+
     function collectCandidates() {
         const cards = document.querySelectorAll('li[data-testid="ad-card"][data-adid]');
         const matches = [];
@@ -502,7 +522,8 @@
                 title: title,
                 endText: endText,
                 daysLeft: days,
-                ageDays: ageFromDaysLeft(days)
+                ageDays: ageFromDaysLeft(days),
+                favCount: parseFavCount(card)
             });
         });
 
@@ -670,7 +691,22 @@
                 else selected.delete(m.adId);
                 updateSummary();
             };
-            entries.push({ match: m, cb: cb });
+            // Zweiter, unsichtbarer Haken. Wird NIE vom Nutzer gesetzt, sondern
+            // ausschliesslich vom Merk-Filter. Verarbeitet wird nur, was beide
+            // Haken hat. Er steht bewusst als echtes Element im DOM und traegt
+            // data-ka-gate="fav": so laesst sich die Absicherung im Browser
+            // nachpruefen, statt dass man ihr glauben muss.
+            const gate = document.createElement('input');
+            gate.type = 'checkbox';
+            gate.dataset.kaGate = 'fav';
+            gate.dataset.adid = m.adId;
+            gate.checked = true;
+            gate.hidden = true;
+            gate.tabIndex = -1;
+            gate.setAttribute('aria-hidden', 'true');
+            gate.style.cssText = 'display:none;';
+
+            entries.push({ match: m, cb: cb, gate: gate, li: li, hiddenSelected: false });
 
             // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
             // Text daneben), damit sie nicht allein an der Farbe haengt.
@@ -688,8 +724,16 @@
             t.textContent = m.title;
             const meta = document.createElement('div');
             meta.style.cssText = 'color:#666;font-size:12px;';
-            meta.textContent = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt \u00B7 endet ' + m.endText +
+            let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt \u00B7 endet ' + m.endText +
                 ' (' + m.daysLeft + ' Tage)';
+            // Merk-Status im Klartext, damit nachvollziehbar bleibt, warum der
+            // Zusatzfilter eine Anzeige aussortiert hat.
+            if (typeof m.favCount === 'number') {
+                metaText += ' \u00B7 ' + (m.favCount === 0
+                    ? 'nicht gemerkt'
+                    : m.favCount + '\u00D7 gemerkt');
+            }
+            meta.textContent = metaText;
             texts.appendChild(t);
             texts.appendChild(meta);
 
@@ -697,20 +741,53 @@
             label.appendChild(dot);
             label.appendChild(texts);
             li.appendChild(label);
+            li.appendChild(gate);
             list.appendChild(li);
         });
         overlay.appendChild(list);
 
-        // Schnellwahl: setzt die Auswahl auf alles, was das Praedikat erfuellt.
-        // Checkboxen werden programmatisch gesetzt (feuert kein onchange),
-        // deshalb wird `selected` hier mitgefuehrt.
+        // Zusatzfilter statt fuenftem Schnellwahl-Button: nur so laesst sich
+        // "aelter als 7 Tage" UND "nicht gemerkt" kombinieren.
+        let onlyUnfavored = false;
+
+        // Anzeigen ohne lesbaren Zaehler (favCount === null) werden bei aktivem
+        // Filter mit ausgeblendet. Lieber eine Anzeige zu wenig neu einstellen
+        // als eine gemerkte zu loeschen, deren Interessent auf die
+        // Preisanpassung wartet.
+        function passesFavFilter(m) {
+            return !onlyUnfavored || m.favCount === 0;
+        }
+
+        // Setzt den zweiten Haken. Einzige Quelle sind der Merk-Zaehler der
+        // Anzeige und der Zustand des Filters -- nie die Auswahl des Nutzers.
+        function applyFavGates() {
+            entries.forEach(function (e) {
+                e.gate.checked = passesFavFilter(e.match);
+            });
+        }
+
+        // Der Filter blendet aus, statt nur abzuwaehlen: eine ausgeblendete
+        // Anzeige kann nicht angehakt sein, und was beim Ausblenden angehakt
+        // war, kommt beim Einblenden zurueck. Damit ist der Haken in beide
+        // Richtungen umkehrbar -- reines Abwaehlen war es nicht.
+        function applyVisibility() {
+            entries.forEach(function (e) {
+                const hide = !passesFavFilter(e.match);
+                e.li.hidden = hide;
+                e.li.style.display = hide ? 'none' : '';
+            });
+        }
+
+        // Schnellwahl: setzt die Auswahl auf alles, was das Praedikat erfuellt
+        // und den Zusatzfilter passiert. Checkboxen werden programmatisch
+        // gesetzt (feuert kein onchange), deshalb wird `selected` mitgefuehrt.
         function applySelection(predicate) {
             selected.clear();
             entries.forEach(function (e) {
                 const age = typeof e.match.ageDays === 'number'
                     ? e.match.ageDays
                     : ageFromDaysLeft(e.match.daysLeft);
-                const hit = predicate(e.match, age);
+                const hit = predicate(e.match, age) && passesFavFilter(e.match);
                 e.cb.checked = hit;
                 if (hit) selected.add(e.match.adId);
             });
@@ -732,6 +809,46 @@
             b.onclick = function () { applySelection(pair[1]); };
             bulk.appendChild(b);
         });
+
+        // Nur anbieten, wenn ueberhaupt ein Zaehler gelesen werden konnte --
+        // eine Checkbox, die nach einem Markup-Umbau nichts mehr auswaehlt,
+        // waere schlimmer als keine.
+        if (matches.some(function (m) { return typeof m.favCount === 'number'; })) {
+            const favLabel = document.createElement('label');
+            favLabel.style.cssText = 'display:flex;gap:5px;align-items:center;cursor:pointer;' +
+                'margin-left:auto;color:#333;';
+            favLabel.title = 'Blendet gemerkte Anzeigen aus der Liste aus. Wirkt ' +
+                'zusammen mit der Schnellwahl. Anzeigen ohne lesbaren Z\u00E4hler ' +
+                'werden mit ausgeblendet; beim Einblenden kommt die vorherige ' +
+                'Auswahl zur\u00FCck.';
+            const favToggle = document.createElement('input');
+            favToggle.type = 'checkbox';
+            favToggle.style.cssText = 'cursor:pointer;margin:0;';
+            favToggle.onchange = function () {
+                onlyUnfavored = favToggle.checked;
+                entries.forEach(function (e) {
+                    if (onlyUnfavored) {
+                        if (passesFavFilter(e.match)) return;
+                        // Auswahlstand merken, damit das Einblenden ihn
+                        // wiederherstellen kann.
+                        e.hiddenSelected = selected.has(e.match.adId);
+                        selected.delete(e.match.adId);
+                        e.cb.checked = false;
+                    } else if (e.hiddenSelected) {
+                        selected.add(e.match.adId);
+                        e.cb.checked = true;
+                        e.hiddenSelected = false;
+                    }
+                });
+                applyFavGates();
+                applyVisibility();
+                updateSummary();
+            };
+            favLabel.appendChild(favToggle);
+            favLabel.appendChild(document.createTextNode('nur nicht gemerkte'));
+            bulk.appendChild(favLabel);
+        }
+
         overlay.appendChild(bulk);
 
         // Legende: erklaert die Farbpunkte und macht transparent, dass das Alter
@@ -761,6 +878,46 @@
             overlay.appendChild(sk);
         }
 
+        // === SICHERHEITSNETZ ===
+        // Ist eine Zeile wirklich sichtbar? Geprueft wird nicht das Modell,
+        // sondern das DOM: hidden-Attribut, Inline-Style und die berechnete
+        // Darstellung. getComputedStyle steht bewusst in try/catch -- faellt es
+        // aus, entscheiden die beiden ersten Kriterien.
+        function isVisible(el) {
+            if (el.hidden) return false;
+            if (el.style && el.style.display === 'none') return false;
+            try {
+                const view = el.ownerDocument && el.ownerDocument.defaultView;
+                const cs = view && view.getComputedStyle ? view.getComputedStyle(el) : null;
+                if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+            } catch (e) { /* ohne Layout-Engine bleibt es bei den Attributen */ }
+            return true;
+        }
+
+        // Was tatsaechlich verarbeitet wird. Eine Anzeige muss FUENF Bedingungen
+        // gleichzeitig erfuellen:
+        //   1. im Auswahl-Set (Modell)
+        //   2. sichtbarer Haken angehakt (was der Nutzer geklickt hat)
+        //   3. zweiter, unsichtbarer Haken gesetzt (was der Filter erlaubt hat)
+        //   4. dieselbe Erlaubnis JETZT neu abgeleitet, direkt aus favCount
+        //   5. Zeile sichtbar in der Liste
+        // 3 und 4 sind absichtlich zwei verschiedene Dinge: 3 ist gespeicherter
+        // Zustand von damals, 4 ist die Ableitung von jetzt aus den Rohdaten.
+        // Nur wenn beide zum selben Ergebnis kommen, laeuft die Anzeige. Damit
+        // schuetzt die Pruefung auch gegen einen Fehler in ihrer eigenen
+        // Buchfuehrung -- ein einzelnes falsches Bit reicht nicht mehr aus.
+        function confirmedSelection() {
+            return entries
+                .filter(function (e) {
+                    return selected.has(e.match.adId) &&
+                        e.cb.checked &&
+                        e.gate.checked &&
+                        passesFavFilter(e.match) &&
+                        isVisible(e.li);
+                })
+                .map(function (e) { return e.match; });
+        }
+
         // Recovery-Section vor dem Action-Footer
         try {
             const meta = await listSnapshotMeta();
@@ -773,7 +930,13 @@
         cancel.onclick = closeOverlay;
         const start = makeButton('Start', true);
         start.onclick = function () {
-            const chosen = matches.filter(function (m) { return selected.has(m.adId); });
+            const chosen = confirmedSelection();
+            if (chosen.length !== selected.size) {
+                // Sollte nie vorkommen. Wenn doch, ist es ein Fehler im Filter --
+                // die Differenz wird verworfen, nicht verarbeitet.
+                warn('Auswahl und Anzeige liefen auseinander \u2013 verarbeitet werden nur die ' +
+                    chosen.length + ' sichtbar angehakten von ' + selected.size + ' im Auswahl-Set.');
+            }
             if (!chosen.length) return;
             onStart(chosen);
         };
@@ -783,15 +946,22 @@
 
         // Haelt Zusammenfassung und Start-Button im Einklang mit der Auswahl.
         function updateSummary() {
-            const count = selected.size;
+            // Bewusst dieselbe Quelle wie der Start-Button: die genannte Zahl
+            // ist damit exakt die Zahl der Anzeigen, die verarbeitet werden.
+            const count = confirmedSelection().length;
+            // Nenner sind die SICHTBAREN Anzeigen -- "3 von 4" waere irritierend,
+            // wenn nur drei Zeilen in der Liste stehen.
+            const visible = entries.filter(function (e) { return passesFavFilter(e.match); }).length;
+            const hidden = entries.length - visible;
             line1.textContent = '';
             const strong = document.createElement('strong');
             strong.textContent = count;
             line1.appendChild(strong);
-            line1.appendChild(document.createTextNode(' von ' + matches.length + ' Anzeige(n) ausgewählt.'));
-            line2.textContent = count > 0
+            line1.appendChild(document.createTextNode(' von ' + visible + ' Anzeige(n) ausgewählt.'));
+            line2.textContent = (count > 0
                 ? 'Geschätzte Laufzeit: ca. ' + estimateRuntimeMinutes(count) + ' Minuten (3 ± 1 min Pause zwischen zwei Anzeigen).'
-                : 'Nichts ausgewählt – Schnellwahl unter der Liste nutzen.';
+                : 'Nichts ausgewählt – Schnellwahl unter der Liste nutzen.') +
+                (hidden > 0 ? ' ' + hidden + ' Anzeige(n) ausgeblendet (gemerkt oder ohne Zähler).' : '');
             start.disabled = (count === 0);
             start.style.opacity = count === 0 ? '0.5' : '1';
             start.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
@@ -1141,6 +1311,8 @@
             AD_RUNTIME_DAYS,
             AGE_BANDS,
             parseEndDate,
+            parseFavCount,
+            collectCandidates,
             daysUntil,
             ageFromDaysLeft,
             ageBand,
