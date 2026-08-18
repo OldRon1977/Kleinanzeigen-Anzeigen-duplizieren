@@ -175,6 +175,37 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
         expect(favToggle()).toBeDefined();
     });
 
+    // Der kritische Fall: erst "Alle", dann filtern. Was der Start-Button
+    // uebergibt, MUSS der sichtbaren Liste entsprechen -- eine ausgeblendete
+    // Anzeige darf unter keinen Umstaenden neu eingestellt werden.
+    it('startet nach "Alle" + Filter nur die sichtbaren Anzeigen', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        favToggle().checked = true;
+        favToggle().onchange();
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).toEqual(['1001', '1003', '1004']);
+        expect(started.map((m) => m.adId)).not.toContain('1002');
+        expect(started.map((m) => m.adId)).toEqual(visibleIds());
+    });
+
+    it('startet auch bei unlesbarem Zaehler nur die sichtbaren Anzeigen', async () => {
+        let started = null;
+        const mixed = MATCHES.map((m, i) => ({ ...m, favCount: [0, 2, null, 0][i] }));
+        await renderConfirm(mixed, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        favToggle().checked = true;
+        favToggle().onchange();
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).toEqual(['1001', '1004']);
+        expect(started.map((m) => m.adId)).toEqual(visibleIds());
+    });
+
     it('blendet gemerkte Anzeigen aus und wieder ein', async () => {
         await renderConfirm(MATCHES_FAV, [], () => {});
         expect(visibleIds()).toEqual(['1001', '1002', '1003', '1004']);
