@@ -8,6 +8,10 @@
 // @version       1.10.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
+// @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
+// @credits       AnzeigenChef - laengere Wartezeiten zwischen zwei Vorgaengen statt Sekunden-Delays: https://anzeigenchef-online.de
+// @credits       halejok - Pause im Batch mindestens 3 bis 5 Minuten, damit die Abstaende menschlich aussehen
+// @credits       Atom9989 - Wunsch nach einem Batch ueber alle Anzeigen, Farbcodierung nach Alter
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
 // @homepage      https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren
 // @updateURL     https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js
