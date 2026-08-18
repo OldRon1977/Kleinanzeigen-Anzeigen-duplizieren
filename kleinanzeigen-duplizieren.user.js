@@ -543,6 +543,26 @@
         });
     }
 
+    /**
+     * Wartet, bis die React-Form wirklich bedienbar ist.
+     *
+     * NICHT ENTFERNEN, auch wenn es ueberfluessig aussieht: Wird der Ablauf per
+     * Hash-Trigger (#duplicate / #smartRepublish) direkt beim Laden gestartet,
+     * ist die Form noch nicht hydratisiert. Ein Speichern-Klick verpufft dann
+     * -- der Vollbild-Spinner dreht endlos und der Batch meldet einen Fehler.
+     *
+     * Bis 3.9.0 kam smartRepublish ohne diesen Wait aus, weil die Loeschung des
+     * Originals (Netzwerk + 2s Pause) davor lag und die Zeit nebenbei
+     * mitbrachte. Mit der Umstellung auf "erst anlegen, dann loeschen" fiel
+     * diese Pause weg -- und damit im Batch der Klick ins Leere. Seitdem steht
+     * die Wartezeit explizit hier, statt sich auf einen Nebeneffekt zu
+     * verlassen.
+     */
+    async function awaitFormReady() {
+        await waitUntilPageLoaded();
+        await delay(CONFIG.DUPLICATE_READY_SETTLE_MS);
+    }
+
     // Verhindert einen dauerhaft blockierten Vollbild-Spinner: falls nach dem
     // Klick auf "Anzeige speichern" die erwartete Seiten-Navigation ausbleibt
     // (z.B. Serverfehler ohne Redirect), raeumt dieser Watchdog UI-Overlay
@@ -588,8 +608,7 @@
             // Deshalb erst auf vollstaendiges Laden + kurze Settle-Zeit warten.
             // Im manuellen Modus (Klick nach Laden) ist die Seite laengst bereit,
             // der Wait ist dann faktisch ein No-Op.
-            await waitUntilPageLoaded();
-            await delay(CONFIG.DUPLICATE_READY_SETTLE_MS);
+            await awaitFormReady();
 
             // Referenzen koennen durch React-Re-Render veraltet sein -> neu aufloesen.
             if (!saveBtn.isConnected) {
@@ -847,6 +866,10 @@
             // das Original bestehen, bis der Server die Neuanlage bestaetigt hat;
             // geloescht wird erst auf der Bestaetigungs-Seite. Der schlimmste
             // Fall ist damit ein Duplikat, kein verlorener Datensatz.
+
+            // Erst wenn die Form bedienbar ist, darf neutralisiert und geklickt
+            // werden -- im Batch startet dieser Ablauf direkt beim Seitenladen.
+            await awaitFormReady();
 
             // Referenzen koennen durch ein React-Re-Render veraltet sein.
             if (!saveBtn.isConnected) {
@@ -1133,6 +1156,8 @@
             CONFIG, getExponentialBackoffWait, readFormFields, getAdFormRoot, collectImageUrls,
             injectSiteAdBlockerStyles,
             handleConfirmationPage,
+            awaitFormReady,
+            waitUntilPageLoaded,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId
         };
         return; // im Test-Kontext keine Initialisierung/Timer
