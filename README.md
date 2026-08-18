@@ -50,7 +50,7 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 2. Neben jedem "Bearbeiten"-Link erscheinen zwei Buttons: **Duplizieren** (ab Helper v1.5.0) und **Smart neu einstellen**
 3. Ein Klick öffnet die Bearbeiten-Seite in einem neuen Tab und führt die Aktion automatisch aus; nach Erfolg schließt sich der Tab von selbst
 
-### Batch mit Auswahl (Helper ab v1.7.0)
+### Batch mit Auswahl (Helper ab v1.7.0, Merk-Filter ab v1.8.0)
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
 2. Über der Anzeigenliste erscheint der Button **"Anzeigen auswählen & neu einstellen"**
 3. Das Overlay listet **alle** Anzeigen mit Checkbox. Beim Öffnen ist **nichts angehakt** — ein versehentlicher Start kann also nichts löschen
@@ -113,6 +113,17 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Version 3.9.0 / Helper 1.8.0 (August 2026)
+
+Das Batch-Overlay kann jetzt Anzeigen aussparen, die jemand auf die Merkliste gesetzt hat — Wunsch aus Issue #54. Wer eine gemerkte Anzeige neu einstellt, reißt sie aus der Merkliste des Interessenten; eine spätere Preisanpassung erreicht ihn dann nicht mehr.
+
+- **Neu**: Zusatzfilter **"nur nicht gemerkte"** neben der Schnellwahl. Er *ergänzt* die Schnellwahl, statt sie zu ersetzen: "älter als 7 Tage" plus Häkchen wählt genau die alten Anzeigen, die niemand gemerkt hat.
+- **Neu**: Der Filter blendet die betroffenen Zeilen aus, statt sie nur abzuwählen — und ist umkehrbar. Beim Ausblenden werden sie abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Hinzugefügt wird dabei nie etwas, das nicht vorher schon angehakt war.
+- **Neu**: Der Merk-Status steht im Klartext an jeder Anzeige ("nicht gemerkt" / "2× gemerkt"), damit nachvollziehbar bleibt, warum eine Anzeige aussortiert wurde. Die Zusammenfassung zählt die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten.
+- **Sicherheit**: Verarbeitet wird eine Anzeige nur, wenn **fünf** Bedingungen zugleich gelten — im Auswahl-Set, sichtbarer Haken gesetzt, zweiter (unsichtbarer) Haken des Filters gesetzt, dieselbe Erlaubnis beim Start noch einmal frisch aus dem Merk-Zähler abgeleitet, und Zeile sichtbar in der Liste. Der zweite Haken ist gespeicherter Zustand, die frische Ableitung die Rechnung von jetzt: Ein einzelnes falsches Bit lässt damit keine ausgeblendete Anzeige mehr durch. Weichen Auswahl und Darstellung voneinander ab, wird die Differenz verworfen und protokolliert.
+- **Sicherheit**: Lässt sich der Merk-Zähler nicht lesen, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter mit ausgeblendet — nicht als "nicht gemerkt" behandelt. Findet sich bei keiner Karte ein Zähler, erscheint die Checkbox gar nicht erst.
+- **Tests**: 109 Tests. Neu sind `parseFavCount` gegen echtes Karten-Markup, die Integrationssuite `helper.integration.dom.test.js` über die ganze Kette (Markup → `collectCandidates` → Overlay → Übergabe an den Batch) und das Szenario "Alle → filtern → Start" mit allen Prüfschichten einzeln. Die Wirksamkeit ist per Mutationsproben belegt: Wird eine der Schichten entfernt, fallen Tests.
 
 ### Version 3.8.1 (August 2026)
 
