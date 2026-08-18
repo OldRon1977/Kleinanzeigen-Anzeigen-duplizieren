@@ -41,6 +41,14 @@
         { key: 'frisch', minAge: 0, color: '#e53935', label: 'bis 4 Tage' }
     ];
 
+    // Anzeigenliste als JSON. Liefert im Gegensatz zum DOM das echte
+    // Erstelldatum, den Merk-Zaehler als Zahl und ALLE Seiten -- das DOM kennt
+    // immer nur die gerade sichtbare Seite.
+    const AD_LIST_JSON_PATH = '/m-meine-anzeigen-verwalten.json';
+    // Obergrenze gegen eine Endlosschleife, falls `paging.last` fehlt oder
+    // luegt. 20 Seiten sind weit mehr, als ein privater Account je hat.
+    const MAX_JSON_PAGES = 20;
+
     // Jitter-Delay zwischen zwei Smart-Republish-Vorgaengen: 3 +- 1 Minuten.
     const DELAY_BASE_MS = 3 * 60 * 1000;
     const DELAY_JITTER_MS = 1 * 60 * 1000;
@@ -475,6 +483,118 @@
         return Math.round((date.getTime() - today.getTime()) / dayMs);
     }
 
+    // Toleranter als parseEndDate: die JSON-Felder sind nicht dokumentiert,
+    // deshalb wird "TT.MM.JJJJ" irgendwo im String akzeptiert und notfalls auf
+    // Date.parse zurueckgefallen (ISO-Datum).
+    function parseJsonDate(value) {
+        if (!value) return null;
+        const str = String(value);
+        const m = str.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+        if (m) {
+            const d = new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+            return isNaN(d.getTime()) ? null : d;
+        }
+        const t = Date.parse(str);
+        return isNaN(t) ? null : new Date(t);
+    }
+
+    function daysSince(date) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dayMs = 24 * 60 * 60 * 1000;
+        return Math.max(0, Math.round((today.getTime() - date.getTime()) / dayMs));
+    }
+
+    // Holt alle Seiten der Anzeigenliste. Bricht ab, sobald eine Seite leer ist
+    // oder `paging.last` erreicht wurde.
+    async function fetchAdListJson() {
+        const ads = [];
+        let lastPage = null;
+
+        for (let pageNum = 1; pageNum <= MAX_JSON_PAGES; pageNum++) {
+            const res = await fetch(AD_LIST_JSON_PATH + '?pageNum=' + pageNum + '&sort=DEFAULT', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin'
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+
+            const data = await res.json();
+            if (!data || !Array.isArray(data.ads) || data.ads.length === 0) break;
+
+            data.ads.forEach(function (ad) { ads.push(ad); });
+
+            if (lastPage === null && data.paging && typeof data.paging.last === 'number') {
+                lastPage = data.paging.last;
+            }
+            if (lastPage !== null && pageNum >= lastPage) break;
+        }
+
+        return ads;
+    }
+
+    // Ein JSON-Objekt in dieselbe Form bringen, die das Overlay vom DOM kennt.
+    // Rueckgabe null = unbrauchbar (fehlende ID oder gar kein Datum).
+    function mapJsonAd(ad) {
+        if (!ad || ad.id === undefined || ad.id === null) return null;
+        const adId = String(ad.id);
+        if (!/^\d{1,20}$/.test(adId)) return null;
+
+        const created = parseJsonDate(ad.creationDate);
+        const end = parseJsonDate(ad.endDate);
+        if (!created && !end) return null;
+
+        // Echtes Erstelldatum schlaegt die Schaetzung aus der Restlaufzeit.
+        const daysLeft = end ? daysUntil(end) : null;
+        const ageDays = created ? daysSince(created) : ageFromDaysLeft(daysLeft);
+
+        return {
+            adId: adId,
+            title: (ad.title || '(ohne Titel)').replace(/\s+/g, ' ').trim(),
+            endText: end ? formatDate(end) : '',
+            daysLeft: daysLeft,
+            ageDays: ageDays,
+            ageExact: !!created,
+            favCount: typeof ad.watchCount === 'number' ? ad.watchCount : null,
+            viewCount: typeof ad.viewCount === 'number' ? ad.viewCount : null
+        };
+    }
+
+    function formatDate(d) {
+        const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+    }
+
+    async function collectCandidatesJson() {
+        const raw = await fetchAdListJson();
+        const matches = [];
+        const skipped = [];
+
+        raw.forEach(function (ad) {
+            const mapped = mapJsonAd(ad);
+            if (mapped) matches.push(mapped);
+            else skipped.push({ adId: ad && ad.id ? String(ad.id) : null, title: (ad && ad.title) || '(ohne Titel)', reason: 'kein Datum' });
+        });
+
+        return { matches: matches, skipped: skipped, source: 'json' };
+    }
+
+    // JSON zuerst, DOM als Rueckfallebene. Die JSON-Quelle kennt alle Seiten und
+    // das echte Erstelldatum; faellt sie aus (Schnittstelle geaendert, nicht
+    // eingeloggt, Netzfehler), arbeitet der Batch wie bisher mit dem DOM
+    // weiter -- dann eben nur mit der sichtbaren Seite und geschaetztem Alter.
+    async function collectCandidatesResilient() {
+        try {
+            const viaJson = await collectCandidatesJson();
+            if (viaJson.matches.length > 0) return viaJson;
+            warn('JSON-Quelle lieferte keine Anzeigen – falle auf die Seitenansicht zurück');
+        } catch (e) {
+            warn('JSON-Quelle nicht verfügbar – falle auf die Seitenansicht zurück', e);
+        }
+        const viaDom = collectCandidates();
+        viaDom.source = 'dom';
+        return viaDom;
+    }
+
     // Merklisten-Zaehler der Karte. Die Statistikzeile enthaelt immer einen
     // Eintrag "N mal gemerkt" -- auch bei null ("0 mal gemerkt"), das Element
     // fehlt also nicht. Aufgehaengt am Icon-Attribut data-title, weil die
@@ -523,6 +643,9 @@
                 endText: endText,
                 daysLeft: days,
                 ageDays: ageFromDaysLeft(days),
+                // Die Karte nennt kein Erstelldatum -- das Alter bleibt hier
+                // eine Ableitung aus der Restlaufzeit.
+                ageExact: false,
                 favCount: parseFavCount(card)
             });
         });
@@ -724,8 +847,17 @@
             t.textContent = m.title;
             const meta = document.createElement('div');
             meta.style.cssText = 'color:#666;font-size:12px;';
-            let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt \u00B7 endet ' + m.endText +
-                ' (' + m.daysLeft + ' Tage)';
+            let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt';
+            // Aus der JSON-Quelle ist das Alter exakt, aus dem DOM geschaetzt.
+            // Der Unterschied gehoert an die Anzeige, nicht nur in die Fussnote.
+            if (m.ageExact !== true) metaText += ' (gesch\u00E4tzt)';
+            if (m.endText) {
+                metaText += ' \u00B7 endet ' + m.endText;
+                if (typeof m.daysLeft === 'number') metaText += ' (' + m.daysLeft + ' Tage)';
+            }
+            if (typeof m.viewCount === 'number') {
+                metaText += ' \u00B7 ' + m.viewCount + ' Aufrufe';
+            }
             // Merk-Status im Klartext, damit nachvollziehbar bleibt, warum der
             // Zusatzfilter eine Anzeige aussortiert hat.
             if (typeof m.favCount === 'number') {
@@ -864,12 +996,18 @@
             item.appendChild(document.createTextNode(band.label));
             legend.appendChild(item);
         });
-        const hint = document.createElement('div');
-        hint.style.cssText = 'padding:0 14px 8px;font-size:11px;color:#999;';
-        hint.textContent = 'Alter geschätzt aus der Restlaufzeit (' + AD_RUNTIME_DAYS +
-            ' Tage Regellaufzeit) – bei verlängerten Anzeigen ungenau.';
         overlay.appendChild(legend);
-        overlay.appendChild(hint);
+
+        // Die Fussnote gilt nur fuer geschaetzte Alter. Kommt die Liste aus der
+        // JSON-Quelle, steht dort das echte Erstelldatum -- dann waere der
+        // Hinweis schlicht falsch.
+        if (matches.some(function (m) { return m.ageExact !== true; })) {
+            const hint = document.createElement('div');
+            hint.style.cssText = 'padding:0 14px 8px;font-size:11px;color:#999;';
+            hint.textContent = 'Alter geschätzt aus der Restlaufzeit (' + AD_RUNTIME_DAYS +
+                ' Tage Regellaufzeit) – bei verlängerten Anzeigen ungenau.';
+            overlay.appendChild(hint);
+        }
 
         if (skipped.length > 0) {
             const sk = document.createElement('div');
@@ -1095,8 +1233,12 @@
     let stopRequested = false;
 
     async function startBatchFlow() {
-        const result = collectCandidates();
-        log('Kandidaten:', { matches: result.matches.length, skipped: result.skipped.length });
+        const result = await collectCandidatesResilient();
+        log('Kandidaten:', {
+            matches: result.matches.length,
+            skipped: result.skipped.length,
+            quelle: result.source
+        });
         await renderConfirm(result.matches, result.skipped, function (matches) {
             stopRequested = false;
             runBatch(matches);
@@ -1312,6 +1454,13 @@
             AGE_BANDS,
             parseEndDate,
             parseFavCount,
+            parseJsonDate,
+            daysSince,
+            formatDate,
+            mapJsonAd,
+            fetchAdListJson,
+            collectCandidatesJson,
+            collectCandidatesResilient,
             collectCandidates,
             daysUntil,
             ageFromDaysLeft,
