@@ -1277,6 +1277,7 @@
             AGE_BANDS,
             parseEndDate,
             parseFavCount,
+            collectCandidates,
             daysUntil,
             ageFromDaysLeft,
             ageBand,
