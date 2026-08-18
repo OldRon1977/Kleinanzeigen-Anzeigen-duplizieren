@@ -151,7 +151,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 Die Pause zwischen zwei Anzeigen im Batch ist einstellbar, statt fest im Script zu stehen.
 
-- **Neu**: Zwei Felder **"von"** und **"bis"** in Minuten im Batch-Overlay, Standard **3 bis 6**. Pro Übergang wird daraus neu gezogen, gleichverteilt und millisekundengenau — die Abstände unterscheiden sich damit von Anzeige zu Anzeige. Vorher war die Pause auf 3 ± 1 Minuten festgelegt.
+- **Neu**: Zwei Felder **"von"** und **"bis"** in Minuten im Batch-Overlay, Standard **3 bis 6** — die Untergrenze folgt dem Hinweis von @halejok, dass Sekunden-Delays für Kleinanzeigen erkennbar sind. Pro Übergang wird daraus neu gezogen, gleichverteilt und millisekundengenau — die Abstände unterscheiden sich damit von Anzeige zu Anzeige. Vorher war die Pause auf 3 ± 1 Minuten festgelegt.
 - **Neu**: Die Werte werden lokal gespeichert (`localStorage`, Schlüssel `ka-batch-delay`) und beim nächsten Öffnen wieder vorgelegt. Fehlt der Eintrag oder ist er unbrauchbar, greift wieder der Standard 3 bis 6.
 - **Neu**: Die Laufzeitschätzung nennt die Spanne statt eines festen Werts ("ca. 9-18 Minuten").
 - **Warnung**: 0 und 0 ist zulässig und schaltet die Pause vollständig ab. Der Hinweis unter den Feldern springt dann von grau auf rot und nennt die Konsequenz: für Kleinanzeigen als Automatisierung erkennbar, mögliche Sperrung des Accounts. Der Start bleibt trotzdem möglich.
@@ -296,6 +296,16 @@ Ergebnis eines vollständigen Code-Reviews (14 Findings). Alle Änderungen sind 
 - **Original-Script**: [J05HI](https://github.com/J05HI) - [Original Gist](https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 - **Helper-Idee**: [panzli](https://github.com/panzli)
 - **Erweiterte Version**: [OldRon1977](https://github.com/OldRon1977)
+
+### Ideengeber
+
+Mehrere Funktionen dieses Scripts stammen aus dem Vergleich mit anderen Kleinanzeigen-Tools und aus der Diskussion in diesem Repository. Übernommen wurden Ideen, kein Code — mit Ausnahme der Werbeblocker-Selektoren, die als MIT-lizenzierte Vorlage gekennzeichnet sind.
+
+- **[Userscript von Andi (Zer089)](https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen)** — Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, "Meine Anzeigen" als Dashboard-Ansicht, sowie die Selektoren des Werbeblockers (MIT-lizenziert, im Code als Quelle vermerkt).
+- **[AnzeigenChef](https://anzeigenchef-online.de/handhabung/)** — deutlich längere Wartezeiten zwischen zwei Vorgängen statt Sekunden-Delays, und der Hinweis, Anzeigen besser 7 bis 14 Tage stehen zu lassen, statt häufig neu zu inserieren.
+- **[karlvonbonin](https://github.com/karlvonbonin)** — Idee und Grundlage der Auswahl im Batch-Overlay.
+- **[halejok](https://github.com/halejok)** — Untergrenze für die Pause im Batch: mindestens 3 bis 5 Minuten, damit die Abstände menschlich aussehen. Grundlage für den Standardwert 3 bis 6 Minuten und für die Warnung bei abgeschalteter Pause.
+- **[Atom9989](https://github.com/Atom9989)** — Wunsch nach einem Batch über alle Anzeigen, Farbcodierung nach Alter und eine Warnung bei zu jungen Anzeigen.
 
 ## Lizenz
 
