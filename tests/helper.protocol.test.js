@@ -60,3 +60,32 @@ describe('classifyResultValue', () => {
         expect(classifyResultValue('err:save_failed')).toBeNull();
     });
 });
+
+describe('classifyResultValue – Reihenfolge "erst anlegen, dann loeschen"', () => {
+    it('erkennt ok mit Hinweis als Erfolg, nicht als Fehler', () => {
+        const r = classifyResultValue('ok:delete_failed');
+        expect(r.ok).toBe(true);
+        expect(r.warning).toBe('delete_failed');
+    });
+
+    it('wertet not_deleted NICHT als Datenverlust', () => {
+        // Neue Reihenfolge: Beim Scheitern des Speicherns steht das Original noch.
+        const r = classifyResultValue('error:save_failed:not_deleted');
+        expect(r.ok).toBe(false);
+        expect(r.code).toBe('save_failed');
+        expect(r.dataLoss).toBe(false);
+        expect(r.keepTab).toBe(false);
+    });
+
+    it('behandelt den alten Datenverlust-Code weiterhin als Datenverlust', () => {
+        // Kommt nur noch von einem Worker aelterer Version vor.
+        const r = classifyResultValue('error:save_failed:delete_ok');
+        expect(r.dataLoss).toBe(true);
+        expect(r.keepTab).toBe(true);
+    });
+
+    it('bleibt bei unbekannten Werten still', () => {
+        expect(classifyResultValue('')).toBeNull();
+        expect(classifyResultValue('irgendwas')).toBeNull();
+    });
+});
