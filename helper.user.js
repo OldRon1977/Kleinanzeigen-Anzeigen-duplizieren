@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.9.0
+// @version       1.10.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @match         https://www.kleinanzeigen.de/m-meine-anzeigen.html*
@@ -49,9 +49,17 @@
     // luegt. 20 Seiten sind weit mehr, als ein privater Account je hat.
     const MAX_JSON_PAGES = 20;
 
-    // Jitter-Delay zwischen zwei Smart-Republish-Vorgaengen: 3 +- 1 Minuten.
-    const DELAY_BASE_MS = 3 * 60 * 1000;
-    const DELAY_JITTER_MS = 1 * 60 * 1000;
+    // Pause zwischen zwei Smart-Republish-Vorgaengen, in Minuten. Der Nutzer
+    // stellt die Grenzen im Batch-Overlay ein; pro Uebergang wird daraus neu
+    // gezogen. Diese Werte greifen nur, solange nichts Gueltiges gespeichert ist.
+    const DEFAULT_DELAY_MIN_MINUTES = 3;
+    const DEFAULT_DELAY_MAX_MINUTES = 6;
+
+    // Harte Grenzen der Eingabe. 0 ist ausdruecklich erlaubt und schaltet die
+    // Pause ab -- das Overlay warnt davor, verbietet es aber nicht. Nach oben
+    // deckelt 180 Minuten Tippfehler wie "600" ab, die den Batch einfrieren.
+    const DELAY_LIMIT_MIN_MINUTES = 0;
+    const DELAY_LIMIT_MAX_MINUTES = 180;
 
     // Maximaler Wartepuffer auf das Result-Signal aus dem Worker-Tab.
     // Nach Saving kann Bilder-Verarbeitung lange dauern; 180s ist grosszuegig.
@@ -60,6 +68,9 @@
     // Geteiltes Tab-Protokoll: Werte muessen in beiden Scripts synchron bleiben
     // localStorage-Schluessel
     const LS_RESULT_PREFIX = 'ka-batch-result-';
+
+    // Pausen-Einstellung des Nutzers. Nur lokal, nur dieses Script.
+    const LS_DELAY_KEY = 'ka-batch-delay';
 
     // IndexedDB
     const IDB_NAME = 'ka-batch';
@@ -763,11 +774,100 @@
             AGE_BANDS[AGE_BANDS.length - 1];
     }
 
-    // Geschaetzte Batch-Laufzeit in Minuten. Zwischen zwei Anzeigen liegt eine
-    // Pause von DELAY_BASE_MS; nach der letzten Anzeige wird nicht mehr gewartet.
-    function estimateRuntimeMinutes(count) {
-        if (count <= 0) return 0;
-        return Math.round((count - 1) * DELAY_BASE_MS / 60000);
+    // === PAUSEN-EINSTELLUNG ===
+    function defaultDelayConfig() {
+        return { min: DEFAULT_DELAY_MIN_MINUTES, max: DEFAULT_DELAY_MAX_MINUTES };
+    }
+
+    function clampMinutes(value) {
+        return Math.min(DELAY_LIMIT_MAX_MINUTES, Math.max(DELAY_LIMIT_MIN_MINUTES, value));
+    }
+
+    // Bringt beliebige Eingaben (gespeichertes JSON, Aufrufparameter) auf ein
+    // benutzbares Paar. Jeder unbrauchbare Einzelwert faellt auf seinen Default
+    // zurueck -- lieber eine Pause zu viel als der Batch ohne jede Pause, weil
+    // im Storage Unsinn stand.
+    function sanitizeDelayConfig(raw) {
+        const fallback = defaultDelayConfig();
+        const src = (raw && typeof raw === 'object') ? raw : {};
+        const read = function (value, def) {
+            const n = (typeof value === 'string') ? Number(value.trim()) : Number(value);
+            if (typeof value === 'string' && value.trim() === '') return def;
+            if (!isFinite(n)) return def;
+            return clampMinutes(Math.round(n));
+        };
+        let min = read(src.min, fallback.min);
+        let max = read(src.max, fallback.max);
+        // Verdrehte Grenzen werden hier getauscht, nicht verworfen. Das ist die
+        // Reparatur beim LESEN -- waehrend der Eingabe urteilt
+        // validateDelayInput, damit dem Nutzer nichts unter dem Cursor springt.
+        if (min > max) { const swap = min; min = max; max = swap; }
+        return { min: min, max: max };
+    }
+
+    // Reine Formular-Pruefung. Schreibt nichts um, sondern sagt nur, ob die
+    // beiden Felder so verwendbar sind.
+    function validateDelayInput(minRaw, maxRaw) {
+        const parse = function (value) {
+            const str = String((value === null || value === undefined) ? '' : value).trim();
+            if (!/^\d{1,4}$/.test(str)) return null;
+            const n = parseInt(str, 10);
+            if (n < DELAY_LIMIT_MIN_MINUTES || n > DELAY_LIMIT_MAX_MINUTES) return null;
+            return n;
+        };
+        const min = parse(minRaw);
+        const max = parse(maxRaw);
+        if (min === null || max === null) return { ok: false, reason: 'range' };
+        if (min > max) return { ok: false, reason: 'order', min: min, max: max };
+        return { ok: true, min: min, max: max };
+    }
+
+    function loadDelayConfig() {
+        try {
+            const raw = localStorage.getItem(LS_DELAY_KEY);
+            if (!raw) return defaultDelayConfig();
+            return sanitizeDelayConfig(JSON.parse(raw));
+        } catch (e) {
+            // Kein Storage (Privatmodus, blockierte Sandbox) oder kaputtes JSON:
+            // der Batch laeuft mit den Standardwerten weiter, nur ohne Gedaechtnis.
+            warn('Pausen-Einstellung nicht lesbar -- nutze Standardwerte', e);
+            return defaultDelayConfig();
+        }
+    }
+
+    function saveDelayConfig(cfg) {
+        const clean = sanitizeDelayConfig(cfg);
+        try {
+            localStorage.setItem(LS_DELAY_KEY, JSON.stringify(clean));
+        } catch (e) {
+            warn('Pausen-Einstellung konnte nicht gespeichert werden', e);
+        }
+        return clean;
+    }
+
+    // Pause vor der naechsten Anzeige, gleichverteilt in [min, max]. Aufloesung
+    // ist die Millisekunde, nicht die Minute: gerundete Minutenwerte waeren
+    // ueber einen Batch hinweg ein auffallend regelmaessiges Muster.
+    function randomDelayMs(cfg) {
+        const c = sanitizeDelayConfig(cfg);
+        if (c.min === 0 && c.max === 0) return 0;
+        const minMs = c.min * 60 * 1000;
+        const maxMs = c.max * 60 * 1000;
+        return Math.round(minMs + Math.random() * (maxMs - minMs));
+    }
+
+    // Geschaetzte Batch-Laufzeit als Spanne. Die Pausen liegen ZWISCHEN den
+    // Anzeigen -- nach der letzten wird nicht mehr gewartet.
+    function estimateRuntimeRange(count, cfg) {
+        const c = sanitizeDelayConfig(cfg);
+        const gaps = Math.max(0, count - 1);
+        return { minMinutes: gaps * c.min, maxMinutes: gaps * c.max };
+    }
+
+    function formatRuntimeRange(range) {
+        return (range.minMinutes === range.maxMinutes)
+            ? 'ca. ' + range.minMinutes + ' Minuten'
+            : 'ca. ' + range.minMinutes + '-' + range.maxMinutes + ' Minuten';
     }
 
     async function renderConfirm(matches, skipped, onStart) {
@@ -1034,6 +1134,97 @@
             overlay.appendChild(sk);
         }
 
+        // === PAUSE ZWISCHEN ZWEI ANZEIGEN ===
+        // Gespeicherter Stand gewinnt. Die Standardwerte greifen nur, wenn
+        // nichts Brauchbares im Storage liegt.
+        let delayCfg = loadDelayConfig();
+        let delayState = { ok: true, min: delayCfg.min, max: delayCfg.max };
+
+        const delaySec = document.createElement('div');
+        delaySec.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;';
+        const delayTitle = document.createElement('div');
+        delayTitle.style.cssText = 'font-weight:600;margin-bottom:6px;';
+        delayTitle.textContent = 'Pause zwischen zwei Anzeigen';
+        delaySec.appendChild(delayTitle);
+
+        const delayRow = document.createElement('div');
+        delayRow.style.cssText = 'display:flex;gap:14px;align-items:center;flex-wrap:wrap;';
+
+        function makeMinuteField(labelText, value, name) {
+            const wrap = document.createElement('label');
+            wrap.style.cssText = 'display:flex;gap:5px;align-items:center;font-size:12px;color:#333;';
+            wrap.appendChild(document.createTextNode(labelText));
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = String(DELAY_LIMIT_MIN_MINUTES);
+            input.max = String(DELAY_LIMIT_MAX_MINUTES);
+            input.step = '1';
+            input.value = String(value);
+            // Als Attribut im DOM, damit die Felder im Browser und im Test
+            // eindeutig adressierbar sind.
+            input.dataset.kaDelay = name;
+            input.style.cssText = 'width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
+            wrap.appendChild(input);
+            wrap.appendChild(document.createTextNode('min'));
+            return { wrap: wrap, input: input };
+        }
+
+        const minField = makeMinuteField('von', delayCfg.min, 'min');
+        const maxField = makeMinuteField('bis', delayCfg.max, 'max');
+        delayRow.appendChild(minField.wrap);
+        delayRow.appendChild(maxField.wrap);
+        delaySec.appendChild(delayRow);
+
+        // Eine Zeile, drei Zustaende: grauer Normaltext, rote Bann-Warnung bei
+        // 0/0, roter Fehlertext bei unbrauchbarer Eingabe.
+        const delayNote = document.createElement('div');
+        delayNote.dataset.kaDelayNote = 'true';
+        delayNote.style.cssText = 'margin-top:6px;font-size:11px;line-height:1.4;';
+        delaySec.appendChild(delayNote);
+
+        function updateDelayNote() {
+            if (!delayState.ok) {
+                delayNote.dataset.kaLevel = 'error';
+                delayNote.style.color = '#e74c3c';
+                delayNote.style.fontWeight = '600';
+                delayNote.textContent = (delayState.reason === 'order')
+                    ? 'Der erste Wert muss kleiner oder gleich dem zweiten sein.'
+                    : 'Bitte ganze Minuten von ' + DELAY_LIMIT_MIN_MINUTES + ' bis ' +
+                      DELAY_LIMIT_MAX_MINUTES + ' in beide Felder eintragen.';
+                return;
+            }
+            if (delayState.min === 0 && delayState.max === 0) {
+                delayNote.dataset.kaLevel = 'warn';
+                delayNote.style.color = '#e74c3c';
+                delayNote.style.fontWeight = '600';
+                delayNote.textContent = 'Achtung: Mit 0 und 0 entfällt die Pause komplett – alle ' +
+                    'Anzeigen werden unmittelbar nacheinander verarbeitet. Das ist für ' +
+                    'Kleinanzeigen als automatisiertes Verhalten erkennbar und kann zur ' +
+                    'Sperrung deines Accounts führen.';
+                return;
+            }
+            delayNote.dataset.kaLevel = 'info';
+            delayNote.style.color = '#666';
+            delayNote.style.fontWeight = 'normal';
+            delayNote.textContent = 'Vor jeder weiteren Anzeige wird eine zufällige Pause aus ' +
+                'diesem Bereich gewartet, damit die Abstände nicht gleichmäßig aussehen. Die ' +
+                'Werte werden lokal gespeichert. 0 und 0 schaltet die Pause ganz ab – nicht ' +
+                'empfohlen, siehe Warnung.';
+        }
+
+        const onDelayInput = function () {
+            delayState = validateDelayInput(minField.input.value, maxField.input.value);
+            // Gespeichert wird nur ein gueltiger Stand. Bei Unsinn im Feld
+            // bleibt der letzte gute Wert erhalten.
+            if (delayState.ok) delayCfg = saveDelayConfig({ min: delayState.min, max: delayState.max });
+            updateDelayNote();
+            updateSummary();
+        };
+        minField.input.oninput = onDelayInput;
+        maxField.input.oninput = onDelayInput;
+
+        overlay.appendChild(delaySec);
+
         // === SICHERHEITSNETZ ===
         // Ist eine Zeile wirklich sichtbar? Geprueft wird nicht das Modell,
         // sondern das DOM: hidden-Attribut, Inline-Style und die berechnete
@@ -1094,7 +1285,10 @@
                     chosen.length + ' sichtbar angehakten von ' + selected.size + ' im Auswahl-Set.');
             }
             if (!chosen.length) return;
-            onStart(chosen);
+            // Ungueltige Eingabe darf keinen Batch starten -- sonst liefe er mit
+            // einer Pause, die der Nutzer so nicht gesetzt hat.
+            if (!delayState.ok) return;
+            onStart(chosen, { min: delayState.min, max: delayState.max });
         };
         actions.appendChild(cancel);
         actions.appendChild(start);
@@ -1114,14 +1308,28 @@
             strong.textContent = count;
             line1.appendChild(strong);
             line1.appendChild(document.createTextNode(' von ' + visible + ' Anzeige(n) ausgewählt.'));
-            line2.textContent = (count > 0
-                ? 'Geschätzte Laufzeit: ca. ' + estimateRuntimeMinutes(count) + ' Minuten (3 ± 1 min Pause zwischen zwei Anzeigen).'
-                : 'Nichts ausgewählt – Schnellwahl unter der Liste nutzen.') +
+            // Bei ungueltiger Eingabe wird der letzte gueltige Stand genannt --
+            // das ist auch der Stand, mit dem ein Start laufen wuerde, wenn die
+            // Felder wieder in Ordnung sind.
+            const cfgNow = delayState.ok ? { min: delayState.min, max: delayState.max } : delayCfg;
+            let runtimeText;
+            if (count === 0) {
+                runtimeText = 'Nichts ausgewählt – Schnellwahl unter der Liste nutzen.';
+            } else if (cfgNow.min === 0 && cfgNow.max === 0) {
+                runtimeText = 'Ohne Pause: die Anzeigen laufen direkt nacheinander.';
+            } else {
+                runtimeText = 'Geschätzte Laufzeit: ' +
+                    formatRuntimeRange(estimateRuntimeRange(count, cfgNow)) +
+                    ' (Pause ' + cfgNow.min + '-' + cfgNow.max + ' min zwischen zwei Anzeigen).';
+            }
+            line2.textContent = runtimeText +
                 (hidden > 0 ? ' ' + hidden + ' Anzeige(n) ausgeblendet (gemerkt oder ohne Zähler).' : '');
-            start.disabled = (count === 0);
-            start.style.opacity = count === 0 ? '0.5' : '1';
-            start.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            const blocked = (count === 0) || !delayState.ok;
+            start.disabled = blocked;
+            start.style.opacity = blocked ? '0.5' : '1';
+            start.style.cursor = blocked ? 'not-allowed' : 'pointer';
         }
+        updateDelayNote();
         updateSummary();
     }
 
@@ -1280,15 +1488,10 @@
             skipped: result.skipped.length,
             quelle: result.source
         });
-        await renderConfirm(result.matches, result.skipped, function (matches) {
+        await renderConfirm(result.matches, result.skipped, function (matches, delayCfg) {
             stopRequested = false;
-            runBatch(matches);
+            runBatch(matches, delayCfg);
         });
-    }
-
-    function jitterDelay() {
-        const offset = (Math.random() * 2 - 1) * DELAY_JITTER_MS;
-        return Math.max(60 * 1000, Math.round(DELAY_BASE_MS + offset));
     }
 
     // Pure Klassifikation eines Result-Werts aus localStorage (Vertrag mit dem
@@ -1419,7 +1622,12 @@
         return m + ':' + (s < 10 ? '0' : '') + s;
     }
 
-    async function runBatch(matches) {
+    async function runBatch(matches, delayCfg) {
+        // Fehlt die Config (Altaufruf, Fehler im UI), gilt der Default -- nie
+        // versehentlich "keine Pause".
+        const delay = sanitizeDelayConfig(delayCfg);
+        log('Pause zwischen zwei Anzeigen: ' + delay.min + '-' + delay.max + ' min');
+
         const state = {
             queue: matches.slice(),
             processed: [],
@@ -1477,12 +1685,18 @@
             renderProgress(state, onStop);
 
             if (state.queue.length > 0 && !stopRequested) {
-                const wait = jitterDelay();
-                log('Warte ' + Math.round(wait / 1000) + 's vor nächster Anzeige');
-                await waitMs(wait, function (remaining) {
-                    state.nextEtaText = formatRemaining(remaining);
-                    renderProgress(state, onStop);
-                });
+                const wait = randomDelayMs(delay);
+                if (wait > 0) {
+                    log('Warte ' + Math.round(wait / 1000) + 's vor nächster Anzeige');
+                    await waitMs(wait, function (remaining) {
+                        state.nextEtaText = formatRemaining(remaining);
+                        renderProgress(state, onStop);
+                    });
+                    state.nextEtaText = '';
+                } else {
+                    // 0/0: kein Ticker, keine Wartephase -- direkt weiter.
+                    log('Keine Pause konfiguriert – nächste Anzeige folgt direkt');
+                }
             }
         }
 
@@ -1519,9 +1733,20 @@
             daysUntil,
             ageFromDaysLeft,
             ageBand,
-            estimateRuntimeMinutes,
+            DEFAULT_DELAY_MIN_MINUTES,
+            DEFAULT_DELAY_MAX_MINUTES,
+            DELAY_LIMIT_MIN_MINUTES,
+            DELAY_LIMIT_MAX_MINUTES,
+            LS_DELAY_KEY,
+            defaultDelayConfig,
+            sanitizeDelayConfig,
+            validateDelayInput,
+            loadDelayConfig,
+            saveDelayConfig,
+            randomDelayMs,
+            estimateRuntimeRange,
+            formatRuntimeRange,
             renderConfirm,
-            jitterDelay,
             sanitize,
             crc32,
             utf8,
