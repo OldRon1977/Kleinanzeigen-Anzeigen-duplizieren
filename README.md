@@ -57,7 +57,12 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 4. **Schnellwahl** unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl
 5. **Zusatzfilter "nur nicht gemerkte"**: die Checkbox rechts neben der Schnellwahl **blendet gemerkte Anzeigen aus der Liste aus** und wirkt *zusätzlich* zur Schnellwahl, nicht anstelle. "älter als 7 Tage" plus Häkchen wählt also genau die alten Anzeigen, die niemand auf der Merkliste hat. Der Haken ist umkehrbar: Ausgeblendete Anzeigen werden abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Die Zusammenfassung zählt nur die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten
 6. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
-7. **Start** verarbeitet die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+7. **Pause zwischen zwei Anzeigen** (ab Helper v1.10.0): zwei Felder "von" und "bis" in Minuten, Standard **3 bis 6**. Vor jeder weiteren Anzeige wartet das Script eine zufällige Dauer aus diesem Bereich, damit die Abstände nicht gleichmäßig aussehen. Die Werte werden lokal gespeichert und beim nächsten Öffnen wieder vorgelegt
+8. **Start** verarbeitet die angehakten Anzeigen nacheinander mit dieser Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+
+> **Zur Pause**: Erlaubt sind ganze Minuten von 0 bis 180, der erste Wert muss kleiner oder gleich dem zweiten sein. Bei unbrauchbarer Eingabe bleibt der Start gesperrt und der letzte gültige Stand gespeichert. Die Laufzeitschätzung nennt die Spanne, die sich daraus ergibt (4 Anzeigen bei 3–6 Minuten: 3 Pausen, also 9–18 Minuten).
+>
+> **Warnung zu 0 und 0**: Stehen beide Felder auf 0, entfällt die Pause vollständig und alle ausgewählten Anzeigen werden unmittelbar nacheinander verarbeitet. Das ist für Kleinanzeigen als automatisiertes Verhalten erkennbar und kann zur **Sperrung des Accounts** führen. Das Overlay warnt in diesem Fall rot direkt über dem Start-Button, verbietet die Einstellung aber nicht — die Entscheidung liegt beim Nutzer.
 
 > **Sicherheitsnetz (zwei Haken)**: Jede Zeile trägt neben der sichtbaren Checkbox einen zweiten, unsichtbaren Haken (`input[data-ka-gate="fav"]`), den ausschließlich der Merk-Filter setzt — nie ein Klick. Verarbeitet wird eine Anzeige nur, wenn **fünf** Bedingungen zugleich gelten: im Auswahl-Set, sichtbarer Haken gesetzt, zweiter Haken gesetzt, dieselbe Erlaubnis beim Start noch einmal frisch aus dem Merk-Zähler abgeleitet, und Zeile sichtbar in der Liste. Der zweite Haken ist gespeicherter Zustand, die frische Ableitung ist die Rechnung von jetzt — ein einzelnes falsches Bit reicht damit nicht mehr aus, um eine gemerkte Anzeige durchzulassen. Der Haken steht als echtes Element im DOM und lässt sich in den Entwicklertools nachprüfen. Die Zahl in der Zusammenfassung stammt aus derselben Prüfung, ist also exakt die Zahl der Anzeigen, die neu eingestellt werden.
 
@@ -137,9 +142,22 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 - `npm test` führt die Unit-Tests aus (Vitest + jsdom, siehe Ordner `tests/`). Getestet werden die puren Logik-Anteile beider Userscripts (Protokoll-Klassifikation, Datums-, ZIP- und Formularlogik) über Test-Exports, die nur in Node aktiv sind — im Browser bleiben beide Scripts unverändert.
 - `npm run validate` synchronisiert die `@version`-Header mit `package.json` und prüft die Syntax beider `.user.js`-Dateien.
+- `tests/setup.storage.js` ergänzt `localStorage` in der Testumgebung, falls es fehlt. Node bringt ab v22 ein eigenes, experimentelles `localStorage` mit, das ohne `--localstorage-file` `undefined` ist und die jsdom-Variante überschattet; ohne den Shim scheitert jeder Test, der Storage anfasst.
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Helper 1.10.0 (August 2026)
+
+Die Pause zwischen zwei Anzeigen im Batch ist einstellbar, statt fest im Script zu stehen.
+
+- **Neu**: Zwei Felder **"von"** und **"bis"** in Minuten im Batch-Overlay, Standard **3 bis 6**. Pro Übergang wird daraus neu gezogen, gleichverteilt und millisekundengenau — die Abstände unterscheiden sich damit von Anzeige zu Anzeige. Vorher war die Pause auf 3 ± 1 Minuten festgelegt.
+- **Neu**: Die Werte werden lokal gespeichert (`localStorage`, Schlüssel `ka-batch-delay`) und beim nächsten Öffnen wieder vorgelegt. Fehlt der Eintrag oder ist er unbrauchbar, greift wieder der Standard 3 bis 6.
+- **Neu**: Die Laufzeitschätzung nennt die Spanne statt eines festen Werts ("ca. 9-18 Minuten").
+- **Warnung**: 0 und 0 ist zulässig und schaltet die Pause vollständig ab. Der Hinweis unter den Feldern springt dann von grau auf rot und nennt die Konsequenz: für Kleinanzeigen als Automatisierung erkennbar, mögliche Sperrung des Accounts. Der Start bleibt trotzdem möglich.
+- **Sicherheit**: Unbrauchbare Eingaben (leeres Feld, Komma-Wert, über 180, erster Wert größer als der zweite) sperren den Start und werden nicht gespeichert. Gespeichert wird ausschließlich ein gültiger Stand, und ein fehlender Konfigurationswert führt nie zu "keine Pause", sondern zum Standard.
+- **Tests**: 189 Tests (vorher 151). Neu sind die Pausen-Logik als reine Funktionen (Bereichsgrenzen, Streuung, Klemmen, 0/0) und `helper.delay.dom.test.js` gegen das echte Overlay: Standardwerte, Speicher-Roundtrip, Farbwechsel der Warnung, Start-Sperre bei ungültiger Eingabe.
+- **Fix (Tests)**: `localStorage` fehlte in der Testumgebung — Node bringt ab v22 ein eigenes, experimentelles `localStorage`-Global mit, das ohne `--localstorage-file` `undefined` ist und die jsdom-Variante überschattet. `tests/setup.storage.js` ergänzt es, wenn es fehlt. Dadurch läuft auch `worker.republish-order.test.js` wieder, das vorher komplett an dieser Ursache scheiterte.
 
 ### Version 3.10.0 / Helper 1.9.0 (August 2026)
 

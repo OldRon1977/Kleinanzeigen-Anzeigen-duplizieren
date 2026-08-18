@@ -9,8 +9,15 @@ const {
     AGE_BANDS,
     ageFromDaysLeft,
     ageBand,
-    estimateRuntimeMinutes,
-    jitterDelay,
+    DEFAULT_DELAY_MIN_MINUTES,
+    DEFAULT_DELAY_MAX_MINUTES,
+    DELAY_LIMIT_MAX_MINUTES,
+    defaultDelayConfig,
+    sanitizeDelayConfig,
+    validateDelayInput,
+    randomDelayMs,
+    estimateRuntimeRange,
+    formatRuntimeRange,
     sanitize,
     crc32,
     utf8,
@@ -99,34 +106,143 @@ describe('ageBand', () => {
     });
 });
 
-describe('estimateRuntimeMinutes', () => {
-    it('liefert 0 fuer leere Auswahl', () => {
-        expect(estimateRuntimeMinutes(0)).toBe(0);
-    });
-
-    it('liefert 0 fuer eine einzelne Anzeige (keine Pause danach)', () => {
-        expect(estimateRuntimeMinutes(1)).toBe(0);
-    });
-
-    it('rechnet die Pausen ZWISCHEN den Anzeigen', () => {
-        expect(estimateRuntimeMinutes(2)).toBe(3);   // 1 Pause
-        expect(estimateRuntimeMinutes(8)).toBe(21);  // 7 Pausen
-    });
-
-    it('liefert 0 fuer negative Werte', () => {
-        expect(estimateRuntimeMinutes(-3)).toBe(0);
+describe('defaultDelayConfig', () => {
+    it('ist der dokumentierte Standard 3 bis 6 Minuten', () => {
+        expect(defaultDelayConfig()).toEqual({ min: 3, max: 6 });
+        expect(DEFAULT_DELAY_MIN_MINUTES).toBe(3);
+        expect(DEFAULT_DELAY_MAX_MINUTES).toBe(6);
     });
 });
 
-describe('jitterDelay', () => {
-    it('liegt immer zwischen 60000 ms und BASE+JITTER (240000 ms)', () => {
-        const BASE = 3 * 60 * 1000;
-        const JITTER = 1 * 60 * 1000;
-        for (let i = 0; i < 200; i++) {
-            const v = jitterDelay();
-            expect(v).toBeGreaterThanOrEqual(60000);
-            expect(v).toBeLessThanOrEqual(BASE + JITTER);
+describe('sanitizeDelayConfig', () => {
+    it('nimmt gueltige Werte unveraendert', () => {
+        expect(sanitizeDelayConfig({ min: 5, max: 9 })).toEqual({ min: 5, max: 9 });
+    });
+
+    it('laesst 0/0 durch -- das ist eine erlaubte Eingabe', () => {
+        expect(sanitizeDelayConfig({ min: 0, max: 0 })).toEqual({ min: 0, max: 0 });
+    });
+
+    it('faellt bei fehlenden oder unbrauchbaren Werten auf den Default zurueck', () => {
+        expect(sanitizeDelayConfig(undefined)).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig(null)).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({})).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({ min: 'abc', max: 'x' })).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({ min: '', max: '' })).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({ min: NaN, max: Infinity })).toEqual({ min: 3, max: 6 });
+    });
+
+    it('repariert nur den kaputten Einzelwert, nicht das ganze Paar', () => {
+        expect(sanitizeDelayConfig({ min: 10, max: 'x' })).toEqual({ min: 6, max: 10 });
+    });
+
+    it('liest Zahlen auch aus Strings', () => {
+        expect(sanitizeDelayConfig({ min: '4', max: ' 12 ' })).toEqual({ min: 4, max: 12 });
+    });
+
+    it('rundet auf ganze Minuten', () => {
+        expect(sanitizeDelayConfig({ min: 2.4, max: 7.6 })).toEqual({ min: 2, max: 8 });
+    });
+
+    it('klemmt auf die erlaubten Grenzen', () => {
+        expect(sanitizeDelayConfig({ min: -5, max: 999 })).toEqual({ min: 0, max: DELAY_LIMIT_MAX_MINUTES });
+    });
+
+    it('tauscht verdrehte Grenzen beim Lesen', () => {
+        expect(sanitizeDelayConfig({ min: 9, max: 4 })).toEqual({ min: 4, max: 9 });
+    });
+});
+
+describe('validateDelayInput', () => {
+    it('akzeptiert gueltige Paare', () => {
+        expect(validateDelayInput('3', '6')).toEqual({ ok: true, min: 3, max: 6 });
+        expect(validateDelayInput('4', '4')).toEqual({ ok: true, min: 4, max: 4 });
+        expect(validateDelayInput('0', '0')).toEqual({ ok: true, min: 0, max: 0 });
+    });
+
+    it('lehnt leere Felder ab, statt sie als 0 zu lesen', () => {
+        // Ein leeres Feld ist keine Eingabe. Es als 0 zu deuten wuerde die
+        // Pause abschalten, ohne dass der Nutzer 0 getippt hat.
+        expect(validateDelayInput('', '6').ok).toBe(false);
+        expect(validateDelayInput('3', '').ok).toBe(false);
+        expect(validateDelayInput('', '').reason).toBe('range');
+    });
+
+    it('lehnt alles ab, was keine ganze Minutenzahl ist', () => {
+        expect(validateDelayInput('abc', '6').ok).toBe(false);
+        expect(validateDelayInput('2.5', '6').ok).toBe(false);
+        expect(validateDelayInput('-1', '6').ok).toBe(false);
+        expect(validateDelayInput('3', '181').reason).toBe('range');
+    });
+
+    it('meldet verdrehte Grenzen als eigenen Fall', () => {
+        expect(validateDelayInput('6', '3')).toEqual({ ok: false, reason: 'order', min: 6, max: 3 });
+    });
+});
+
+describe('randomDelayMs', () => {
+    it('liegt immer im eingestellten Bereich', () => {
+        for (let i = 0; i < 500; i++) {
+            const v = randomDelayMs({ min: 3, max: 6 });
+            expect(v).toBeGreaterThanOrEqual(3 * 60 * 1000);
+            expect(v).toBeLessThanOrEqual(6 * 60 * 1000);
         }
+    });
+
+    it('variiert innerhalb des Bereichs', () => {
+        // Der Zweck der Einstellung ist die Streuung -- ein konstanter Wert
+        // waere genau das Muster, das vermieden werden soll.
+        const seen = new Set();
+        for (let i = 0; i < 200; i++) seen.add(randomDelayMs({ min: 3, max: 8 }));
+        expect(seen.size).toBeGreaterThan(50);
+    });
+
+    it('liefert bei 0/0 exakt 0 -- keine Pause', () => {
+        for (let i = 0; i < 50; i++) {
+            expect(randomDelayMs({ min: 0, max: 0 })).toBe(0);
+        }
+    });
+
+    it('liefert bei min = max genau diesen Wert', () => {
+        expect(randomDelayMs({ min: 5, max: 5 })).toBe(5 * 60 * 1000);
+    });
+
+    it('nutzt den Default, wenn keine Config uebergeben wird', () => {
+        const v = randomDelayMs(undefined);
+        expect(v).toBeGreaterThanOrEqual(3 * 60 * 1000);
+        expect(v).toBeLessThanOrEqual(6 * 60 * 1000);
+    });
+});
+
+describe('estimateRuntimeRange', () => {
+    const CFG = { min: 3, max: 6 };
+
+    it('liefert 0 fuer leere Auswahl und fuer eine einzelne Anzeige', () => {
+        expect(estimateRuntimeRange(0, CFG)).toEqual({ minMinutes: 0, maxMinutes: 0 });
+        expect(estimateRuntimeRange(1, CFG)).toEqual({ minMinutes: 0, maxMinutes: 0 });
+    });
+
+    it('rechnet die Pausen ZWISCHEN den Anzeigen', () => {
+        expect(estimateRuntimeRange(2, CFG)).toEqual({ minMinutes: 3, maxMinutes: 6 });
+        expect(estimateRuntimeRange(4, CFG)).toEqual({ minMinutes: 9, maxMinutes: 18 });
+    });
+
+    it('liefert 0 fuer negative Werte', () => {
+        expect(estimateRuntimeRange(-3, CFG)).toEqual({ minMinutes: 0, maxMinutes: 0 });
+    });
+
+    it('ist bei 0/0 durchgaengig 0', () => {
+        expect(estimateRuntimeRange(8, { min: 0, max: 0 })).toEqual({ minMinutes: 0, maxMinutes: 0 });
+    });
+});
+
+describe('formatRuntimeRange', () => {
+    it('nennt eine Spanne', () => {
+        expect(formatRuntimeRange({ minMinutes: 9, maxMinutes: 18 })).toBe('ca. 9-18 Minuten');
+    });
+
+    it('nennt bei gleichen Grenzen nur einen Wert', () => {
+        expect(formatRuntimeRange({ minMinutes: 12, maxMinutes: 12 })).toBe('ca. 12 Minuten');
     });
 });
 
