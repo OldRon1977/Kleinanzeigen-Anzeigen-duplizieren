@@ -59,6 +59,8 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 6. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
 7. **Start** verarbeitet die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
 
+> **Sicherheitsnetz**: Der Start verarbeitet ausschließlich Anzeigen, die im Auswahl-Set stehen, deren Checkbox angehakt ist **und** deren Zeile sichtbar in der Liste steht. Die drei Bedingungen sind absichtlich redundant: Sollten Auswahl und Darstellung je auseinanderlaufen, gewinnt die restriktivere Seite — verarbeitet wird nur, was du auch sehen konntest. Die Zahl in der Zusammenfassung stammt aus derselben Prüfung, ist also exakt die Zahl der Anzeigen, die neu eingestellt werden.
+
 > **Zur Merkliste**: Der Zähler wird aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt"). Lässt er sich nicht lesen — etwa nach einem Layout-Umbau bei Kleinanzeigen —, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter mit ausgeblendet, also **nicht** neu eingestellt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
 
 > **Zum Alter**: Die Anzeigenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird daher aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende im Overlay weist darauf hin.

@@ -853,6 +853,36 @@
             overlay.appendChild(sk);
         }
 
+        // === SICHERHEITSNETZ ===
+        // Ist eine Zeile wirklich sichtbar? Geprueft wird nicht das Modell,
+        // sondern das DOM: hidden-Attribut, Inline-Style und die berechnete
+        // Darstellung. getComputedStyle steht bewusst in try/catch -- faellt es
+        // aus, entscheiden die beiden ersten Kriterien.
+        function isVisible(el) {
+            if (el.hidden) return false;
+            if (el.style && el.style.display === 'none') return false;
+            try {
+                const view = el.ownerDocument && el.ownerDocument.defaultView;
+                const cs = view && view.getComputedStyle ? view.getComputedStyle(el) : null;
+                if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+            } catch (e) { /* ohne Layout-Engine bleibt es bei den Attributen */ }
+            return true;
+        }
+
+        // Was tatsaechlich verarbeitet wird. Eine Anzeige muss DREI Bedingungen
+        // erfuellen: im Auswahl-Set, Checkbox angehakt UND sichtbar in der
+        // Liste. Die drei sind redundant -- genau das ist der Zweck. Laufen
+        // Modell und Darstellung je auseinander, gewinnt die restriktivere
+        // Seite: lieber eine Anzeige zu wenig neu einstellen als eine, die der
+        // Nutzer gar nicht sehen konnte.
+        function confirmedSelection() {
+            return entries
+                .filter(function (e) {
+                    return selected.has(e.match.adId) && e.cb.checked && isVisible(e.li);
+                })
+                .map(function (e) { return e.match; });
+        }
+
         // Recovery-Section vor dem Action-Footer
         try {
             const meta = await listSnapshotMeta();
@@ -865,7 +895,13 @@
         cancel.onclick = closeOverlay;
         const start = makeButton('Start', true);
         start.onclick = function () {
-            const chosen = matches.filter(function (m) { return selected.has(m.adId); });
+            const chosen = confirmedSelection();
+            if (chosen.length !== selected.size) {
+                // Sollte nie vorkommen. Wenn doch, ist es ein Fehler im Filter --
+                // die Differenz wird verworfen, nicht verarbeitet.
+                warn('Auswahl und Anzeige liefen auseinander \u2013 verarbeitet werden nur die ' +
+                    chosen.length + ' sichtbar angehakten von ' + selected.size + ' im Auswahl-Set.');
+            }
             if (!chosen.length) return;
             onStart(chosen);
         };
@@ -875,7 +911,9 @@
 
         // Haelt Zusammenfassung und Start-Button im Einklang mit der Auswahl.
         function updateSummary() {
-            const count = selected.size;
+            // Bewusst dieselbe Quelle wie der Start-Button: die genannte Zahl
+            // ist damit exakt die Zahl der Anzeigen, die verarbeitet werden.
+            const count = confirmedSelection().length;
             // Nenner sind die SICHTBAREN Anzeigen -- "3 von 4" waere irritierend,
             // wenn nur drei Zeilen in der Liste stehen.
             const visible = entries.filter(function (e) { return passesFavFilter(e.match); }).length;

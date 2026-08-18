@@ -320,3 +320,74 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
         expect(summaryText()).not.toContain('gemerkt');
     });
 });
+
+// Diese Tests erzeugen absichtlich einen Zustand, den der Filter selbst nie
+// herstellt: Zeile unsichtbar, Checkbox trotzdem angehakt. Sie pruefen also
+// nicht den Filter, sondern das Netz darunter -- den Fall "im Modell steht
+// etwas anderes als auf dem Bildschirm".
+describe('renderConfirm – Sicherheitsnetz sichtbar UND angehakt', () => {
+    it('startet keine Anzeige, deren Zeile per hidden-Attribut verschwunden ist', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        expect(checkedIds()).toEqual(['1001', '1002', '1003', '1004']);
+
+        // Am Filter vorbei manipuliert: sichtbar weg, Haken bleibt.
+        checkboxes()[1].closest('li').hidden = true;
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).toEqual(['1001', '1003', '1004']);
+    });
+
+    it('startet keine Anzeige, deren Zeile per display:none verschwunden ist', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        checkboxes()[3].closest('li').style.display = 'none';
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).toEqual(['1001', '1002', '1003']);
+    });
+
+    it('startet keine Anzeige, deren Haken weg ist, obwohl das Modell sie fuehrt', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        checkboxes()[0].checked = false;   // ohne onchange, Modell bleibt stehen
+
+        buttonByText('Start').click();
+        expect(started.map((m) => m.adId)).toEqual(['1002', '1003', '1004']);
+    });
+
+    it('nennt in der Zusammenfassung dieselbe Zahl, die auch gestartet wird', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        expect(summaryText()).toContain('4 von 4');
+
+        // Ausblenden ueber den Filter: Zahl und Start muessen zusammenpassen.
+        favToggle().checked = true;
+        favToggle().onchange();
+        expect(summaryText()).toContain('3 von 3');
+
+        buttonByText('Start').click();
+        expect(started).toHaveLength(3);
+    });
+
+    it('startet gar nicht, wenn alles Angehakte unsichtbar ist', async () => {
+        let started = null;
+        await renderConfirm(MATCHES_FAV, [], (chosen) => { started = chosen; });
+
+        buttonByText('Alle').click();
+        // nur die Anzeigen-Checkboxen, nicht die Filter-Checkbox darunter
+        checkboxes().slice(0, MATCHES_FAV.length)
+            .forEach((cb) => { cb.closest('li').hidden = true; });
+
+        buttonByText('Start').click();
+        expect(started).toBeNull();
+    });
+});
