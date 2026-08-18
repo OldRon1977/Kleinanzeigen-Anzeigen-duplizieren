@@ -149,3 +149,94 @@ describe('renderConfirm – Bestandsanzeige', () => {
         expect(summaryText()).toContain('1 Karte(n) ohne Datum übersprungen.');
     });
 });
+
+// Wie MATCHES, zusaetzlich mit Merklisten-Zaehler:
+//   1001 (20 Tage) nicht gemerkt   1002 (10 Tage) 2x gemerkt
+//   1003 ( 5 Tage) nicht gemerkt   1004 ( 2 Tage) nicht gemerkt
+const MATCHES_FAV = MATCHES.map((m, i) => ({ ...m, favCount: [0, 2, 0, 0][i] }));
+
+function favToggle() {
+    return Array.from(overlay().querySelectorAll('label'))
+        .filter((l) => l.textContent.includes('nur nicht gemerkte'))
+        .map((l) => l.querySelector('input[type="checkbox"]'))[0];
+}
+
+describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
+    it('bietet den Filter nur an, wenn ein Zaehler gelesen werden konnte', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+        expect(favToggle()).toBeUndefined();
+
+        document.body.innerHTML = '';
+        await renderConfirm(MATCHES_FAV, [], () => {});
+        expect(favToggle()).toBeDefined();
+    });
+
+    it('kombiniert sich mit der Schnellwahl statt sie zu ersetzen', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        buttonByText('älter als 7 Tage').click();
+
+        // 1001 und 1002 sind alt genug, 1002 ist aber gemerkt.
+        expect(checkedIds()).toEqual(['1001']);
+    });
+
+    it('waehlt ohne Filter weiterhin auch gemerkte Anzeigen', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        buttonByText('älter als 7 Tage').click();
+        expect(checkedIds()).toEqual(['1001', '1002']);
+    });
+
+    it('zieht eine bestehende Auswahl beim Einschalten nach', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        buttonByText('Alle').click();
+        expect(checkedIds()).toEqual(['1001', '1002', '1003', '1004']);
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        expect(checkedIds()).toEqual(['1001', '1003', '1004']);
+        expect(summaryText()).toContain('3 von 4');
+    });
+
+    it('fuegt beim Ausschalten nichts ungefragt hinzu', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        buttonByText('Alle').click();
+        expect(checkedIds()).toEqual(['1001', '1003', '1004']);
+
+        favToggle().checked = false;
+        favToggle().onchange();
+        expect(checkedIds()).toEqual(['1001', '1003', '1004']);
+    });
+
+    it('laesst Anzeigen ohne lesbaren Zaehler bei aktivem Filter aussen vor', async () => {
+        const mixed = [
+            { ...MATCHES[0], favCount: 0 },
+            { ...MATCHES[1], favCount: null }
+        ];
+        await renderConfirm(mixed, [], () => {});
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        buttonByText('Alle').click();
+
+        expect(checkboxes()[0].checked).toBe(true);
+        expect(checkboxes()[1].checked).toBe(false);
+    });
+
+    it('nennt den Merk-Status im Text der Anzeige', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+        expect(summaryText()).toContain('nicht gemerkt');
+        expect(summaryText()).toContain('2\u00D7 gemerkt');
+    });
+
+    it('schreibt keinen Merk-Status, wenn der Zaehler fehlt', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+        expect(summaryText()).not.toContain('gemerkt');
+    });
+});

@@ -4,6 +4,7 @@ import helper from '../helper.user.js';
 const {
     MIN_DAYS_TO_END,
     parseEndDate,
+    parseFavCount,
     daysUntil,
     AGE_BANDS,
     ageFromDaysLeft,
@@ -167,5 +168,57 @@ describe('dosTime', () => {
         expect(t).toBe(21450);
         // Datum: ((2024-1980) << 9) | (1 << 5) | 15 = 22528 + 32 + 15
         expect(d).toBe(22575);
+    });
+});
+
+// Markup wie auf "Meine Anzeigen": ein <li> in der Statistikzeile, das Icon
+// traegt data-title="favoriteOutline", der Zaehler steht als Text daneben.
+function favLi(text) {
+    return '<li><span class="inline-block-icon">' +
+        '<svg viewBox="0 0 24 24" data-title="favoriteOutline" role="img" ' +
+        'class="shrink-0 fill-current block align-middle w-medium h-medium">' +
+        '<title>Merkliste</title><path d="M11.9 5.0"></path></svg></span>' +
+        text + '</li>';
+}
+
+function cardWith(innerHtml) {
+    const card = document.createElement('li');
+    card.setAttribute('data-testid', 'ad-card');
+    card.setAttribute('data-adid', '4711');
+    card.innerHTML = '<h3><a>Titel</a></h3><ul class="text-body-small">' + innerHtml + '</ul>';
+    return card;
+}
+
+describe('parseFavCount', () => {
+    it('liest den Zaehler aus dem Merklisten-Eintrag', () => {
+        expect(parseFavCount(cardWith(favLi('1 mal gemerkt')))).toBe(1);
+        expect(parseFavCount(cardWith(favLi('7 mal gemerkt')))).toBe(7);
+    });
+
+    it('liefert 0 statt null, wenn die Anzeige niemand gemerkt hat', () => {
+        // Der Eintrag fehlt bei null Merkungen NICHT, er sagt "0 mal gemerkt".
+        expect(parseFavCount(cardWith(favLi('0 mal gemerkt')))).toBe(0);
+    });
+
+    it('kommt mit Tausenderpunkt klar', () => {
+        expect(parseFavCount(cardWith(favLi('1.234 mal gemerkt')))).toBe(1234);
+    });
+
+    it('verwechselt den Zaehler nicht mit anderen Statistikeintraegen', () => {
+        const card = cardWith(
+            '<li>123 Aufrufe</li>' + favLi('0 mal gemerkt') + '<li>4 Nachrichten</li>'
+        );
+        expect(parseFavCount(card)).toBe(0);
+    });
+
+    it('findet den Eintrag auch ohne Icon ueber den Text', () => {
+        expect(parseFavCount(cardWith('<li>3 mal gemerkt</li>'))).toBe(3);
+    });
+
+    it('liefert null, wenn kein Zaehler lesbar ist', () => {
+        // null heisst "unbekannt", nicht "0" -- sonst wuerde ein Markup-Umbau
+        // gemerkte Anzeigen als nicht gemerkt durchwinken.
+        expect(parseFavCount(cardWith('<li>123 Aufrufe</li>'))).toBeNull();
+        expect(parseFavCount(cardWith(''))).toBeNull();
     });
 });

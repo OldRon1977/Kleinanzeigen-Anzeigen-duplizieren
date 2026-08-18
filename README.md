@@ -55,8 +55,11 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 2. Über der Anzeigenliste erscheint der Button **"Anzeigen auswählen & neu einstellen"**
 3. Das Overlay listet **alle** Anzeigen mit Checkbox. Beim Öffnen ist **nichts angehakt** — ein versehentlicher Start kann also nichts löschen
 4. **Schnellwahl** unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl
-5. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
-6. **Start** verarbeitet die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+5. **Zusatzfilter "nur nicht gemerkte"**: die Checkbox rechts neben der Schnellwahl wirkt *zusätzlich* zur Schnellwahl, nicht anstelle. "älter als 7 Tage" plus Häkchen wählt also genau die alten Anzeigen, die niemand auf der Merkliste hat. Beim Anhaken fallen bereits ausgewählte gemerkte Anzeigen wieder heraus; beim Abhaken kommt nichts ungefragt zurück
+6. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
+7. **Start** verarbeitet die angehakten Anzeigen nacheinander, mit 3 ± 1 Minuten Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+
+> **Zur Merkliste**: Der Zähler wird aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt"). Lässt er sich nicht lesen — etwa nach einem Layout-Umbau bei Kleinanzeigen —, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter **nicht** ausgewählt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
 
 > **Zum Alter**: Die Anzeigenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird daher aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende im Overlay weist darauf hin.
 

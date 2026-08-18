@@ -475,6 +475,26 @@
         return Math.round((date.getTime() - today.getTime()) / dayMs);
     }
 
+    // Merklisten-Zaehler der Karte. Die Statistikzeile enthaelt immer einen
+    // Eintrag "N mal gemerkt" -- auch bei null ("0 mal gemerkt"), das Element
+    // fehlt also nicht. Aufgehaengt am Icon-Attribut data-title, weil die
+    // Klassen daneben Utility-Klassen sind und sich bei jedem Redesign aendern.
+    // Rueckgabe null = nicht lesbar (NICHT 0): sonst wuerde ein Markup-Umbau
+    // jede gemerkte Anzeige stillschweigend als "nicht gemerkt" durchwinken.
+    function parseFavCount(card) {
+        const icon = card.querySelector('svg[data-title="favoriteOutline"]');
+        let host = icon ? icon.closest('li') : null;
+        if (!host) {
+            host = Array.prototype.find.call(card.querySelectorAll('li'), function (li) {
+                return /mal gemerkt/i.test(li.textContent || '');
+            }) || null;
+        }
+        const m = (host ? host.textContent : '').match(/([\d.]+)\s*mal gemerkt/i);
+        if (!m) return null;
+        const n = parseInt(m[1].replace(/\./g, ''), 10);
+        return isNaN(n) ? null : n;
+    }
+
     function collectCandidates() {
         const cards = document.querySelectorAll('li[data-testid="ad-card"][data-adid]');
         const matches = [];
@@ -502,7 +522,8 @@
                 title: title,
                 endText: endText,
                 daysLeft: days,
-                ageDays: ageFromDaysLeft(days)
+                ageDays: ageFromDaysLeft(days),
+                favCount: parseFavCount(card)
             });
         });
 
@@ -688,8 +709,16 @@
             t.textContent = m.title;
             const meta = document.createElement('div');
             meta.style.cssText = 'color:#666;font-size:12px;';
-            meta.textContent = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt \u00B7 endet ' + m.endText +
+            let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt \u00B7 endet ' + m.endText +
                 ' (' + m.daysLeft + ' Tage)';
+            // Merk-Status im Klartext, damit nachvollziehbar bleibt, warum der
+            // Zusatzfilter eine Anzeige aussortiert hat.
+            if (typeof m.favCount === 'number') {
+                metaText += ' \u00B7 ' + (m.favCount === 0
+                    ? 'nicht gemerkt'
+                    : m.favCount + '\u00D7 gemerkt');
+            }
+            meta.textContent = metaText;
             texts.appendChild(t);
             texts.appendChild(meta);
 
@@ -701,16 +730,27 @@
         });
         overlay.appendChild(list);
 
-        // Schnellwahl: setzt die Auswahl auf alles, was das Praedikat erfuellt.
-        // Checkboxen werden programmatisch gesetzt (feuert kein onchange),
-        // deshalb wird `selected` hier mitgefuehrt.
+        // Zusatzfilter statt fuenftem Schnellwahl-Button: nur so laesst sich
+        // "aelter als 7 Tage" UND "nicht gemerkt" kombinieren.
+        let onlyUnfavored = false;
+
+        // Anzeigen ohne lesbaren Zaehler (favCount === null) fallen bei aktivem
+        // Filter raus. Lieber eine Anzeige zu wenig neu einstellen als eine
+        // gemerkte zu loeschen, deren Interessent auf die Preisanpassung wartet.
+        function passesFavFilter(m) {
+            return !onlyUnfavored || m.favCount === 0;
+        }
+
+        // Schnellwahl: setzt die Auswahl auf alles, was das Praedikat erfuellt
+        // und den Zusatzfilter passiert. Checkboxen werden programmatisch
+        // gesetzt (feuert kein onchange), deshalb wird `selected` mitgefuehrt.
         function applySelection(predicate) {
             selected.clear();
             entries.forEach(function (e) {
                 const age = typeof e.match.ageDays === 'number'
                     ? e.match.ageDays
                     : ageFromDaysLeft(e.match.daysLeft);
-                const hit = predicate(e.match, age);
+                const hit = predicate(e.match, age) && passesFavFilter(e.match);
                 e.cb.checked = hit;
                 if (hit) selected.add(e.match.adId);
             });
@@ -732,6 +772,35 @@
             b.onclick = function () { applySelection(pair[1]); };
             bulk.appendChild(b);
         });
+
+        // Nur anbieten, wenn ueberhaupt ein Zaehler gelesen werden konnte --
+        // eine Checkbox, die nach einem Markup-Umbau nichts mehr auswaehlt,
+        // waere schlimmer als keine.
+        if (matches.some(function (m) { return typeof m.favCount === 'number'; })) {
+            const favLabel = document.createElement('label');
+            favLabel.style.cssText = 'display:flex;gap:5px;align-items:center;cursor:pointer;' +
+                'margin-left:auto;color:#333;';
+            favLabel.title = 'Zusatzfilter zur Schnellwahl: waehlt nur Anzeigen, ' +
+                'die niemand auf die Merkliste gesetzt hat. Anzeigen ohne lesbaren ' +
+                'Zaehler bleiben au\u00DFen vor.';
+            const favToggle = document.createElement('input');
+            favToggle.type = 'checkbox';
+            favToggle.style.cssText = 'cursor:pointer;margin:0;';
+            favToggle.onchange = function () {
+                onlyUnfavored = favToggle.checked;
+                // Beim Einschalten die laufende Auswahl nachziehen, damit der
+                // Filter sofort sichtbar wirkt. Beim Ausschalten bleibt die
+                // Auswahl stehen -- ein Haken darf nichts ungefragt hinzufuegen.
+                if (onlyUnfavored) {
+                    const before = new Set(selected);
+                    applySelection(function (m) { return before.has(m.adId); });
+                }
+            };
+            favLabel.appendChild(favToggle);
+            favLabel.appendChild(document.createTextNode('nur nicht gemerkte'));
+            bulk.appendChild(favLabel);
+        }
+
         overlay.appendChild(bulk);
 
         // Legende: erklaert die Farbpunkte und macht transparent, dass das Alter
@@ -1141,6 +1210,7 @@
             AD_RUNTIME_DAYS,
             AGE_BANDS,
             parseEndDate,
+            parseFavCount,
             daysUntil,
             ageFromDaysLeft,
             ageBand,
