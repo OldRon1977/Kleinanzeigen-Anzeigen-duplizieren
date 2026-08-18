@@ -691,7 +691,7 @@
                 else selected.delete(m.adId);
                 updateSummary();
             };
-            entries.push({ match: m, cb: cb });
+            entries.push({ match: m, cb: cb, li: li, hiddenSelected: false });
 
             // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
             // Text daneben), damit sie nicht allein an der Farbe haengt.
@@ -734,11 +734,24 @@
         // "aelter als 7 Tage" UND "nicht gemerkt" kombinieren.
         let onlyUnfavored = false;
 
-        // Anzeigen ohne lesbaren Zaehler (favCount === null) fallen bei aktivem
-        // Filter raus. Lieber eine Anzeige zu wenig neu einstellen als eine
-        // gemerkte zu loeschen, deren Interessent auf die Preisanpassung wartet.
+        // Anzeigen ohne lesbaren Zaehler (favCount === null) werden bei aktivem
+        // Filter mit ausgeblendet. Lieber eine Anzeige zu wenig neu einstellen
+        // als eine gemerkte zu loeschen, deren Interessent auf die
+        // Preisanpassung wartet.
         function passesFavFilter(m) {
             return !onlyUnfavored || m.favCount === 0;
+        }
+
+        // Der Filter blendet aus, statt nur abzuwaehlen: eine ausgeblendete
+        // Anzeige kann nicht angehakt sein, und was beim Ausblenden angehakt
+        // war, kommt beim Einblenden zurueck. Damit ist der Haken in beide
+        // Richtungen umkehrbar -- reines Abwaehlen war es nicht.
+        function applyVisibility() {
+            entries.forEach(function (e) {
+                const hide = !passesFavFilter(e.match);
+                e.li.hidden = hide;
+                e.li.style.display = hide ? 'none' : '';
+            });
         }
 
         // Schnellwahl: setzt die Auswahl auf alles, was das Praedikat erfuellt
@@ -780,21 +793,31 @@
             const favLabel = document.createElement('label');
             favLabel.style.cssText = 'display:flex;gap:5px;align-items:center;cursor:pointer;' +
                 'margin-left:auto;color:#333;';
-            favLabel.title = 'Zusatzfilter zur Schnellwahl: waehlt nur Anzeigen, ' +
-                'die niemand auf die Merkliste gesetzt hat. Anzeigen ohne lesbaren ' +
-                'Zaehler bleiben au\u00DFen vor.';
+            favLabel.title = 'Blendet gemerkte Anzeigen aus der Liste aus. Wirkt ' +
+                'zusammen mit der Schnellwahl. Anzeigen ohne lesbaren Z\u00E4hler ' +
+                'werden mit ausgeblendet; beim Einblenden kommt die vorherige ' +
+                'Auswahl zur\u00FCck.';
             const favToggle = document.createElement('input');
             favToggle.type = 'checkbox';
             favToggle.style.cssText = 'cursor:pointer;margin:0;';
             favToggle.onchange = function () {
                 onlyUnfavored = favToggle.checked;
-                // Beim Einschalten die laufende Auswahl nachziehen, damit der
-                // Filter sofort sichtbar wirkt. Beim Ausschalten bleibt die
-                // Auswahl stehen -- ein Haken darf nichts ungefragt hinzufuegen.
-                if (onlyUnfavored) {
-                    const before = new Set(selected);
-                    applySelection(function (m) { return before.has(m.adId); });
-                }
+                entries.forEach(function (e) {
+                    if (onlyUnfavored) {
+                        if (passesFavFilter(e.match)) return;
+                        // Auswahlstand merken, damit das Einblenden ihn
+                        // wiederherstellen kann.
+                        e.hiddenSelected = selected.has(e.match.adId);
+                        selected.delete(e.match.adId);
+                        e.cb.checked = false;
+                    } else if (e.hiddenSelected) {
+                        selected.add(e.match.adId);
+                        e.cb.checked = true;
+                        e.hiddenSelected = false;
+                    }
+                });
+                applyVisibility();
+                updateSummary();
             };
             favLabel.appendChild(favToggle);
             favLabel.appendChild(document.createTextNode('nur nicht gemerkte'));
@@ -853,14 +876,19 @@
         // Haelt Zusammenfassung und Start-Button im Einklang mit der Auswahl.
         function updateSummary() {
             const count = selected.size;
+            // Nenner sind die SICHTBAREN Anzeigen -- "3 von 4" waere irritierend,
+            // wenn nur drei Zeilen in der Liste stehen.
+            const visible = entries.filter(function (e) { return passesFavFilter(e.match); }).length;
+            const hidden = entries.length - visible;
             line1.textContent = '';
             const strong = document.createElement('strong');
             strong.textContent = count;
             line1.appendChild(strong);
-            line1.appendChild(document.createTextNode(' von ' + matches.length + ' Anzeige(n) ausgewählt.'));
-            line2.textContent = count > 0
+            line1.appendChild(document.createTextNode(' von ' + visible + ' Anzeige(n) ausgewählt.'));
+            line2.textContent = (count > 0
                 ? 'Geschätzte Laufzeit: ca. ' + estimateRuntimeMinutes(count) + ' Minuten (3 ± 1 min Pause zwischen zwei Anzeigen).'
-                : 'Nichts ausgewählt – Schnellwahl unter der Liste nutzen.';
+                : 'Nichts ausgewählt – Schnellwahl unter der Liste nutzen.') +
+                (hidden > 0 ? ' ' + hidden + ' Anzeige(n) ausgeblendet (gemerkt oder ohne Zähler).' : '');
             start.disabled = (count === 0);
             start.style.opacity = count === 0 ? '0.5' : '1';
             start.style.cursor = count === 0 ? 'not-allowed' : 'pointer';

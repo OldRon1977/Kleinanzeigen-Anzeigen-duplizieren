@@ -155,6 +155,10 @@ describe('renderConfirm – Bestandsanzeige', () => {
 //   1003 ( 5 Tage) nicht gemerkt   1004 ( 2 Tage) nicht gemerkt
 const MATCHES_FAV = MATCHES.map((m, i) => ({ ...m, favCount: [0, 2, 0, 0][i] }));
 
+function visibleIds() {
+    return MATCHES.filter((m, i) => !checkboxes()[i].closest('li').hidden).map((m) => m.adId);
+}
+
 function favToggle() {
     return Array.from(overlay().querySelectorAll('label'))
         .filter((l) => l.textContent.includes('nur nicht gemerkte'))
@@ -169,6 +173,47 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
         document.body.innerHTML = '';
         await renderConfirm(MATCHES_FAV, [], () => {});
         expect(favToggle()).toBeDefined();
+    });
+
+    it('blendet gemerkte Anzeigen aus und wieder ein', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+        expect(visibleIds()).toEqual(['1001', '1002', '1003', '1004']);
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        expect(visibleIds()).toEqual(['1001', '1003', '1004']);   // 1002 ist gemerkt
+
+        favToggle().checked = false;
+        favToggle().onchange();
+        expect(visibleIds()).toEqual(['1001', '1002', '1003', '1004']);
+    });
+
+    it('stellt beim Einblenden die vorherige Auswahl wieder her', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        buttonByText('Alle').click();
+        expect(checkedIds()).toEqual(['1001', '1002', '1003', '1004']);
+
+        // Ausblenden nimmt das gemerkte 1002 aus der Auswahl ...
+        favToggle().checked = true;
+        favToggle().onchange();
+        expect(checkedIds()).toEqual(['1001', '1003', '1004']);
+
+        // ... Einblenden bringt genau diesen Stand zurueck.
+        favToggle().checked = false;
+        favToggle().onchange();
+        expect(checkedIds()).toEqual(['1001', '1002', '1003', '1004']);
+    });
+
+    it('zaehlt nur die sichtbaren Anzeigen und nennt die ausgeblendeten', async () => {
+        await renderConfirm(MATCHES_FAV, [], () => {});
+
+        favToggle().checked = true;
+        favToggle().onchange();
+        buttonByText('Alle').click();
+
+        expect(summaryText()).toContain('3 von 3');
+        expect(summaryText()).toContain('1 Anzeige(n) ausgeblendet');
     });
 
     it('kombiniert sich mit der Schnellwahl statt sie zu ersetzen', async () => {
@@ -189,7 +234,7 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
         expect(checkedIds()).toEqual(['1001', '1002']);
     });
 
-    it('zieht eine bestehende Auswahl beim Einschalten nach', async () => {
+    it('nimmt ausgeblendete Anzeigen aus der Auswahl', async () => {
         await renderConfirm(MATCHES_FAV, [], () => {});
 
         buttonByText('Alle').click();
@@ -198,19 +243,22 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
         favToggle().checked = true;
         favToggle().onchange();
         expect(checkedIds()).toEqual(['1001', '1003', '1004']);
-        expect(summaryText()).toContain('3 von 4');
+        expect(summaryText()).toContain('3 von 3');
     });
 
-    it('fuegt beim Ausschalten nichts ungefragt hinzu', async () => {
+    it('haelt beim Einblenden nur zurueck, was vorher schon abgewaehlt war', async () => {
         await renderConfirm(MATCHES_FAV, [], () => {});
 
+        // 1002 war beim Ausblenden NICHT angehakt (Auswahl war leer), ...
         favToggle().checked = true;
         favToggle().onchange();
         buttonByText('Alle').click();
         expect(checkedIds()).toEqual(['1001', '1003', '1004']);
 
+        // ... also kommt es beim Einblenden auch nicht angehakt zurueck.
         favToggle().checked = false;
         favToggle().onchange();
+        expect(visibleIds()).toContain('1002');
         expect(checkedIds()).toEqual(['1001', '1003', '1004']);
     });
 
@@ -227,6 +275,7 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
 
         expect(checkboxes()[0].checked).toBe(true);
         expect(checkboxes()[1].checked).toBe(false);
+        expect(checkboxes()[1].closest('li').hidden).toBe(true);
     });
 
     it('nennt den Merk-Status im Text der Anzeige', async () => {
