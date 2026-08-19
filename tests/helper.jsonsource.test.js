@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import helper from '../helper.user.js';
 
 const {
+    invalidateAdListCache,
+    AD_LIST_CACHE_MS,
     ageFromJsonAd,
     parseJsonDate,
     daysSince,
@@ -54,6 +58,8 @@ function mockFetch(pages) {
 
 beforeEach(() => {
     document.body.innerHTML = '';
+    // Der Cache ist Modulzustand und ueberlebt sonst von Test zu Test.
+    invalidateAdListCache();
 });
 
 afterEach(() => {
@@ -236,5 +242,123 @@ describe('collectCandidatesJson', () => {
         const res = await collectCandidatesJson();
         expect(res.matches.map((m) => m.adId)).toEqual(['1']);
         expect(res.skipped).toHaveLength(1);
+    });
+});
+
+describe('Cache der Anzeigenliste', () => {
+    // paging.last: 1 macht ein "Laden" zu genau EINEM fetch -- ohne die Angabe
+    // fragt der Abruf noch die (leere) zweite Seite ab und die Zaehlung waere
+    // doppelt so hoch.
+    const einSeitig = { 1: { ads: [jsonAd({ id: 1 })], paging: { last: 1 } } };
+
+    function domPage() {
+        document.body.innerHTML =
+            '<ul><li data-testid="ad-card" data-adid="99">' +
+            '<h3><a>Aus dem DOM</a></h3>' +
+            '<span class="managead-listitem-enddate">' + inDays(40) + '</span>' +
+            '</li></ul>';
+    }
+
+    it('holt beim zweiten Öffnen nicht erneut', async () => {
+        global.fetch = mockFetch(einSeitig);
+
+        const erst = await collectCandidatesResilient();
+        const zweit = await collectCandidatesResilient();
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(erst.fromCache).toBeFalsy();
+        expect(zweit.fromCache).toBe(true);
+        expect(zweit.matches.map((m) => m.adId)).toEqual(['1']);
+    });
+
+    it('laedt mit force trotzdem neu', async () => {
+        global.fetch = mockFetch(einSeitig);
+
+        await collectCandidatesResilient();
+        const frisch = await collectCandidatesResilient({ force: true });
+
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(frisch.fromCache).toBeFalsy();
+    });
+
+    it('laedt nach dem Verwerfen neu', async () => {
+        global.fetch = mockFetch(einSeitig);
+
+        await collectCandidatesResilient();
+        invalidateAdListCache();
+        await collectCandidatesResilient();
+
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('laeuft nach der Haltezeit ab', async () => {
+        global.fetch = mockFetch(einSeitig);
+        const jetzt = Date.now();
+        const spy = vi.spyOn(Date, 'now');
+
+        spy.mockReturnValue(jetzt);
+        await collectCandidatesResilient();
+
+        spy.mockReturnValue(jetzt + AD_LIST_CACHE_MS - 1000);
+        expect((await collectCandidatesResilient()).fromCache).toBe(true);
+
+        spy.mockReturnValue(jetzt + AD_LIST_CACHE_MS + 1000);
+        expect((await collectCandidatesResilient()).fromCache).toBeFalsy();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+
+        spy.mockRestore();
+    });
+
+    it('haelt die DOM-Rueckfallebene NICHT fest', async () => {
+        // Der DOM-Weg kostet kein Netz und spiegelt die sichtbare Seite --
+        // ihn zu cachen brächte nichts und wuerde nur veralten.
+        global.fetch = mockFetch({ 1: new Error('offline') });
+        domPage();
+
+        const erst = await collectCandidatesResilient();
+        const zweit = await collectCandidatesResilient();
+
+        expect(erst.source).toBe('dom');
+        expect(zweit.source).toBe('dom');
+        expect(zweit.fromCache).toBeFalsy();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('gibt Kopien heraus, nicht den Cache selbst', async () => {
+        global.fetch = mockFetch({ 1: { ads: [jsonAd({ id: 1, title: 'Original' })], paging: { last: 1 } } });
+
+        const erst = await collectCandidatesResilient();
+        erst.matches[0].title = 'VERAENDERT';
+        erst.matches.push({ adId: 'geschmuggelt' });
+
+        const zweit = await collectCandidatesResilient();
+        expect(zweit.matches).toHaveLength(1);
+        expect(zweit.matches[0].title).toBe('Original');
+    });
+});
+
+// Die drei Stellen, an denen der Cache verworfen werden MUSS, weil sich die
+// Anzeigenliste danach garantiert geaendert hat. Ein Verhaltenstest muesste den
+// halben Batch-Lauf nachbauen; diese Struktur-Pruefung haelt bewusst nur die
+// eine Eigenschaft fest, die sonst still verloren ginge.
+describe('Cache wird nach verändernden Aktionen verworfen', () => {
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'helper.user.js'), 'utf8');
+
+    function body(fnName) {
+        const start = src.search(new RegExp('(async )?function ' + fnName + '\\('));
+        expect(start).toBeGreaterThan(-1);
+        return src.slice(start, src.indexOf('\n    }', start));
+    }
+
+    it('nach einem Batch-Lauf', () => {
+        expect(body('runBatch')).toContain('invalidateAdListCache()');
+    });
+
+    it('nach einem einzelnen Neu-Einstellen', () => {
+        expect(body('openSmartRepublish')).toContain('invalidateAdListCache()');
+    });
+
+    it('nach einem Duplizieren', () => {
+        expect(body('openDuplicate')).toContain('invalidateAdListCache()');
     });
 });

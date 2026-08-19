@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.10.0
+// @version       1.11.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -44,6 +44,47 @@
         { key: 'mittel', minAge: 5, color: '#f9a825', label: '5-6 Tage' },
         { key: 'frisch', minAge: 0, color: '#e53935', label: 'bis 4 Tage' }
     ];
+
+    // Kurzzeit-Cache fuer die Anzeigenliste. Ohne ihn holt jedes Oeffnen des
+    // Batch-Fensters die komplette Liste neu -- bei ueber 25 Anzeigen also
+    // mehrere Abrufe pro Klick. 90 Sekunden fangen mehrfaches Oeffnen
+    // hintereinander ab, ohne dass die Liste sichtbar veraltet.
+    const AD_LIST_CACHE_MS = 90 * 1000;
+
+    // Bewusst nur im Speicher und nicht in localStorage: Nach einem Batch-Lauf
+    // -- womoeglich in einem anderen Tab -- waere ein persistierter Stand
+    // schlicht falsch, und niemand erwartet nach einem Reload alte Daten.
+    let adListCache = null;   // { at: <ms>, result: <Ergebnis von collect...> }
+
+    function invalidateAdListCache() {
+        if (adListCache) log('Anzeigenliste im Cache verworfen');
+        adListCache = null;
+    }
+
+    function cachedAdListAgeMs() {
+        return adListCache ? (Date.now() - adListCache.at) : null;
+    }
+
+    // Flache Kopie des Sammel-Ergebnisses. Wird in BEIDE Richtungen benutzt:
+    // beim Ablegen und beim Herausgeben. Sonst teilt sich der erste, noch
+    // ungecachte Rueckgabewert die Arrays mit dem Cache -- und wer daran etwas
+    // aendert, veraendert unbemerkt den naechsten Aufruf.
+    function cloneCollectResult(result) {
+        return {
+            matches: result.matches.map(function (m) { return Object.assign({}, m); }),
+            skipped: result.skipped.slice(),
+            source: result.source
+        };
+    }
+
+    function readAdListCache() {
+        if (!adListCache) return null;
+        if (cachedAdListAgeMs() > AD_LIST_CACHE_MS) {
+            adListCache = null;
+            return null;
+        }
+        return adListCache.result;
+    }
 
     // Anzeigenliste als JSON. Liefert im Gegensatz zum DOM das echte
     // Erstelldatum, den Merk-Zaehler als Zahl und ALLE Seiten -- das DOM kennt
@@ -397,6 +438,9 @@
             clearTimeout(timeoutId);
             try { localStorage.removeItem(lsKey); } catch (e) {}
             try { tabHandle.close(); } catch (e) {}
+            // Es gibt eine Anzeige mehr -- ein zwischengespeicherter Stand
+            // waere ab jetzt unvollstaendig.
+            invalidateAdListCache();
             button.style.color = '#27ae60';
             button.textContent = '✅ Dupliziert';
             setTimeout(function () {
@@ -435,6 +479,10 @@
         button.textContent = '\u23F3 Laeuft \u2026';
         processOne({ adId: adId, title: '' }).then(function (res) {
             if (res.ok) {
+                // Diese Anzeige gibt es nicht mehr, dafuer eine neue mit anderer
+                // ID. Der Cache muss weg, sonst bietet das Overlay eine geloeschte
+                // Anzeige zum Neu-Einstellen an.
+                invalidateAdListCache();
                 button.style.color = '#27ae60';
                 button.textContent = '\u2705 Fertig';
                 deleteSnapshot(adId).catch(function () {});
@@ -615,10 +663,32 @@
     // das echte Erstelldatum; faellt sie aus (Schnittstelle geaendert, nicht
     // eingeloggt, Netzfehler), arbeitet der Batch wie bisher mit dem DOM
     // weiter -- dann eben nur mit der sichtbaren Seite und geschaetztem Alter.
-    async function collectCandidatesResilient() {
+    async function collectCandidatesResilient(options) {
+        const force = !!(options && options.force);
+
+        if (!force) {
+            const hit = readAdListCache();
+            if (hit) {
+                const ageSec = Math.round(cachedAdListAgeMs() / 1000);
+                log('Anzeigenliste aus dem Cache (' + ageSec + 's alt)');
+                const copy = cloneCollectResult(hit);
+                copy.fromCache = true;
+                copy.ageSeconds = ageSec;
+                return copy;
+            }
+        }
+
         try {
             const viaJson = await collectCandidatesJson();
-            if (viaJson.matches.length > 0) return viaJson;
+            if (viaJson.matches.length > 0) {
+                // Nur die JSON-Quelle wird gehalten. Der DOM-Weg kostet kein
+                // Netz und spiegelt ohnehin genau die sichtbare Seite -- ihn zu
+                // cachen brächte nichts und könnte veralten.
+                // Kopie ablegen, Original herausgeben: Was der Aufrufer damit
+                // macht, darf den Cache nicht beruehren.
+                adListCache = { at: Date.now(), result: cloneCollectResult(viaJson) };
+                return viaJson;
+            }
             warn('JSON-Quelle lieferte keine Anzeigen – falle auf die Seitenansicht zurück');
         } catch (e) {
             warn('JSON-Quelle nicht verfügbar – falle auf die Seitenansicht zurück', e);
@@ -874,7 +944,7 @@
             : 'ca. ' + range.minMinutes + '-' + range.maxMinutes + ' Minuten';
     }
 
-    async function renderConfirm(matches, skipped, onStart) {
+    async function renderConfirm(matches, skipped, onStart, meta) {
         const overlay = ensureOverlay();
 
         overlay.innerHTML = '';
@@ -916,6 +986,35 @@
         const line2 = document.createElement('div');
         line2.style.cssText = 'color:#666;margin-top:4px;';
         summary.appendChild(line2);
+
+        // Herkunft der Liste offenlegen. Wer eine Anzeige in einem anderen Tab
+        // geaendert hat, soll sehen, dass hier ein zwischengespeicherter Stand
+        // steht -- und ihn mit einem Klick auffrischen koennen.
+        if (meta && meta.onReload) {
+            const line3 = document.createElement('div');
+            line3.style.cssText = 'color:#999;margin-top:4px;font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
+            const label = document.createElement('span');
+            if (meta.fromCache) {
+                label.textContent = 'Liste zwischengespeichert (' + (meta.ageSeconds || 0) + 's alt).';
+            } else {
+                label.textContent = meta.source === 'json'
+                    ? 'Liste frisch geladen.'
+                    : 'Liste aus der Seitenansicht – nur die sichtbare Seite.';
+            }
+            const reload = document.createElement('button');
+            reload.type = 'button';
+            reload.textContent = 'Neu laden';
+            reload.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:11px;text-decoration:underline;';
+            reload.onclick = function () {
+                reload.disabled = true;
+                reload.textContent = 'Lädt \u2026';
+                meta.onReload();
+            };
+            line3.appendChild(label);
+            line3.appendChild(reload);
+            summary.appendChild(line3);
+        }
+
         overlay.appendChild(summary);
 
         const list = document.createElement('ul');
@@ -1485,16 +1584,22 @@
     // === ORCHESTRATOR ===
     let stopRequested = false;
 
-    async function startBatchFlow() {
-        const result = await collectCandidatesResilient();
+    async function startBatchFlow(options) {
+        const result = await collectCandidatesResilient(options);
         log('Kandidaten:', {
             matches: result.matches.length,
             skipped: result.skipped.length,
-            quelle: result.source
+            quelle: result.source,
+            ausCache: !!result.fromCache
         });
         await renderConfirm(result.matches, result.skipped, function (matches, delayCfg) {
             stopRequested = false;
             runBatch(matches, delayCfg);
+        }, {
+            source: result.source,
+            fromCache: !!result.fromCache,
+            ageSeconds: result.ageSeconds || 0,
+            onReload: function () { startBatchFlow({ force: true }); }
         });
     }
 
@@ -1704,6 +1809,9 @@
             }
         }
 
+        // Nach einem Lauf stimmt die zwischengespeicherte Liste garantiert nicht
+        // mehr: verarbeitete Anzeigen sind geloescht und durch neue ersetzt.
+        invalidateAdListCache();
         log('Batch fertig', { ok: state.processed.length, fail: state.failed.length, aborted: state.aborted, autoStopped: state.autoStopped });
         renderDone(state);
     }
@@ -1733,6 +1841,8 @@
             fetchAdListJson,
             collectCandidatesJson,
             collectCandidatesResilient,
+            invalidateAdListCache,
+            AD_LIST_CACHE_MS,
             collectCandidates,
             daysUntil,
             ageFromDaysLeft,

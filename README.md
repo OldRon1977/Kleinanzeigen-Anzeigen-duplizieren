@@ -147,6 +147,12 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Helper 1.11.0 (August 2026)
+
+- **Neu**: Die Anzeigenliste wird 90 Sekunden zwischengespeichert. Bisher löste jedes Öffnen des Batch-Fensters einen kompletten Abruf über alle Seiten aus — bei über 25 Anzeigen mehrere Anfragen pro Klick. Das ist reine Rücksicht auf die Serverlast; für dich ändert sich nur, dass das Fenster schneller aufgeht.
+- Die Herkunft der Liste steht jetzt im Fenster ("frisch geladen" / "zwischengespeichert (12s alt)") samt **Neu laden**-Link, falls du bewusst den aktuellen Stand willst.
+- Der Zwischenspeicher wird automatisch verworfen, sobald sich die Liste geändert haben muss: nach einem Batch-Lauf, nach einem einzelnen Neu-Einstellen und nach einem Duplizieren. Die Rückfallebene über die Seitenansicht wird **nicht** zwischengespeichert — sie kostet kein Netz und spiegelt ohnehin die sichtbare Seite.
+
 ### Helper 1.10.0 (August 2026)
 
 Die Pause zwischen zwei Anzeigen im Batch ist einstellbar, statt fest im Script zu stehen.
