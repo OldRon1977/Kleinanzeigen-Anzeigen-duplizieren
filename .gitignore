@@ -30,7 +30,9 @@ temp/
 .claude/
 
 # Interne Arbeitsdokumente (nur lokal halten)
-PROTOCOL.md
+# PROTOCOL.md ist bewusst versioniert: Es beschreibt den Vertrag zwischen den
+# beiden Scripts, die ohnehin oeffentlich sind, und muss auf jedem Geraet
+# denselben Stand haben.
 REVIEW.md
 BACKLOG.md
 REVIEW_SUMMARY.md
