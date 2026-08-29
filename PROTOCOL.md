@@ -258,7 +258,7 @@ Bestätigungs-Seite (kein Zugriff durch den Helper):
 | Konstante | Wert | Datei | Bedeutung |
 |---|---|---|---|
 | `RESULT_WAIT_TIMEOUT_MS` | 180 000 ms (180s) | `helper.user.js` | Maximale Wartezeit des Helpers auf einen Result-Wert, bevor `code: 'timeout'` ausgelöst wird |
-| Watchdog-Delay | 45 000 ms (45s) | `kleinanzeigen-duplizieren.user.js` (`smartRepublish`) | Prüft nach dem Klick auf "Anzeige speichern", ob der Tab **noch** auf `p-anzeige-bearbeiten.html` steht; falls ja, schreibt er `error:save_failed:not_deleted` und raeumt den Loesch-Auftrag ab |
+| `CONFIG.SAVE_WATCHDOG_TIMEOUT_MS` | 45 000 ms (45s) | `kleinanzeigen-duplizieren.user.js` (`startSaveWatchdog()` und der Batch-Watchdog in `smartRepublish()`) | Prüft nach dem Klick auf "Anzeige speichern", ob der Tab **noch** auf `p-anzeige-bearbeiten.html` steht; falls ja, schreibt er `error:save_failed:not_deleted` und raeumt den Loesch-Auftrag ab |
 | Polling-Intervall | 1 000 ms | `helper.user.js` (`processOne`) | Fallback-Polling auf den Result-Key, redundant zum `storage`-Event |
 
 ## Kompatibilitätsregeln
