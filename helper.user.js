@@ -366,7 +366,7 @@
             btn.type = 'button';
             btn.textContent = '\uD83D\uDD04 Smart neu einstellen';
             btn.title = 'Löscht Original und erstellt neue Anzeige';
-            btn.style.cssText = 'margin-left:8px;padding:4px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;font-size:12px;vertical-align:middle;display:inline-flex;align-items:center;';
+            btn.style.cssText = BTN_STYLE;
 
             btn.onclick = function (e) {
                 e.preventDefault();
