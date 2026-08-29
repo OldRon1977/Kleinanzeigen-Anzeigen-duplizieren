@@ -919,9 +919,14 @@
             saveBtn.click();
             startSaveWatchdog();
 
-            // B) Self-Watchdog: wenn der Tab nach 45s noch auf der Bearbeiten-Seite
-            // ist, hat das Save serverseitig nicht durchgegriffen. Ohne diesen
-            // Hinweis wuerde der Helper nur ein generisches Timeout sehen.
+            // B) Self-Watchdog: steht der Tab nach CONFIG.SAVE_WATCHDOG_TIMEOUT_MS
+            // noch auf der Bearbeiten-Seite, hat das Save serverseitig nicht
+            // durchgegriffen. Ohne diesen Hinweis wuerde der Helper nur ein
+            // generisches Timeout sehen. Bewusst dieselbe Frist wie
+            // startSaveWatchdog() oben -- beide beurteilen denselben Vorgang
+            // (Klick ohne Navigation), nur meldet der eine an den Nutzer und
+            // der andere an den Helper. Zwei getrennte Werte koennten
+            // auseinanderlaufen und den Batch anders bewerten als die UI.
             if (batchMode) {
                 setTimeout(function () {
                     try {
@@ -933,7 +938,7 @@
                             batchSetResult(originalId, 'error:save_failed:not_deleted');
                         }
                     } catch (e) {}
-                }, 45 * 1000);
+                }, CONFIG.SAVE_WATCHDOG_TIMEOUT_MS);
             }
 
         } catch (error) {
