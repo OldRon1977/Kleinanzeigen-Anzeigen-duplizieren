@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.11.0
+// @version       1.11.1
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -1462,7 +1462,13 @@
         cur.textContent = 'Aktuell: ' + (state.currentLabel || '\u2013');
         status.appendChild(cur);
 
-        if (state.nextEtaText) {
+        if (state.stopping) {
+            const note = document.createElement('div');
+            note.dataset.kaStopNote = 'true';
+            note.style.cssText = 'color:#e74c3c;margin-top:4px;font-weight:600;';
+            note.textContent = 'Stop angefordert – der laufende Vorgang wird noch zu Ende geführt.';
+            status.appendChild(note);
+        } else if (state.nextEtaText) {
             const eta = document.createElement('div');
             eta.style.cssText = 'color:#666;margin-top:4px;';
             eta.textContent = 'Nächste in: ' + state.nextEtaText;
@@ -1483,11 +1489,19 @@
 
         const actions = document.createElement('div');
         actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
-        const stop = makeButton('Stop', false);
+        const stop = makeButton(state.stopping ? 'Wird beendet \u2026' : 'Stop', false);
         stop.style.borderColor = '#e74c3c';
         stop.style.color = '#e74c3c';
         stop.style.background = '#fff';
         stop.style.fontWeight = '600';
+        // Nach dem ersten Klick ist nichts mehr anzufordern: ein zweiter Klick
+        // koennte nichts beschleunigen und wuerde nur so aussehen, als haette
+        // der erste nicht gewirkt.
+        stop.disabled = !!state.stopping;
+        if (state.stopping) {
+            stop.style.opacity = '0.6';
+            stop.style.cursor = 'not-allowed';
+        }
         stop.onclick = onStop;
         actions.appendChild(stop);
         overlay.appendChild(actions);
@@ -1710,17 +1724,38 @@
         });
     }
 
-    function waitMs(ms, onTick) {
+    // Wartet `ms` Millisekunden und meldet die Restzeit im Sekundentakt.
+    //
+    // `shouldAbort` wird bei JEDEM Tick geprueft, nicht nur am Ende. Ohne diese
+    // Pruefung wirkt ein Stop erst nach der Pause: bei der Standardeinstellung
+    // von 3-6 Minuten liefe der Ticker nach dem Klick noch minutenlang sichtbar
+    // weiter. Der Nutzer haelt das fuer kaputt und schliesst den Tab -- unter
+    // Umstaenden mitten im naechsten Vorgang, wo genau das teuer ist.
+    //
+    // Rueckgabe: true = ausgewartet, false = abgebrochen. Der Aufrufer muss den
+    // Unterschied kennen, weil nach einem Abbruch keine weitere Anzeige folgt.
+    function waitMs(ms, onTick, shouldAbort) {
         return new Promise(function (resolve) {
             const start = Date.now();
-            const tick = setInterval(function () {
+            const step = function () {
+                // Abbruch VOR der Restzeit-Meldung: ein abgebrochener Lauf soll
+                // keine neue ETA mehr in die Oberflaeche schreiben.
+                if (shouldAbort && shouldAbort()) {
+                    clearInterval(tick);
+                    resolve(false);
+                    return;
+                }
                 const remaining = Math.max(0, ms - (Date.now() - start));
                 if (onTick) onTick(remaining);
                 if (remaining <= 0) {
                     clearInterval(tick);
-                    resolve();
+                    resolve(true);
                 }
-            }, 1000);
+            };
+            const tick = setInterval(step, 1000);
+            // Einmal sofort: sonst bleibt die Restzeit die erste Sekunde leer,
+            // und ein Stop in genau dieser Sekunde wuerde erst danach bemerkt.
+            step();
         });
     }
 
@@ -1745,13 +1780,21 @@
             currentLabel: '',
             nextEtaText: '',
             aborted: false,
-            autoStopped: false
+            autoStopped: false,
+            stopping: false
         };
 
         const onStop = function () {
             stopRequested = true;
             state.aborted = true;
+            // Sofort neu zeichnen, damit der Klick sichtbar ankommt. Ein
+            // laufender Vorgang wird NICHT abgebrochen -- der Worker-Tab
+            // arbeitet zu Ende, sonst bliebe eine halb angelegte Anzeige
+            // zurueck. Der Hinweis sagt genau das, statt Sofort-Stop zu
+            // versprechen.
+            state.stopping = true;
             log('Stop angefordert');
+            renderProgress(state, onStop);
         };
 
         renderProgress(state, onStop);
@@ -1797,11 +1840,14 @@
                 const wait = randomDelayMs(delay);
                 if (wait > 0) {
                     log('Warte ' + Math.round(wait / 1000) + 's vor nächster Anzeige');
-                    await waitMs(wait, function (remaining) {
+                    const ausgewartet = await waitMs(wait, function (remaining) {
                         state.nextEtaText = formatRemaining(remaining);
                         renderProgress(state, onStop);
-                    });
+                    }, function () { return stopRequested; });
                     state.nextEtaText = '';
+                    if (!ausgewartet) {
+                        log('Stop während der Pause – Batch endet ohne weitere Anzeige');
+                    }
                 } else {
                     // 0/0: kein Ticker, keine Wartephase -- direkt weiter.
                     log('Keine Pause konfiguriert – nächste Anzeige folgt direkt');
@@ -1860,6 +1906,8 @@
             randomDelayMs,
             estimateRuntimeRange,
             formatRuntimeRange,
+            waitMs,
+            formatRemaining,
             renderConfirm,
             sanitize,
             crc32,
