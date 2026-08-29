@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.10.0
+// @version       3.10.1
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @credits       Andi (Zer089) - Selektoren des Werbeblockers, MIT-Lizenz: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -37,7 +37,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.10.0'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.10.1'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
@@ -51,7 +51,13 @@
         POPUP_POLL_INTERVAL_MS: 200,
         POPUP_POLL_TIMEOUT_MS: 30000,
         POPUP_RECLICK_COOLDOWN_MS: 1000,
-        SAVE_WATCHDOG_TIMEOUT_MS: 45000
+        SAVE_WATCHDOG_TIMEOUT_MS: 45000,
+        // Gleichzeitige Bild-Downloads beim Snapshot. Bewusst niedrig: mehr
+        // bringt kaum noch etwas (der Browser deckelt Verbindungen pro Host
+        // ohnehin) und soll nicht nach einem Download-Sturm aussehen. Vier
+        // liegt unter dem, was eine normale Bildergalerie beim Seitenaufbau
+        // parallel laedt.
+        IMAGE_FETCH_CONCURRENCY: 4
     };
 
     // === LOGGING ===
@@ -771,19 +777,57 @@
         return await res.blob();
     }
 
+    /**
+     * Wendet `worker` auf alle `items` an, aber hoechstens `limit` davon
+     * gleichzeitig, und liefert die Ergebnisse in der REIHENFOLGE DER EINGABE
+     * zurueck -- nicht in der Reihenfolge, in der sie fertig wurden.
+     *
+     * Die Reihenfolge ist hier kein Schoenheitsdetail: Der Index im Array wird
+     * im Recovery-ZIP zum Dateinamen (image_01, image_02, ...) und ist damit
+     * die Bildreihenfolge der Anzeige. Ein Pool, der Ergebnisse einfach
+     * anhaengt, wuerde sie nach Antwortzeit sortieren -- das Titelbild landete
+     * dann irgendwo.
+     *
+     * `worker` darf nicht ablehnen: eine Rejection wuerde die uebrigen
+     * Laeufer verwaisen lassen. Aufrufer fangen ihre Fehler selbst ab und
+     * geben einen Platzhalter zurueck.
+     */
+    async function mapLimit(items, limit, worker) {
+        const results = new Array(items.length);
+        let next = 0;
+        const run = async function () {
+            while (true) {
+                const i = next++;
+                if (i >= items.length) return;
+                results[i] = await worker(items[i], i);
+            }
+        };
+        const pool = [];
+        const size = Math.max(1, Math.min(limit, items.length));
+        for (let i = 0; i < size; i++) pool.push(run());
+        await Promise.all(pool);
+        return results;
+    }
+
     async function buildSnapshot(adId) {
         const ff = readFormFields();
         const urls = collectImageUrls();
-        const images = [];
-        for (const u of urls) {
+        // Parallel statt nacheinander: Der Snapshot liegt im kritischen Pfad
+        // VOR dem Speichern-Klick, und eine Anzeige darf bis zu 20 Bilder
+        // haben. Sequenziell summierte sich das auf mehrere Sekunden, in denen
+        // der Nutzer nur den Spinner sah.
+        const images = await mapLimit(urls, CONFIG.IMAGE_FETCH_CONCURRENCY, async function (u) {
             try {
                 const blob = await fetchAsBlob(u);
-                images.push({ url: u, blob: blob, mime: blob.type || 'image/jpeg' });
+                return { url: u, blob: blob, mime: blob.type || 'image/jpeg' };
             } catch (e) {
+                // Ein fehlgeschlagenes Bild darf den Snapshot nicht kippen --
+                // der Rest ist immer noch die Rettung. Platzhalter mit URL,
+                // damit die Luecke im ZIP nachvollziehbar bleibt.
                 logger.warn('Bild-Fetch fehlgeschlagen, speichere nur URL', { url: u, error: String(e) });
-                images.push({ url: u, blob: null, mime: null });
+                return { url: u, blob: null, mime: null };
             }
-        }
+        });
         return {
             adId: String(adId),
             capturedAt: Date.now(),
@@ -1159,7 +1203,8 @@
             handleConfirmationPage,
             awaitFormReady,
             waitUntilPageLoaded,
-            findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId
+            findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId,
+            mapLimit, buildSnapshot
         };
         return; // im Test-Kontext keine Initialisierung/Timer
     }

@@ -1,6 +1,6 @@
 {
   "name": "kleinanzeigen-anzeigen-duplizieren",
-  "version": "3.10.0",
+  "version": "3.10.1",
   "helperVersion": "1.11.0",
   "description": "eBay Kleinanzeigen - Anzeige duplizieren / neu einstellen. Einfaches Duplizieren und Smart Neu-Einstellen von Anzeigen mit automatischer Bilderhaltung",
   "main": "kleinanzeigen-duplizieren.user.js",
