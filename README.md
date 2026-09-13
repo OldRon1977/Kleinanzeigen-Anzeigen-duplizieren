@@ -149,6 +149,16 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
+### Version 3.10.1 / Helper 1.11.1 (September 2026)
+
+Beiträge von @KrohnMi (PR #61–#64) und ein Fix, der beim Testen davon aufgefallen ist (PR #65).
+
+- **Fix: Stop wirkt auch in der Pause.** Bisher prüfte der Batch den Stop erst nach der Pause zwischen zwei Anzeigen — bei 3 bis 6 Minuten lief der Countdown nach dem Klick einfach weiter. Jetzt endet der Batch innerhalb einer Sekunde. Läuft gerade eine Anzeige, wird sie weiterhin zu Ende geführt; das Fenster sagt das jetzt ("Stop angefordert – der laufende Vorgang wird noch zu Ende geführt") und sperrt den Stop-Button.
+- **Fix: Der Recovery-Snapshot enthält wieder echte Bilder.** Seit Einführung des Snapshots scheiterte jeder Bild-Download an CORS (Anfrage mit Cookies, die der Bild-Server nicht erlaubt), gespeichert wurde nur die URL. Außerdem wurden auf der Bearbeiten-Seite nur Vorschaubilder mit 96×96 Pixeln erfasst. Jetzt landen die Bilder in voller Auflösung im Snapshot und damit im Recovery-ZIP.
+- **Schneller**: Die Bilder für den Snapshot werden zu viert parallel geladen statt nacheinander, in unveränderter Reihenfolge.
+- **Intern**: Der Batch-Watchdog nutzt `CONFIG.SAVE_WATCHDOG_TIMEOUT_MS` statt einer eigenen 45-Sekunden-Zahl; der Smart-Button teilt sich den Style mit dem Duplizieren-Button.
+- **Tests**: 223 Tests (vorher 198).
+
 ### Helper 1.11.0 (August 2026)
 
 - **Neu**: Die Anzeigenliste wird 90 Sekunden zwischengespeichert. Bisher löste jedes Öffnen des Batch-Fensters einen kompletten Abruf über alle Seiten aus — bei über 25 Anzeigen mehrere Anfragen pro Klick. Das ist reine Rücksicht auf die Serverlast; für dich ändert sich nur, dass das Fenster schneller aufgeht.
