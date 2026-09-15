@@ -12,6 +12,9 @@ const {
     formatDate,
     mapJsonAd,
     fetchAdListJson,
+    fetchAdQuota,
+    AD_QUOTA_JSON_PATH,
+    FREE_AD_LIMIT,
     collectCandidatesJson,
     collectCandidatesResilient
 } = helper;
@@ -185,6 +188,39 @@ describe('fetchAdListJson', () => {
     it('wirft bei HTTP-Fehler', async () => {
         global.fetch = mockFetch({ 1: { httpStatus: 403 } });
         await expect(fetchAdListJson()).rejects.toThrow('HTTP 403');
+    });
+});
+
+describe('fetchAdQuota', () => {
+    it('liest den serverseitigen 30-Tage-Zaehler und berechnet den Rest', async () => {
+        global.fetch = vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ newAdCount: 14 })
+        }));
+
+        await expect(fetchAdQuota()).resolves.toEqual({ used: 14, limit: FREE_AD_LIMIT, available: 86 });
+        expect(global.fetch).toHaveBeenCalledWith(AD_QUOTA_JSON_PATH, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        });
+    });
+
+    it('zeigt bei mehr als 100 Anzeigen keinen negativen Rest', async () => {
+        global.fetch = vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ newAdCount: 103 })
+        }));
+
+        await expect(fetchAdQuota()).resolves.toEqual({ used: 103, limit: FREE_AD_LIMIT, available: 0 });
+    });
+
+    it('lehnt fehlende oder ungueltige Serverwerte ab statt zu raten', async () => {
+        global.fetch = vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ newAdCount: undefined })
+        }));
+
+        await expect(fetchAdQuota()).rejects.toThrow('newAdCount fehlt oder ist ungueltig');
     });
 });
 

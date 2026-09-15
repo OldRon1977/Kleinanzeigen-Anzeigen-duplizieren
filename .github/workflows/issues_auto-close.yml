@@ -1,22 +1,110 @@
-name: Close inactive issues
+name: Housekeeping
+
+# Housekeeping for the issue list: an issue with no activity for 14 days gets
+# the label "soon to be closed" and is closed 7 days later if it stays quiet.
+# Closing is not a verdict -- reopening is a manual step, either by a
+# maintainer or by the issue author.
+#
+# No comments are posted, in neither phase. Labels carry the whole signal:
+#   soon to be closed -> flagged, closes in 7 days unless something happens
+#   auto-closed       -> closed by this workflow, not by a decision
+# Any activity during the 7 days removes the flag again and restarts the clock.
+#
+# Labels decide the clock:
+#   pending, work in progress, new feature -> never touched
+#   help wanted, question                  -> 30 days instead of 14
+# "pending" marks an issue that waits on something outside the repository.
+# Pull requests are deliberately left alone (days-before-pr-* = -1).
+#
+# A manual run defaults to a dry run: nothing is changed, the log lists what
+# would happen. The scheduled run always acts.
+
 on:
   schedule:
-    - cron: "30 1 * * *"
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: only list what would happen, change nothing'
+        type: boolean
+        default: true
+
+permissions:
+  issues: write
+
+concurrency:
+  group: stale-issues
+  cancel-in-progress: false
 
 jobs:
-  close-issues:
+  stale:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
+
     steps:
-      - uses: actions/stale@v10
+      - name: Drop the flag from issues that gained an exempt label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          gh issue list --state open --label 'soon to be closed' --limit 200 \
+            --json number,labels \
+            --jq '.[] | select([.labels[].name] | any(. == "pending" or . == "work in progress" or . == "new feature")) | .number' \
+            > flagged.txt
+          while read -r number; do
+            if [ "$DRY_RUN" = 'true' ]; then
+              echo "would unflag #$number (exempt label present)"
+            else
+              echo "unflagging #$number (exempt label present)"
+              gh issue edit "$number" --remove-label 'soon to be closed'
+            fi
+          done < flagged.txt
+
+      - name: Flag issues inactive for 14 days, close them 7 days later
+        uses: actions/stale@v11
         with:
-          days-before-issue-stale: 30
-          days-before-issue-close: 14
-          stale-issue-label: "veraltet"
-          stale-issue-message: "Dieses Issue ist veraltet, da es seit 30 Tagen ohne Aktivität offen ist."
-          close-issue-message: "Dieses Issue wurde geschlossen, da es seit 14 Tagen nach der Markierung als veraltet inaktiv war."
+          days-before-issue-stale: 14
+          days-before-issue-close: 7
+          stale-issue-label: 'soon to be closed'
+          close-issue-label: 'auto-closed'
           days-before-pr-stale: -1
           days-before-pr-close: -1
+          exempt-issue-labels: 'pending,work in progress,new feature,help wanted,question'
+          close-issue-reason: not_planned
+          ascending: true
+          debug-only: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Flag help wanted / question issues after 30 days, close 7 days later
+        uses: actions/stale@v11
+        with:
+          days-before-issue-stale: 30
+          days-before-issue-close: 7
+          stale-issue-label: 'soon to be closed'
+          close-issue-label: 'auto-closed'
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          any-of-issue-labels: 'help wanted,question'
+          exempt-issue-labels: 'pending,work in progress,new feature'
+          close-issue-reason: not_planned
+          ascending: true
+          debug-only: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Drop the flag from issues this run closed
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          gh issue list --state closed --label 'soon to be closed' --label 'auto-closed' \
+            --limit 200 --json number --jq '.[].number' > closed.txt
+          while read -r number; do
+            if [ "$DRY_RUN" = 'true' ]; then
+              echo "would unflag closed #$number"
+            else
+              echo "unflagging closed #$number"
+              gh issue edit "$number" --remove-label 'soon to be closed'
+            fi
+          done < closed.txt
