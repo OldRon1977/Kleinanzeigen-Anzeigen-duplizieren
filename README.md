@@ -10,6 +10,7 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Banner & Popup-Blocker**: Blendet störende Upsell-Banner und Popups automatisch aus
 - **Helper-Script**: Buttons "Duplizieren" und "Smart neu einstellen" direkt auf der "Meine Anzeigen"-Seite
 - **Batch mit Auswahl**: Mehrere Anzeigen in einem Durchgang neu einstellen — ausgewählt per Checkbox, mit Farbcodierung nach Alter
+- **Anzeigenkontingent**: Zeigt über der Anzeigenliste, wie viele Anzeigen in den letzten 30 Tagen neu aufgegeben wurden
 - **Recovery-Snapshot**: Vor jeder Löschung werden Texte, Felder und Bilder lokal gesichert
 - **Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
 
@@ -49,6 +50,13 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
 2. Neben jedem "Bearbeiten"-Link erscheinen zwei Buttons: **Duplizieren** (ab Helper v1.5.0) und **Smart neu einstellen**
 3. Ein Klick öffnet die Bearbeiten-Seite in einem neuen Tab und führt die Aktion automatisch aus; nach Erfolg schließt sich der Tab von selbst
+
+### Anzeigenkontingent (Helper ab v1.12.0)
+Über der Anzeigenliste auf "Meine Anzeigen" steht eine Zeile wie **"Kostenloses Kontingent (letzte 30 Tage): 14 von 100 verbraucht · 86 verfügbar"**.
+
+- Die Zahl kommt direkt vom Server aus den Kontoeinstellungen (`/m-einstellungen-bearbeiten.json`, Feld `newAdCount`). Sie zählt die in den letzten 30 Tagen neu aufgegebenen Anzeigen, **auch inzwischen gelöschte**. Jedes Neu-Einstellen zählt also mit.
+- Die 100 sind das allgemeine kostenlose Kontingent für Konsumgüter, Services und Jobs. Ob eine einzelne Anzeige kostet, entscheidet Kleinanzeigen je nach Kategorie. Die Zeile ist deshalb keine Kostenprognose.
+- Liefert der Server keinen gültigen Wert, steht dort "Anzeigenkontingent derzeit nicht verfügbar". Das Script rechnet dann nichts selbst aus.
 
 ### Batch mit Auswahl (Helper ab v1.7.0, Merk-Filter ab v1.8.0)
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
@@ -148,6 +156,12 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Helper 1.12.0 (September 2026)
+
+- **Neu**: Über der Anzeigenliste steht das Anzeigenkontingent der letzten 30 Tage ("14 von 100 verbraucht · 86 verfügbar"). Der Wert ist der Server-Zähler `newAdCount` aus den Kontoeinstellungen und enthält auch gelöschte Anzeigen, also auch neu eingestellte. Bei mehr als 100 steht "0 verfügbar", nicht ein negativer Rest. Ist der Wert nicht abrufbar oder ungültig, meldet die Zeile das, statt eine Zahl zu schätzen.
+- **Repository**: Der Workflow `issues_auto-close.yml` heißt jetzt "Housekeeping". Issues ohne Aktivität bekommen nach 14 Tagen das Label `soon to be closed` (bei `help wanted` und `question` nach 30 Tagen) und werden 7 Tage später mit `auto-closed` geschlossen. Jede Aktivität entfernt das Label wieder. `pending`, `work in progress` und `new feature` bleiben unberührt, Pull Requests ebenso. Es werden keine Kommentare geschrieben. Ein manueller Lauf ist standardmäßig ein Probelauf.
+- **Tests**: 226 Tests (vorher 223).
 
 ### Version 3.10.1 / Helper 1.11.1 (September 2026)
 
