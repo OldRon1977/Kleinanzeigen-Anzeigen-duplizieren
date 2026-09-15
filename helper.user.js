@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.11.1
+// @version       1.12.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -90,6 +90,11 @@
     // Erstelldatum, den Merk-Zaehler als Zahl und ALLE Seiten -- das DOM kennt
     // immer nur die gerade sichtbare Seite.
     const AD_LIST_JSON_PATH = '/m-meine-anzeigen-verwalten.json';
+    // Serverwert aus den Kontoeinstellungen: Anzahl neu aufgegebener Anzeigen
+    // im rollierenden 30-Tage-Fenster. Anders als eine Rechnung aus der
+    // Anzeigenliste umfasst er auch inzwischen geloeschte Anzeigen.
+    const AD_QUOTA_JSON_PATH = '/m-einstellungen-bearbeiten.json';
+    const FREE_AD_LIMIT = 100;
     // Obergrenze gegen eine Endlosschleife, falls `paging.last` fehlt oder
     // luegt. 20 Seiten sind weit mehr, als ein privater Account je hat.
     const MAX_JSON_PAGES = 20;
@@ -529,6 +534,54 @@
         };
 
         list.parentElement.insertBefore(btn, list);
+    }
+
+    // Das allgemeine 100er-Kontingent betrifft nur Konsumgueter, Services und
+    // Jobs. Kleinanzeigen entscheidet beim Inserieren kategoriebasiert, ob
+    // Kosten entstehen; der Counter ist deshalb ein transparenter Serverwert,
+    // aber keine Kostenprognose fuer jede einzelne Kategorie.
+    async function fetchAdQuota() {
+        const res = await fetch(AD_QUOTA_JSON_PATH, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const data = await res.json();
+        const used = data && data.newAdCount;
+        if (!Number.isInteger(used) || used < 0) {
+            throw new Error('newAdCount fehlt oder ist ungueltig');
+        }
+        return {
+            used: used,
+            limit: FREE_AD_LIMIT,
+            available: Math.max(0, FREE_AD_LIMIT - used)
+        };
+    }
+
+    function addAdQuotaCounter() {
+        if (document.getElementById('ka-ad-quota')) return;
+
+        const list = document.querySelector('#my-manageitems-adlist');
+        if (!list || !list.parentElement) return;
+
+        const counter = document.createElement('p');
+        counter.id = 'ka-ad-quota';
+        counter.setAttribute('role', 'status');
+        counter.textContent = 'Anzeigenkontingent wird geladen …';
+        counter.title = 'Serverwert: neu aufgegebene Anzeigen in den letzten 30 Tagen. Ob eine Anzeige kostenpflichtig ist, entscheidet Kleinanzeigen je nach Kategorie.';
+        counter.style.cssText = [
+            'margin: 0 0 12px 0', 'font-size: 13px', 'color: #4b5563'
+        ].join(';');
+        list.parentElement.insertBefore(counter, list);
+
+        fetchAdQuota().then(function (quota) {
+            counter.textContent = 'Kostenloses Kontingent (letzte 30 Tage): ' +
+                quota.used + ' von ' + quota.limit + ' verbraucht · ' + quota.available + ' verfügbar';
+        }).catch(function (error) {
+            counter.textContent = 'Anzeigenkontingent derzeit nicht verfügbar';
+            warn('Anzeigenkontingent konnte nicht geladen werden', error);
+        });
     }
 
     // === KARTEN AUSWAEHLEN ===
@@ -1866,6 +1919,7 @@
     function tick() {
         addControlButtons();
         addBatchTriggerButton();
+        addAdQuotaCounter();
     }
 
     // Test-Exports: nur in Node (Vitest) aktiv, im Browser wirkungslos.
@@ -1889,7 +1943,10 @@
             collectCandidatesResilient,
             invalidateAdListCache,
             AD_LIST_CACHE_MS,
+            AD_QUOTA_JSON_PATH,
+            FREE_AD_LIMIT,
             collectCandidates,
+            fetchAdQuota,
             daysUntil,
             ageFromDaysLeft,
             ageBand,
