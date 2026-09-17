@@ -1086,11 +1086,19 @@
         return true;
     }
 
-    async function renderConfirm(matches, skipped, onStart, meta) {
-        const overlay = ensureOverlay();
+    // === ABSCHNITTE DES AUSWAHL-OVERLAYS ===
+    // Herausgezogen sind genau die Abschnitte, die keinen Zustand von
+    // renderConfirm brauchen -- sie bekommen ihre Daten als Argument und geben
+    // ein Element zurueck. Die Reihenfolge des Anhaengens bleibt beim Aufrufer,
+    // weil die DOM-Tests sie ueber Indizes abnehmen.
+    //
+    // Nicht herausgezogen ist der verzahnte Kern: Auswahl-Set, Merk-Filter,
+    // Sichtbarkeit, Pausen-Formular, Sicherheitsnetz und Zusammenfassung greifen
+    // gegenseitig auf denselben Zustand zu. Sie zu trennen hiesse, diesen
+    // Zustand als Objekt durchzureichen -- eine Entwurfsentscheidung mit eigenem
+    // Anlass, keine Extraktion.
 
-        overlay.innerHTML = '';
-
+    function buildConfirmHeader() {
         const header = document.createElement('div');
         header.style.cssText = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;display:flex;justify-content:space-between;align-items:center;';
         const title = document.createElement('span');
@@ -1102,7 +1110,157 @@
         closeBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;color:#888;';
         closeBtn.onclick = closeOverlay;
         header.appendChild(closeBtn);
-        overlay.appendChild(header);
+        return header;
+    }
+
+    // Herkunft der Liste offenlegen. Wer eine Anzeige in einem anderen Tab
+    // geaendert hat, soll sehen, dass hier ein zwischengespeicherter Stand
+    // steht -- und ihn mit einem Klick auffrischen koennen.
+    function buildSourceLine(meta) {
+        if (!meta || !meta.onReload) return null;
+        const line3 = document.createElement('div');
+        line3.style.cssText = 'color:#999;margin-top:4px;font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
+        const label = document.createElement('span');
+        if (meta.fromCache) {
+            label.textContent = 'Liste zwischengespeichert (' + (meta.ageSeconds || 0) + 's alt).';
+        } else {
+            label.textContent = meta.source === 'json'
+                ? 'Liste frisch geladen.'
+                : 'Liste aus der Seitenansicht – nur die sichtbare Seite.';
+        }
+        const reload = document.createElement('button');
+        reload.type = 'button';
+        reload.textContent = 'Neu laden';
+        reload.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:11px;text-decoration:underline;';
+        reload.onclick = function () {
+            reload.disabled = true;
+            reload.textContent = 'Lädt \u2026';
+            meta.onReload();
+        };
+        line3.appendChild(label);
+        line3.appendChild(reload);
+        return line3;
+    }
+
+    // Eine Zeile der Liste. Der onchange-Handler der Checkbox bleibt beim
+    // Aufrufer: er haengt am Auswahl-Set und an der Zusammenfassung.
+    function buildAdRow(m) {
+        const li = document.createElement('li');
+        li.style.cssText = 'margin:4px 0;line-height:1.3;';
+
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;gap:8px;align-items:flex-start;cursor:pointer;';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = false;
+        cb.style.cssText = 'margin-top:2px;flex:none;cursor:pointer;';
+
+        // Zweiter, unsichtbarer Haken. Wird NIE vom Nutzer gesetzt, sondern
+        // ausschliesslich vom Merk-Filter. Verarbeitet wird nur, was beide
+        // Haken hat. Er steht bewusst als echtes Element im DOM und traegt
+        // data-ka-gate="fav": so laesst sich die Absicherung im Browser
+        // nachpruefen, statt dass man ihr glauben muss.
+        const gate = document.createElement('input');
+        gate.type = 'checkbox';
+        gate.dataset.kaGate = 'fav';
+        gate.dataset.adid = m.adId;
+        gate.checked = true;
+        gate.hidden = true;
+        gate.tabIndex = -1;
+        gate.setAttribute('aria-hidden', 'true');
+        gate.style.cssText = 'display:none;';
+
+        // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
+        // Text daneben), damit sie nicht allein an der Farbe haengt.
+        const age = typeof m.ageDays === 'number' ? m.ageDays : ageFromDaysLeft(m.daysLeft);
+        const band = ageBand(age);
+        const dot = document.createElement('span');
+        dot.className = 'ka-age-dot';
+        dot.dataset.band = band.key;
+        dot.title = 'Alter ' + band.label;
+        dot.style.cssText = 'width:10px;height:10px;border-radius:50%;flex:none;margin-top:5px;background:' + band.color + ';';
+
+        const texts = document.createElement('div');
+        const t = document.createElement('div');
+        t.style.cssText = 'font-weight:500;';
+        t.textContent = m.title;
+        const metaLine = document.createElement('div');
+        metaLine.style.cssText = 'color:#666;font-size:12px;';
+        let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt';
+        // Aus der JSON-Quelle ist das Alter exakt, aus dem DOM geschaetzt.
+        // Der Unterschied gehoert an die Anzeige, nicht nur in die Fussnote.
+        if (m.ageExact !== true) metaText += ' (gesch\u00E4tzt)';
+        if (m.endText) {
+            metaText += ' \u00B7 endet ' + m.endText;
+            if (typeof m.daysLeft === 'number') metaText += ' (' + m.daysLeft + ' Tage)';
+        }
+        if (typeof m.viewCount === 'number') {
+            metaText += ' \u00B7 ' + m.viewCount + ' Aufrufe';
+        }
+        // Merk-Status im Klartext, damit nachvollziehbar bleibt, warum der
+        // Zusatzfilter eine Anzeige aussortiert hat.
+        if (typeof m.favCount === 'number') {
+            metaText += ' \u00B7 ' + (m.favCount === 0
+                ? 'nicht gemerkt'
+                : m.favCount + '\u00D7 gemerkt');
+        }
+        metaLine.textContent = metaText;
+        texts.appendChild(t);
+        texts.appendChild(metaLine);
+
+        label.appendChild(cb);
+        label.appendChild(dot);
+        label.appendChild(texts);
+        li.appendChild(label);
+        li.appendChild(gate);
+
+        return { li: li, cb: cb, gate: gate };
+    }
+
+    // Legende: erklaert die Farbpunkte und macht transparent, dass das Alter
+    // aus der Restlaufzeit abgeleitet ist (die Karte nennt kein Erstelldatum).
+    function buildAgeLegend() {
+        const legend = document.createElement('div');
+        legend.style.cssText = 'padding:0 14px 8px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#666;';
+        AGE_BANDS.forEach(function (band) {
+            const item = document.createElement('span');
+            item.style.cssText = 'display:flex;gap:4px;align-items:center;';
+            const dot = document.createElement('span');
+            dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + band.color + ';';
+            item.appendChild(dot);
+            item.appendChild(document.createTextNode(band.label));
+            legend.appendChild(item);
+        });
+        return legend;
+    }
+
+    // Die Fussnote gilt nur fuer geschaetzte Alter. Kommt die Liste aus der
+    // JSON-Quelle, steht dort das echte Erstelldatum -- dann waere der
+    // Hinweis schlicht falsch.
+    function buildEstimateHint(matches) {
+        if (!matches.some(function (m) { return m.ageExact !== true; })) return null;
+        const hint = document.createElement('div');
+        hint.style.cssText = 'padding:0 14px 8px;font-size:11px;color:#999;';
+        hint.textContent = 'Alter geschätzt aus der Restlaufzeit (' + AD_RUNTIME_DAYS +
+            ' Tage Regellaufzeit) – bei verlängerten Anzeigen ungenau.';
+        return hint;
+    }
+
+    function buildSkippedNote(skipped) {
+        if (!skipped.length) return null;
+        const sk = document.createElement('div');
+        sk.style.cssText = 'padding:8px 14px;color:#888;font-size:12px;border-top:1px solid #eee;';
+        sk.textContent = skipped.length + ' Karte(n) ohne Datum übersprungen.';
+        return sk;
+    }
+
+    async function renderConfirm(matches, skipped, onStart, meta) {
+        const overlay = ensureOverlay();
+
+        overlay.innerHTML = '';
+
+        overlay.appendChild(buildConfirmHeader());
 
         const summary = document.createElement('div');
         summary.style.cssText = 'padding:10px 14px;border-bottom:1px solid #eee;';
@@ -1126,115 +1284,23 @@
         line2.style.cssText = 'color:#666;margin-top:4px;';
         summary.appendChild(line2);
 
-        // Herkunft der Liste offenlegen. Wer eine Anzeige in einem anderen Tab
-        // geaendert hat, soll sehen, dass hier ein zwischengespeicherter Stand
-        // steht -- und ihn mit einem Klick auffrischen koennen.
-        if (meta && meta.onReload) {
-            const line3 = document.createElement('div');
-            line3.style.cssText = 'color:#999;margin-top:4px;font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
-            const label = document.createElement('span');
-            if (meta.fromCache) {
-                label.textContent = 'Liste zwischengespeichert (' + (meta.ageSeconds || 0) + 's alt).';
-            } else {
-                label.textContent = meta.source === 'json'
-                    ? 'Liste frisch geladen.'
-                    : 'Liste aus der Seitenansicht – nur die sichtbare Seite.';
-            }
-            const reload = document.createElement('button');
-            reload.type = 'button';
-            reload.textContent = 'Neu laden';
-            reload.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:11px;text-decoration:underline;';
-            reload.onclick = function () {
-                reload.disabled = true;
-                reload.textContent = 'Lädt \u2026';
-                meta.onReload();
-            };
-            line3.appendChild(label);
-            line3.appendChild(reload);
-            summary.appendChild(line3);
-        }
+        const sourceLine = buildSourceLine(meta);
+        if (sourceLine) summary.appendChild(sourceLine);
 
         overlay.appendChild(summary);
 
         const list = document.createElement('ul');
         list.style.cssText = 'margin:0;padding:8px 14px;max-height:240px;overflow-y:auto;list-style:none;';
         matches.forEach(function (m) {
-            const li = document.createElement('li');
-            li.style.cssText = 'margin:4px 0;line-height:1.3;';
-
-            const label = document.createElement('label');
-            label.style.cssText = 'display:flex;gap:8px;align-items:flex-start;cursor:pointer;';
-
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = false;
-            cb.style.cssText = 'margin-top:2px;flex:none;cursor:pointer;';
+            const row = buildAdRow(m);
+            const cb = row.cb;
             cb.onchange = function () {
                 if (cb.checked) selected.add(m.adId);
                 else selected.delete(m.adId);
                 updateSummary();
             };
-            // Zweiter, unsichtbarer Haken. Wird NIE vom Nutzer gesetzt, sondern
-            // ausschliesslich vom Merk-Filter. Verarbeitet wird nur, was beide
-            // Haken hat. Er steht bewusst als echtes Element im DOM und traegt
-            // data-ka-gate="fav": so laesst sich die Absicherung im Browser
-            // nachpruefen, statt dass man ihr glauben muss.
-            const gate = document.createElement('input');
-            gate.type = 'checkbox';
-            gate.dataset.kaGate = 'fav';
-            gate.dataset.adid = m.adId;
-            gate.checked = true;
-            gate.hidden = true;
-            gate.tabIndex = -1;
-            gate.setAttribute('aria-hidden', 'true');
-            gate.style.cssText = 'display:none;';
-
-            entries.push({ match: m, cb: cb, gate: gate, li: li, hiddenSelected: false });
-
-            // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
-            // Text daneben), damit sie nicht allein an der Farbe haengt.
-            const age = typeof m.ageDays === 'number' ? m.ageDays : ageFromDaysLeft(m.daysLeft);
-            const band = ageBand(age);
-            const dot = document.createElement('span');
-            dot.className = 'ka-age-dot';
-            dot.dataset.band = band.key;
-            dot.title = 'Alter ' + band.label;
-            dot.style.cssText = 'width:10px;height:10px;border-radius:50%;flex:none;margin-top:5px;background:' + band.color + ';';
-
-            const texts = document.createElement('div');
-            const t = document.createElement('div');
-            t.style.cssText = 'font-weight:500;';
-            t.textContent = m.title;
-            const metaLine = document.createElement('div');
-            metaLine.style.cssText = 'color:#666;font-size:12px;';
-            let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt';
-            // Aus der JSON-Quelle ist das Alter exakt, aus dem DOM geschaetzt.
-            // Der Unterschied gehoert an die Anzeige, nicht nur in die Fussnote.
-            if (m.ageExact !== true) metaText += ' (gesch\u00E4tzt)';
-            if (m.endText) {
-                metaText += ' \u00B7 endet ' + m.endText;
-                if (typeof m.daysLeft === 'number') metaText += ' (' + m.daysLeft + ' Tage)';
-            }
-            if (typeof m.viewCount === 'number') {
-                metaText += ' \u00B7 ' + m.viewCount + ' Aufrufe';
-            }
-            // Merk-Status im Klartext, damit nachvollziehbar bleibt, warum der
-            // Zusatzfilter eine Anzeige aussortiert hat.
-            if (typeof m.favCount === 'number') {
-                metaText += ' \u00B7 ' + (m.favCount === 0
-                    ? 'nicht gemerkt'
-                    : m.favCount + '\u00D7 gemerkt');
-            }
-            metaLine.textContent = metaText;
-            texts.appendChild(t);
-            texts.appendChild(metaLine);
-
-            label.appendChild(cb);
-            label.appendChild(dot);
-            label.appendChild(texts);
-            li.appendChild(label);
-            li.appendChild(gate);
-            list.appendChild(li);
+            entries.push({ match: m, cb: cb, gate: row.gate, li: row.li, hiddenSelected: false });
+            list.appendChild(row.li);
         });
         overlay.appendChild(list);
 
@@ -1343,38 +1409,13 @@
 
         overlay.appendChild(bulk);
 
-        // Legende: erklaert die Farbpunkte und macht transparent, dass das Alter
-        // aus der Restlaufzeit abgeleitet ist (die Karte nennt kein Erstelldatum).
-        const legend = document.createElement('div');
-        legend.style.cssText = 'padding:0 14px 8px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#666;';
-        AGE_BANDS.forEach(function (band) {
-            const item = document.createElement('span');
-            item.style.cssText = 'display:flex;gap:4px;align-items:center;';
-            const dot = document.createElement('span');
-            dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + band.color + ';';
-            item.appendChild(dot);
-            item.appendChild(document.createTextNode(band.label));
-            legend.appendChild(item);
-        });
-        overlay.appendChild(legend);
+        overlay.appendChild(buildAgeLegend());
 
-        // Die Fussnote gilt nur fuer geschaetzte Alter. Kommt die Liste aus der
-        // JSON-Quelle, steht dort das echte Erstelldatum -- dann waere der
-        // Hinweis schlicht falsch.
-        if (matches.some(function (m) { return m.ageExact !== true; })) {
-            const hint = document.createElement('div');
-            hint.style.cssText = 'padding:0 14px 8px;font-size:11px;color:#999;';
-            hint.textContent = 'Alter geschätzt aus der Restlaufzeit (' + AD_RUNTIME_DAYS +
-                ' Tage Regellaufzeit) – bei verlängerten Anzeigen ungenau.';
-            overlay.appendChild(hint);
-        }
+        const estimateHint = buildEstimateHint(matches);
+        if (estimateHint) overlay.appendChild(estimateHint);
 
-        if (skipped.length > 0) {
-            const sk = document.createElement('div');
-            sk.style.cssText = 'padding:8px 14px;color:#888;font-size:12px;border-top:1px solid #eee;';
-            sk.textContent = skipped.length + ' Karte(n) ohne Datum übersprungen.';
-            overlay.appendChild(sk);
-        }
+        const skippedNote = buildSkippedNote(skipped);
+        if (skippedNote) overlay.appendChild(skippedNote);
 
         // === PAUSE ZWISCHEN ZWEI ANZEIGEN ===
         // Gespeicherter Stand gewinnt. Die Standardwerte greifen nur, wenn
@@ -2070,6 +2111,8 @@
             waitMs,
             formatRemaining,
             renderConfirm,
+            buildConfirmHeader, buildSourceLine, buildAdRow, buildAgeLegend,
+            buildEstimateHint, buildSkippedNote,
             renderProgress,
             openDuplicate, processOne, RESULT_WAIT_TIMEOUT_MS, LS_RESULT_PREFIX,
             appendRecoverySection,
