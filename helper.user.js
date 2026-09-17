@@ -1014,6 +1014,43 @@
             : 'ca. ' + range.minMinutes + '-' + range.maxMinutes + ' Minuten';
     }
 
+    // Ein Minutenfeld des Pausen-Formulars. Haengt an keinem Zustand von
+    // renderConfirm, nur an den Argumenten und den beiden Limit-Konstanten --
+    // deshalb hier auf Modulebene statt eingebettet in eine 490-Zeilen-Funktion.
+    function makeMinuteField(labelText, value, name) {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = 'display:flex;gap:5px;align-items:center;font-size:12px;color:#333;';
+        wrap.appendChild(document.createTextNode(labelText));
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = String(DELAY_LIMIT_MIN_MINUTES);
+        input.max = String(DELAY_LIMIT_MAX_MINUTES);
+        input.step = '1';
+        input.value = String(value);
+        // Als Attribut im DOM, damit die Felder im Browser und im Test
+        // eindeutig adressierbar sind.
+        input.dataset.kaDelay = name;
+        input.style.cssText = 'width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
+        wrap.appendChild(input);
+        wrap.appendChild(document.createTextNode('min'));
+        return { wrap: wrap, input: input };
+    }
+
+    // Ist eine Zeile wirklich sichtbar? Geprueft wird nicht das Modell, sondern
+    // das DOM: hidden-Attribut, Inline-Style und die berechnete Darstellung.
+    // getComputedStyle steht bewusst in try/catch -- faellt es aus, entscheiden
+    // die beiden ersten Kriterien. Haengt an keinem Zustand von renderConfirm.
+    function isVisible(el) {
+        if (el.hidden) return false;
+        if (el.style && el.style.display === 'none') return false;
+        try {
+            const view = el.ownerDocument && el.ownerDocument.defaultView;
+            const cs = view && view.getComputedStyle ? view.getComputedStyle(el) : null;
+            if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+        } catch (e) { /* ohne Layout-Engine bleibt es bei den Attributen */ }
+        return true;
+    }
+
     async function renderConfirm(matches, skipped, onStart, meta) {
         const overlay = ensureOverlay();
 
@@ -1320,25 +1357,6 @@
         const delayRow = document.createElement('div');
         delayRow.style.cssText = 'display:flex;gap:14px;align-items:center;flex-wrap:wrap;';
 
-        function makeMinuteField(labelText, value, name) {
-            const wrap = document.createElement('label');
-            wrap.style.cssText = 'display:flex;gap:5px;align-items:center;font-size:12px;color:#333;';
-            wrap.appendChild(document.createTextNode(labelText));
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.min = String(DELAY_LIMIT_MIN_MINUTES);
-            input.max = String(DELAY_LIMIT_MAX_MINUTES);
-            input.step = '1';
-            input.value = String(value);
-            // Als Attribut im DOM, damit die Felder im Browser und im Test
-            // eindeutig adressierbar sind.
-            input.dataset.kaDelay = name;
-            input.style.cssText = 'width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
-            wrap.appendChild(input);
-            wrap.appendChild(document.createTextNode('min'));
-            return { wrap: wrap, input: input };
-        }
-
         const minField = makeMinuteField('von', delayCfg.min, 'min');
         const maxField = makeMinuteField('bis', delayCfg.max, 'max');
         delayRow.appendChild(minField.wrap);
@@ -1396,21 +1414,6 @@
         overlay.appendChild(delaySec);
 
         // === SICHERHEITSNETZ ===
-        // Ist eine Zeile wirklich sichtbar? Geprueft wird nicht das Modell,
-        // sondern das DOM: hidden-Attribut, Inline-Style und die berechnete
-        // Darstellung. getComputedStyle steht bewusst in try/catch -- faellt es
-        // aus, entscheiden die beiden ersten Kriterien.
-        function isVisible(el) {
-            if (el.hidden) return false;
-            if (el.style && el.style.display === 'none') return false;
-            try {
-                const view = el.ownerDocument && el.ownerDocument.defaultView;
-                const cs = view && view.getComputedStyle ? view.getComputedStyle(el) : null;
-                if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
-            } catch (e) { /* ohne Layout-Engine bleibt es bei den Attributen */ }
-            return true;
-        }
-
         // Was tatsaechlich verarbeitet wird. Eine Anzeige muss FUENF Bedingungen
         // gleichzeitig erfuellen:
         //   1. im Auswahl-Set (Modell)
