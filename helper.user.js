@@ -148,6 +148,27 @@
     const log = (msg, data) => console.log('[KA-Helper] ' + msg, data || '');
     const warn = (msg, data) => console.warn('[KA-Helper] ' + msg, data || '');
 
+    // Budget je JSON-Request an Kleinanzeigen. Die Anzeigenliste holt bis zu
+    // MAX_JSON_PAGES Seiten nacheinander; ohne Abbruchkante haelt eine einzige
+    // haengende Seite den ganzen Aufbau der Auswahl auf, und der Nutzer sieht
+    // ein Overlay, das nie fertig wird.
+    const JSON_FETCH_TIMEOUT_MS = 10000;
+
+    // Wie im Worker: jeder Netzwerk-Request bekommt eine Abbruchkante. Der
+    // Fehlertext nennt die URL nicht, damit keine Query-Parameter im Log landen.
+    async function fetchWithTimeout(url, options, timeoutMs) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('Timeout nach ' + timeoutMs + ' ms');
+            throw e;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     // === INDEXEDDB-WRAPPER ===
     function openIDB() {
         return new Promise(function (resolve, reject) {
@@ -555,10 +576,10 @@
     // Kosten entstehen; der Counter ist deshalb ein transparenter Serverwert,
     // aber keine Kostenprognose fuer jede einzelne Kategorie.
     async function fetchAdQuota() {
-        const res = await fetch(AD_QUOTA_JSON_PATH, {
+        const res = await fetchWithTimeout(AD_QUOTA_JSON_PATH, {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin'
-        });
+        }, JSON_FETCH_TIMEOUT_MS);
         if (!res.ok) throw new Error('HTTP ' + res.status);
 
         const data = await res.json();
@@ -642,10 +663,10 @@
         let lastPage = null;
 
         for (let pageNum = 1; pageNum <= MAX_JSON_PAGES; pageNum++) {
-            const res = await fetch(AD_LIST_JSON_PATH + '?pageNum=' + pageNum + '&sort=DEFAULT', {
+            const res = await fetchWithTimeout(AD_LIST_JSON_PATH + '?pageNum=' + pageNum + '&sort=DEFAULT', {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin'
-            });
+            }, JSON_FETCH_TIMEOUT_MS);
             if (!res.ok) throw new Error('HTTP ' + res.status);
 
             const data = await res.json();

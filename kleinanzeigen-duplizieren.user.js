@@ -43,6 +43,11 @@
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,
         DELETE_REQUEST_TIMEOUT_MS: 8000,
+        // Budget je Bild-Download beim Snapshot. Grosszuegiger als die
+        // JSON-Requests, weil hier Bilddaten uebertragen werden; ein haengender
+        // Download darf den Snapshot aber nicht endlos aufhalten -- solange er
+        // laeuft, wird die neue Anzeige nicht gespeichert.
+        IMAGE_FETCH_TIMEOUT_MS: 20000,
         // Verfallszeit der Vorgangs-Marker in sessionStorage. Ein Vorgang, der
         // nie bei der Bestaetigungs-Seite angekommen ist, darf spaeter keine
         // Loeschung mehr ausloesen. Der Watchdog raeumt die Marker nach 45s ab,
@@ -361,6 +366,26 @@
         const spinnerInner = document.createElement('div');
         spinner.appendChild(spinnerInner);
         document.body.appendChild(spinner);
+    }
+
+    // Jeder Netzwerk-Request braucht eine Abbruchkante. Ohne sie haengt ein
+    // nicht antwortender Server den ganzen Ablauf: beim Snapshot bleibt die
+    // Neuanlage aus, und die Bestaetigungs-Seite wird nie erreicht.
+    //
+    // Der Fehlertext nennt die URL absichtlich NICHT -- Bild-URLs tragen
+    // AccessKeyId bzw. jwt im Query-String, die haben in einem Log nichts zu
+    // suchen.
+    async function fetchWithTimeout(url, options, timeoutMs) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('Timeout nach ' + timeoutMs + ' ms');
+            throw e;
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     // === VORGANGS-MARKER ===
@@ -903,7 +928,7 @@
     // (CORS), und jedes Bild landete nur als URL-Platzhalter im Snapshot. Der
     // Zugang steht ohnehin in der URL (AccessKeyId/jwt bzw. oeffentliches Bild).
     async function fetchAsBlob(url) {
-        const res = await fetch(url, { credentials: 'omit' });
+        const res = await fetchWithTimeout(url, { credentials: 'omit' }, CONFIG.IMAGE_FETCH_TIMEOUT_MS);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return await res.blob();
     }

@@ -199,10 +199,14 @@ describe('fetchAdQuota', () => {
         }));
 
         await expect(fetchAdQuota()).resolves.toEqual({ used: 14, limit: FREE_AD_LIMIT, available: 86 });
-        expect(global.fetch).toHaveBeenCalledWith(AD_QUOTA_JSON_PATH, {
+        // objectContaining statt exakter Gleichheit: der Request traegt seit
+        // der Einfuehrung des Timeouts zusaetzlich ein AbortSignal. Headers und
+        // credentials bleiben Teil der Zusicherung, das Signal kommt dazu.
+        expect(global.fetch).toHaveBeenCalledWith(AD_QUOTA_JSON_PATH, expect.objectContaining({
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            credentials: 'same-origin'
-        });
+            credentials: 'same-origin',
+            signal: expect.any(AbortSignal)
+        }));
     });
 
     it('zeigt bei mehr als 100 Anzeigen keinen negativen Rest', async () => {
@@ -221,6 +225,25 @@ describe('fetchAdQuota', () => {
         }));
 
         await expect(fetchAdQuota()).rejects.toThrow('newAdCount fehlt oder ist ungueltig');
+    });
+
+    // Ohne Abbruchkante haelt eine haengende Antwort den Aufbau der Auswahl auf
+    // und der Nutzer sieht ein Overlay, das nie fertig wird.
+    it('bricht nach dem JSON-Budget ab', async () => {
+        vi.useFakeTimers();
+        global.fetch = vi.fn((url, opts) => new Promise((resolve, reject) => {
+            opts.signal.addEventListener('abort', () => {
+                const err = new Error('aborted');
+                err.name = 'AbortError';
+                reject(err);
+            });
+        }));
+
+        const p = fetchAdQuota();
+        const assertion = expect(p).rejects.toThrow(/^Timeout nach \d+ ms$/);
+        await vi.advanceTimersByTimeAsync(60000);
+        await assertion;
+        vi.useRealTimers();
     });
 });
 
