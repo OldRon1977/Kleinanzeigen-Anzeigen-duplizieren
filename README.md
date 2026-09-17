@@ -12,7 +12,7 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Batch mit Auswahl**: Mehrere Anzeigen in einem Durchgang neu einstellen — ausgewählt per Checkbox, mit Farbcodierung nach Alter
 - **Anzeigenkontingent**: Zeigt über der Anzeigenliste, wie viele Anzeigen in den letzten 30 Tagen neu aufgegeben wurden
 - **Recovery-Snapshot**: Vor jeder Löschung werden Texte, Felder und Bilder lokal gesichert
-- **Fehlerbehandlung**: Jeder Netzwerk-Zugriff hat ein eigenes Zeitlimit, dazu Retry-Mechanismen — ein nicht antwortender Server hält keinen Vorgang mehr unbegrenzt auf
+- **Fehlerbehandlung**: Jeder Netzwerk-Zugriff hat ein eigenes Zeitlimit und bricht danach mit einer sprechenden Meldung ab — ein nicht antwortender Server hält keinen Vorgang mehr unbegrenzt auf. Wiederholversuche mit steigendem Abstand gibt es beim Aufbau der Buttons, nicht bei Netzwerk-Zugriffen
 
 ## Installation
 
@@ -36,9 +36,19 @@ Fügt auf der **Meine Anzeigen**-Seite neben jeder Anzeige die Buttons "Duplizie
 
 > **Hinweis**: Beide Scripts müssen in Tampermonkey aktiviert sein, damit der Helper korrekt funktioniert.
 
+### Manuelle Installation (Alternative)
+
+Falls ein Installations-Link nicht als Userscript erkannt wird:
+
+1. Tampermonkey öffnen → Dashboard → "+" (neues Script)
+2. Inhalt der Raw-Datei in den Editor kopieren ([Hauptscript](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js), [Helper](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js))
+3. Speichern (Strg+S)
+
 ### Auto-Updates
 
-Beide Scripts erhalten automatisch Updates über Tampermonkey.
+Beide Scripts tragen `@updateURL` und `@downloadURL` im Header und werden von
+Tampermonkey selbst aktualisiert. Von Hand anstoßen: Tampermonkey-Dashboard →
+Zahnrad beim Script → "Nach Updates suchen".
 
 ## Verwendung
 
@@ -82,9 +92,9 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 
 > **Zum Zwischenspeicher** (ab Helper v1.11.0): Die geladene Liste wird 90 Sekunden gehalten, damit mehrfaches Öffnen des Fensters nicht jedes Mal alle Seiten neu abruft. Nach einem Batch-Lauf, einem einzelnen Neu-Einstellen und einem Duplizieren wird sie automatisch verworfen, weil sich die Anzeigen dann geändert haben. Wer zwischendurch in einem anderen Tab etwas geändert hat, holt sich den aktuellen Stand über **Neu laden**.
 
-> **Woher die Daten kommen**: Die Anzeigenliste wird primär über die JSON-Schnittstelle von "Meine Anzeigen" geladen (`/m-meine-anzeigen-verwalten.json`). Das bringt drei Vorteile gegenüber dem Auslesen der sichtbaren Seite: das **echte Erstelldatum** statt einer Schätzung, **alle Seiten** statt nur der gerade angezeigten, und den Merk-Zähler als Zahl statt als Text. Ist die Schnittstelle nicht erreichbar oder liefert sie nichts, fällt das Script automatisch auf die Seitenansicht zurück — dann eben nur mit der sichtbaren Seite und geschätztem Alter, wie bis Helper 1.8.0. Welche Quelle benutzt wurde, steht in der Konsole (`Kandidaten: … quelle: json|dom`).
+> **Woher die Daten kommen**: Die Anzeigenliste wird primär über die JSON-Schnittstelle von "Meine Anzeigen" geladen (`/m-meine-anzeigen-verwalten.json`). Das bringt drei Vorteile gegenüber dem Auslesen der sichtbaren Seite: das **echte Erstelldatum** statt einer Schätzung, **alle Seiten** statt nur der gerade angezeigten (höchstens 20, danach bricht der Abruf ab), und den Merk-Zähler als Zahl statt als Text. Ist die Schnittstelle nicht erreichbar oder liefert sie nichts, fällt das Script automatisch auf die Seitenansicht zurück — dann eben nur mit der sichtbaren Seite und geschätztem Alter, wie bis Helper 1.8.0. Welche Quelle benutzt wurde, steht in der Konsole (`Kandidaten: … quelle: json|dom`).
 
-> **Zur Merkliste**: Der Zähler wird aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt"). Lässt er sich nicht lesen — etwa nach einem Layout-Umbau bei Kleinanzeigen —, gilt die Anzeige als _unbekannt_ und wird bei aktivem Filter mit ausgeblendet, also **nicht** neu eingestellt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
+> **Zur Merkliste**: Der Zähler kommt bevorzugt als Zahl aus der JSON-Quelle (`watchCount`). Nur auf der Rückfallebene über die Seitenansicht wird er aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt") — dort kann ein Layout-Umbau bei Kleinanzeigen ihn unlesbar machen. Lässt er sich nicht lesen, gilt die Anzeige als _unbekannt_ und wird bei aktivem Filter mit ausgeblendet, also **nicht** neu eingestellt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
 
 > **Woher das Alter kommt**: In dieser Reihenfolge — (1) `adLifeTimeInSeconds`, das der Server direkt mitliefert, ganz ohne Datumsrechnung und unabhängig von der Uhr des Browsers; (2) das Erstelldatum `creationDate`; (3) als Notnagel die alte Schätzung aus der Restlaufzeit. Nur im dritten Fall steht "(geschätzt)" am Eintrag. Live gegengeprüft: (1) und (2) liefern dieselben Werte.
 
@@ -136,13 +146,19 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ### Unterstützte URLs
 
-- `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript)
+- `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript: Buttons, Duplizieren, Smart neu einstellen)
+- `https://www.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*` (Hauptscript: Löschung des Originals, Signal an den Helper)
+- `https://www.kleinanzeigen.de/*` (Hauptscript: ausschließlich der Werbeblocker, siehe unten — auf allen anderen Seiten hängt es nur ein `<style>`-Element an und kehrt zurück)
 - `https://www.kleinanzeigen.de/m-meine-anzeigen.html*` (Helper)
 
 ### API-Endpunkte
 
-- **Löschen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
-- **CSRF-Token**: wird in dieser Reihenfolge gesucht: `meta[name="_csrf"]`, `meta[name="csrf-token"]`, dann `input[name="_csrf"]`
+- **Löschen** (Hauptscript): `POST /m-anzeigen-loeschen.json?ids={adId}`
+- **CSRF-Token nachladen** (Hauptscript, wenn keines im DOM steht): `GET /m-meine-anzeigen.html`
+- **Anzeigenliste** (Helper): `GET /m-meine-anzeigen-verwalten.json?pageNum={n}&sort=DEFAULT`, höchstens 20 Seiten
+- **Anzeigenkontingent** (Helper): `GET /m-einstellungen-bearbeiten.json`, Feld `newAdCount`
+- **Anzeigenbilder** (Hauptscript, für den Snapshot): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
+- **CSRF-Token im DOM**: zuerst `meta[name="_csrf"], meta[name="csrf-token"]` als ein Selektorpaar — es gewinnt das Element, das im Dokument zuerst steht, nicht die Reihenfolge im Selektor. Erst danach `input[name="_csrf"]`
 
 ## Fehlerbehebung
 
