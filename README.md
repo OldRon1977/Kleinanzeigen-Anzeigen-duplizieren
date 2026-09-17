@@ -12,7 +12,7 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Batch mit Auswahl**: Mehrere Anzeigen in einem Durchgang neu einstellen — ausgewählt per Checkbox, mit Farbcodierung nach Alter
 - **Anzeigenkontingent**: Zeigt über der Anzeigenliste, wie viele Anzeigen in den letzten 30 Tagen neu aufgegeben wurden
 - **Recovery-Snapshot**: Vor jeder Löschung werden Texte, Felder und Bilder lokal gesichert
-- **Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
+- **Fehlerbehandlung**: Jeder Netzwerk-Zugriff hat ein eigenes Zeitlimit, dazu Retry-Mechanismen — ein nicht antwortender Server hält keinen Vorgang mehr unbegrenzt auf
 
 ## Installation
 
@@ -102,6 +102,8 @@ Was das praktisch ändert:
 - Tritt dieser Fall ein, meldet der Batch ihn im Abschlussbildschirm als Hinweis mit der betroffenen Anzeigen-ID zum manuellen Löschen — er verschweigt ihn nicht.
 - Der Recovery-Snapshot bleibt trotzdem erhalten. Er kostet nichts und deckt Fälle ab, die außerhalb dieses Ablaufs liegen.
 
+**Der Löschauftrag verfällt (ab v3.11.0).** Der Auftrag "diese Anzeige löschen, sobald die neue steht" liegt im Speicher des Tabs. Bricht der Vorgang vor der Bestätigungsseite ab, wird er jetzt in beiden Modi aufgeräumt — und selbst wenn das nicht greift, weil der Tab die Seite vorher verlässt, verfällt er nach zehn Minuten. Vorher konnte ein solcher Auftrag liegen bleiben und beim nächsten Neu-Einstellen **im selben Tab** die Anzeige aus dem abgebrochenen Vorgang mitlöschen.
+
 ### Banner & Popup-Blocker (ab v3.4.0)
 
 Auf der Bearbeiten-Seite blendet das Script automatisch aus:
@@ -159,6 +161,8 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 - Session könnte abgelaufen sein - neu anmelden
 - Rate-Limiting - kurz warten und erneut versuchen
+- "CSRF-Token nicht ermittelbar (Timeout)" bedeutet: die Seite "Meine Anzeigen", aus der das Token nachgeladen wird, hat nicht innerhalb von 8 Sekunden geantwortet. Die Anzeige ist dann **nicht** gelöscht, das Original steht noch. Kurz warten und erneut versuchen.
+- "Timeout beim Löschen" betrifft ab v3.11.0 nur noch den Löschauftrag selbst. Vorher konnte diese Meldung auch erscheinen, wenn lediglich das Nachladen des Tokens zu lange gebraucht hatte.
 
 ### Upsell-Popup blockiert den Vorgang
 
@@ -171,6 +175,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - `npm test` führt die Unit-Tests aus (Vitest + jsdom, siehe Ordner `tests/`). Getestet werden die puren Logik-Anteile beider Userscripts (Protokoll-Klassifikation, Datums-, ZIP- und Formularlogik) über Test-Exports, die nur in Node aktiv sind — im Browser bleiben beide Scripts unverändert.
 - `npm run validate` synchronisiert die `@version`-Header mit `package.json` und prüft die Syntax beider `.user.js`-Dateien.
 - `tests/setup.storage.js` ergänzt `localStorage` in der Testumgebung, falls es fehlt. Node bringt ab v22 ein eigenes, experimentelles `localStorage` mit, das ohne `--localstorage-file` `undefined` ist und die jsdom-Variante überschattet; ohne den Shim scheitert jeder Test, der Storage anfasst.
+- `tests/setup.indexeddb.js` stellt `indexedDB` über `fake-indexeddb` bereit (Version exakt gepinnt). jsdom bringt keines mit, weshalb der Recovery-Pfad — Snapshots schreiben, listen, löschen — vorher nicht prüfbar war. Der Reset zwischen zwei Tests läuft über eine frische `IDBFactory`, nicht über `deleteDatabase`: die Wrapper im Helper schließen ihre Verbindung nie, und `deleteDatabase` wartet auf genau das.
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
