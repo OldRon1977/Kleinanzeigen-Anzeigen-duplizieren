@@ -36,3 +36,9 @@ temp/
 REVIEW.md
 BACKLOG.md
 REVIEW_SUMMARY.md
+
+# Kiro config (kann Tokens enthalten)
+.kiro/settings/
+
+# Kiro steering (nur lokal)
+.kiro/steering/
