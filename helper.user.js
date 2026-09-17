@@ -843,6 +843,16 @@
         return b;
     }
 
+    // Der Aufruf stand dreimal wortgleich in den Overlays, inklusive desselben
+    // Log-Texts. Ein Textwechsel an zwei von drei Stellen waere eine lautlose
+    // Inkonsistenz gewesen.
+    async function appendRecoveryIfPresent(parent) {
+        try {
+            const snapsMeta = await listSnapshotMeta();
+            await appendRecoverySection(parent, snapsMeta);
+        } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+    }
+
     async function appendRecoverySection(parent, snapsMeta) {
         if (!snapsMeta.length) return;
         const sec = document.createElement('div');
@@ -1028,10 +1038,7 @@
             summary.textContent = 'Keine Anzeigen mit lesbarem Enddatum gefunden.';
             overlay.appendChild(summary);
             // Trotzdem Recovery-Section anzeigen, falls Snapshots da sind
-            try {
-                const meta = await listSnapshotMeta();
-                await appendRecoverySection(overlay, meta);
-            } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+            await appendRecoveryIfPresent(overlay);
             return;
         }
         // Auswahl startet LEER. Gelistet sind alle Anzeigen, auch frische --
@@ -1429,10 +1436,7 @@
         }
 
         // Recovery-Section vor dem Action-Footer
-        try {
-            const meta = await listSnapshotMeta();
-            await appendRecoverySection(overlay, meta);
-        } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+        await appendRecoveryIfPresent(overlay);
 
         const actions = document.createElement('div');
         actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
@@ -1642,10 +1646,7 @@
         }
         overlay.appendChild(body);
 
-        try {
-            const meta = await listSnapshotMeta();
-            await appendRecoverySection(overlay, meta);
-        } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+        await appendRecoveryIfPresent(overlay);
 
         const actions = document.createElement('div');
         actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
