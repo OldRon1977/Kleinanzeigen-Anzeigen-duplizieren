@@ -582,6 +582,20 @@
                     showLoadingSpinner(false);
                     document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
                     showNotification('Speichern scheint fehlgeschlagen - bitte Seite prüfen und ggf. manuell speichern.', 'error');
+                    // Der Tab steht noch hier, war also nie auf der Bestaetigungs-Seite.
+                    // Damit ist dieser Vorgang beendet und seine Marker sind wertlos.
+                    // Bleiben sie stehen, arbeitet ein spaeterer Vorgang im selben Tab
+                    // sie ab: ka-delete-after-create loescht dann eine Anzeige, die in
+                    // diesem Vorgang niemand neu eingestellt hat, und ka-manual-mode
+                    // raeumt zusaetzlich den Snapshot ab -- also die Rettungskopie.
+                    // sessionStorage ist tab-gebunden und ueberlebt Navigationen; sich
+                    // auf das Aufraeumen der Bestaetigungs-Seite zu verlassen genuegt
+                    // deshalb nicht.
+                    try {
+                        sessionStorage.removeItem('ka-batch-original-adid');
+                        sessionStorage.removeItem('ka-manual-mode');
+                        sessionStorage.removeItem('ka-delete-after-create');
+                    } catch (e) {}
                 }
             } catch (e) {}
         }, CONFIG.SAVE_WATCHDOG_TIMEOUT_MS);
@@ -1002,12 +1016,20 @@
             showNotification('Fehler: ' + error.message, 'error');
             showLoadingSpinner(false);
             document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+            // Kein Datenverlust mehr moeglich: Geloescht wird erst auf der
+            // Bestaetigungs-Seite, und dorthin kommt der Ablauf nur, wenn die
+            // neue Anzeige existiert. Scheitert hier etwas, steht das
+            // Original noch.
+            // Die Marker gehoeren in BEIDEN Modi weg, nicht nur im Batch: im
+            // manuellen Modus wuerde sie sonst ein spaeterer Vorgang im selben Tab
+            // abarbeiten -- Loeschung ohne zugehoerige Neuanlage, dazu die
+            // Loeschung des Snapshots.
+            try {
+                sessionStorage.removeItem('ka-batch-original-adid');
+                sessionStorage.removeItem('ka-manual-mode');
+                sessionStorage.removeItem('ka-delete-after-create');
+            } catch (e) {}
             if (batchMode && originalId) {
-                // Kein Datenverlust mehr moeglich: Geloescht wird erst auf der
-                // Bestaetigungs-Seite, und dorthin kommt der Ablauf nur, wenn die
-                // neue Anzeige existiert. Scheitert hier etwas, steht das
-                // Original noch.
-                try { sessionStorage.removeItem('ka-delete-after-create'); } catch (e) {}
                 if (phase === 'save_clicked') {
                     batchSetResult(originalId, 'error:save_failed:not_deleted');
                 } else {
@@ -1218,6 +1240,7 @@
             CONFIG, getExponentialBackoffWait, readFormFields, getAdFormRoot, collectImageUrls, fetchAsBlob,
             injectSiteAdBlockerStyles,
             handleConfirmationPage,
+            startSaveWatchdog,
             awaitFormReady,
             waitUntilPageLoaded,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId,
