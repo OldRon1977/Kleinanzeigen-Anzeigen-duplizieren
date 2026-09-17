@@ -1999,6 +1999,7 @@
             formatRemaining,
             renderConfirm,
             renderProgress,
+            openDuplicate, processOne, RESULT_WAIT_TIMEOUT_MS, LS_RESULT_PREFIX,
             appendRecoverySection,
             openIDB, listSnapshotMeta, getSnapshotsAll, deleteSnapshot, clearAllSnapshots,
             IDB_NAME, IDB_VERSION, IDB_STORE,
