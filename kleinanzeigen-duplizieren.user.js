@@ -43,6 +43,15 @@
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,
         DELETE_REQUEST_TIMEOUT_MS: 8000,
+        // Verfallszeit der Vorgangs-Marker in sessionStorage. Ein Vorgang, der
+        // nie bei der Bestaetigungs-Seite angekommen ist, darf spaeter keine
+        // Loeschung mehr ausloesen. Der Watchdog raeumt die Marker nach 45s ab,
+        // greift aber nur, solange der Tab offen und auf der Bearbeiten-Seite
+        // ist -- verlaesst der Nutzer die Seite vorher, bleibt der Marker
+        // liegen. Zehn Minuten sind reichlich fuer einen zusammenhaengenden
+        // Vorgang inklusive Bild-Upload und deutlich mehr als die 180s, nach
+        // denen der Helper aufgibt.
+        MARKER_MAX_AGE_MS: 600000,
         // Eigenes Budget fuer das Nachladen des CSRF-Tokens. Bewusst getrennt
         // von DELETE_REQUEST_TIMEOUT_MS: beide Requests laufen nacheinander,
         // ein gemeinsamer Timer wuerde den Loesch-Request um die Zeit
@@ -352,6 +361,51 @@
         const spinnerInner = document.createElement('div');
         spinner.appendChild(spinnerInner);
         document.body.appendChild(spinner);
+    }
+
+    // === VORGANGS-MARKER ===
+    // Die Marker in sessionStorage ueberbruecken die Navigation von der
+    // Bearbeiten- zur Bestaetigungs-Seite. sessionStorage ist tab-gebunden und
+    // ueberlebt Navigationen -- ein Marker aus einem abgebrochenen Vorgang
+    // wuerde von einem spaeteren Vorgang im selben Tab ausgefuehrt. Deshalb
+    // traegt jeder Marker den Zeitpunkt seiner Entstehung; beim Lesen faellt er
+    // durch, wenn er zu alt ist.
+    function writeVorgangMarker(key, value) {
+        try {
+            sessionStorage.setItem(key, JSON.stringify({ v: String(value), ts: Date.now() }));
+        } catch (e) {}
+    }
+
+    // Werte im Alt-Format (reiner String ohne Zeitstempel) gelten weiter, weil
+    // ein Script-Update einen Tab mit altem Marker hinterlassen kann. Sie haben
+    // dann keine Verfallszeit -- wie vor der Umstellung.
+    function readVorgangMarker(key) {
+        let raw = null;
+        try { raw = sessionStorage.getItem(key); } catch (e) { return null; }
+        if (!raw) return null;
+
+        let value = raw;
+        let ts = null;
+        if (raw.charAt(0) === '{') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.v === 'string') {
+                    value = parsed.v;
+                    ts = (typeof parsed.ts === 'number') ? parsed.ts : null;
+                }
+            } catch (e) {
+                // Kaputtes JSON: wie Alt-Format behandeln, statt den Vorgang zu
+                // verlieren.
+            }
+        }
+
+        if (ts !== null && (Date.now() - ts) > CONFIG.MARKER_MAX_AGE_MS) {
+            logger.warn('Vorgangs-Marker abgelaufen, wird verworfen', {
+                key: key, alterMs: Date.now() - ts
+            });
+            return null;
+        }
+        return value;
     }
 
     // Spinner weg, Buttons wieder klickbar. Stand an sechs Stellen wortgleich
@@ -1025,14 +1079,14 @@
             // - Manuell: dort wird der eigene Snapshot wieder aus IndexedDB
             //   geloescht (ka-manual-mode markiert diesen Fall), damit keine
             //   Orphan-Snapshots das Recovery-UI des Helpers als Warnung anzeigen.
-            try { sessionStorage.setItem('ka-batch-original-adid', originalId); } catch (e) {}
+            writeVorgangMarker('ka-batch-original-adid', originalId);
             if (!batchMode) {
                 try { sessionStorage.setItem('ka-manual-mode', '1'); } catch (e) {}
             }
             // Auftrag an die Bestaetigungs-Seite: DIESE Anzeige loeschen, sobald
             // die neue nachweislich existiert. Ohne diesen Marker wird nichts
             // geloescht -- ein verlorener Marker kostet ein Duplikat, kein Original.
-            try { sessionStorage.setItem('ka-delete-after-create', originalId); } catch (e) {}
+            writeVorgangMarker('ka-delete-after-create', originalId);
             phase = 'save_clicked';
             saveBtn.click();
             startSaveWatchdog();
@@ -1184,9 +1238,12 @@
                 try { localStorage.setItem('ka-duplicate-result-' + dupAdId, 'ok'); } catch (e) {}
             }
 
-            const origAdId = sessionStorage.getItem('ka-batch-original-adid');
+            // Abgelaufene Marker liefern null: dann gehoert diese
+            // Bestaetigungs-Seite zu einem anderen Vorgang als der, der die
+            // Marker gesetzt hat -- es wird nichts geloescht und nichts gemeldet.
+            const origAdId = readVorgangMarker('ka-batch-original-adid');
             const manualMode = sessionStorage.getItem('ka-manual-mode') === '1';
-            const deleteTarget = sessionStorage.getItem('ka-delete-after-create');
+            const deleteTarget = readVorgangMarker('ka-delete-after-create');
 
             // Marker sofort abraeumen: Ein Reload dieser Seite darf nicht ein
             // zweites Mal loeschen.
@@ -1289,6 +1346,7 @@
             handleConfirmationPage,
             deleteAd, resolveCsrfToken,
             startSaveWatchdog,
+            writeVorgangMarker, readVorgangMarker,
             awaitFormReady,
             waitUntilPageLoaded,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId,

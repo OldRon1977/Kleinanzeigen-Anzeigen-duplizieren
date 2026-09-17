@@ -77,6 +77,29 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
 
 ### sessionStorage-Schlüssel
 
+**Wertformat ab 3.11.0:** `ka-batch-original-adid` und `ka-delete-after-create`
+tragen ihren Wert nicht mehr als nackten String, sondern als JSON mit
+Entstehungszeitpunkt:
+
+```
+{"v":"<adId>","ts":<Date.now()>}
+```
+
+Gelesen wird über `readVorgangMarker()`. Ist der Marker älter als
+`CONFIG.MARKER_MAX_AGE_MS` (10 Minuten), liefert die Funktion `null` — die
+Bestätigungs-Seite behandelt ihn dann wie nicht vorhanden und löscht nichts.
+Grund: `sessionStorage` ist tab-gebunden und überlebt Navigationen. Ein Marker
+aus einem abgebrochenen Vorgang wurde vorher von einem _späteren_ Vorgang im
+selben Tab ausgeführt, und der Save-Watchdog (45s) fängt das nur ab, solange der
+Tab auf der Bearbeiten-Seite bleibt.
+
+Ein Wert im Alt-Format (reiner String ohne Zeitstempel) gilt weiter und hat
+keine Verfallszeit — ein Script-Update kann einen Tab mit altem Marker
+hinterlassen, und dieser Vorgang soll nicht verloren gehen. Dasselbe gilt für
+unlesbares JSON. `ka-manual-mode` bleibt das Flag `'1'`: es löst keine Aktion
+aus, sondern steuert nur die Verzweigung, und ohne die beiden anderen Marker
+passiert nichts.
+
 | Schlüssel                | Gesetzt von                          | Bedeutung                                                                                                              |
 | ------------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `ka-batch-original-adid` | `smartRepublish()`                   | adId, an die auf der Bestätigungs-Seite das Ergebnis gemeldet wird                                                     |
@@ -312,3 +335,10 @@ Diese Regeln gelten für jede künftige Änderung an einem der beiden Scripts:
    usw. sind in beiden Dateien hart kodiert. Bei jeder Änderung eines
    dieser Werte müssen beide Scripts und dieses Dokument gemeinsam
    aktualisiert werden.
+5. **Vorgangs-Marker werden lesend abwärtskompatibel behandelt.** Die
+   sessionStorage-Marker sind Worker-intern (derselbe Tab, dasselbe Script),
+   ein Cross-Version-Fall entsteht nur durch ein Script-Update bei offenem
+   Tab. `readVorgangMarker()` muss deshalb weiter jeden Wert akzeptieren, der
+   kein gültiges JSON-Objekt mit `v` ist, und ihn als adId ohne Verfallszeit
+   behandeln. Ein künftiges Format wird additiv ergänzt: neue Felder ja,
+   Wegfall von `v` oder `ts` nein.
