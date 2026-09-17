@@ -235,8 +235,6 @@
         setTimeout(() => {
             clearInterval(interval);
         }, CONFIG.POPUP_POLL_TIMEOUT_MS);
-
-        return interval;
     }
 
     // === HILFSFUNKTIONEN ===
@@ -556,7 +554,6 @@
             logger.warn('Bekannte adId-Selektoren greifen nicht mehr, Feld heisst jetzt "' +
                 info.feldName + '" - bitte im Repository melden');
         }
-        return info;
     }
 
     /**
