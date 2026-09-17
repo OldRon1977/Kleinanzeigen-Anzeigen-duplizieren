@@ -173,7 +173,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Prüfe ob das Helper-Script installiert und aktiviert ist
 - Tampermonkey-Icon sollte eine "2" anzeigen (beide Scripts aktiv)
 
-### Loeschung schlägt fehl
+### Löschung schlägt fehl
 
 - Session könnte abgelaufen sein - neu anmelden
 - Rate-Limiting - kurz warten und erneut versuchen
@@ -323,11 +323,11 @@ Ergebnis eines vollständigen Code-Reviews (14 Findings). Alle Änderungen sind 
 
 ### Version 3.5.1 / Helper 1.3.1 (Mai 2026)
 
-- **Fix**: Popup-Dismisser klickt jetzt nur noch Buttons innerhalb von Modal-Containern (`[role="dialog"]`, `[aria-modal="true"]`) und mit exaktem Text-Match. Verhindert versehentliche Klicks auf gleichnamige Buttons in Form-Bereichen waehrend der save-clicked-Phase.
+- **Fix**: Popup-Dismisser klickt jetzt nur noch Buttons innerhalb von Modal-Containern (`[role="dialog"]`, `[aria-modal="true"]`) und mit exaktem Text-Match. Verhindert versehentliche Klicks auf gleichnamige Buttons in Form-Bereichen während der save-clicked-Phase.
 - **Security**: `@match`-Wildcards entfernt. Hauptscript und Helper laufen nur noch auf `www.kleinanzeigen.de` und `kleinanzeigen.de`, nicht mehr auf beliebigen `*.kleinanzeigen.de`-Subdomains. Veraltete `ebay-kleinanzeigen.de`-Eintraege entfernt.
 - **Doku**: `SECURITY.md` auf 3.5.x / 1.3.x aktualisiert. Helper-Grant `GM_openInTab` und Recovery-Snapshot-Persistenz in IndexedDB dokumentiert.
 - **Cleanup**: Veralteten Userscript-Stub `Kleinanzeigen duplizieren oder smart neu einstellen.js` entfernt (war seit v3.x deprecated).
-- **Cleanup**: Test-Suite und Test-Doku entfernt. Die bisherigen Tests definierten lokale Mocks und pruefen damit ausschliesslich Test-Code gegen Test-Code, ohne den Userscript-Code zu importieren. Sie haben Sicherheit vorgetaeuscht. `npm run lint` validiert weiterhin die Userscript-Syntax fuer beide Files.
+- **Cleanup**: Test-Suite und Test-Doku entfernt. Die bisherigen Tests definierten lokale Mocks und prüfen damit ausschließlich Test-Code gegen Test-Code, ohne den Userscript-Code zu importieren. Sie haben Sicherheit vorgetäuscht. `npm run lint` validiert weiterhin die Userscript-Syntax für beide Files.
 
 ### Version 3.5.0 / Helper 1.3.0 (Mai 2026)
 
