@@ -43,6 +43,13 @@
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,
         DELETE_REQUEST_TIMEOUT_MS: 8000,
+        // Eigenes Budget fuer das Nachladen des CSRF-Tokens. Bewusst getrennt
+        // von DELETE_REQUEST_TIMEOUT_MS: beide Requests laufen nacheinander,
+        // ein gemeinsamer Timer wuerde den Loesch-Request um die Zeit
+        // verkuerzen, die das Nachladen gebraucht hat. Die Summe aus beiden
+        // plus DELETE_WAIT_AFTER_CREATE_MS muss unter dem Result-Timeout des
+        // Helpers bleiben (RESULT_WAIT_TIMEOUT_MS, 180s) -- hier 18s.
+        CSRF_FETCH_TIMEOUT_MS: 8000,
         DELETE_WAIT_AFTER_CREATE_MS: 2000,
         INITIAL_RETRY_WAIT_MS: 500,
         MAX_RETRY_WAIT_MS: 8000,
@@ -367,9 +374,27 @@
         } catch (e) {
             logger.log('CSRF-Token nicht im Dokument, lade aus "Meine Anzeigen" nach');
         }
-        const res = await fetch('https://www.kleinanzeigen.de/m-meine-anzeigen.html', {
-            credentials: 'same-origin'
-        });
+        // Eigener Abbruch fuer diesen Request. Ohne ihn haengt die Loeschung
+        // unbegrenzt, wenn der Server auf "Meine Anzeigen" nicht antwortet --
+        // und der Aufrufer meldet dann nie ein Ergebnis.
+        const csrfController = new AbortController();
+        const csrfTimeout = setTimeout(() => csrfController.abort(), CONFIG.CSRF_FETCH_TIMEOUT_MS);
+        let res;
+        try {
+            res = await fetch('https://www.kleinanzeigen.de/m-meine-anzeigen.html', {
+                credentials: 'same-origin',
+                signal: csrfController.signal
+            });
+        } catch (e) {
+            // Der eigene Abbruch wird hier in einen sprechenden Fehler
+            // uebersetzt. Sonst liest der Aufrufer einen AbortError und meldet
+            // "Timeout beim Loeschen" -- eine Aussage ueber einen Request, der
+            // nie gesendet wurde.
+            if (e.name === 'AbortError') throw new Error('CSRF-Token nicht ermittelbar (Timeout)');
+            throw e;
+        } finally {
+            clearTimeout(csrfTimeout);
+        }
         if (!res.ok) throw new Error('CSRF-Token nicht ermittelbar (HTTP ' + res.status + ')');
         const html = await res.text();
         const m = html.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/i);
@@ -383,12 +408,18 @@
         }
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
+        // Der Timer startet erst nach der Token-Aufloesung. Lief er wie vorher
+        // schon davor, verbrauchte ein langsames Nachladen des CSRF-Tokens das
+        // Budget des Loesch-Requests: der wurde dann sofort mit AbortError
+        // abgewiesen und als "Timeout beim Loeschen" gemeldet, obwohl er nie
+        // gesendet wurde. resolveCsrfToken bringt sein eigenes Budget mit.
+        let timeout = null;
 
         try {
             logger.log(`Lösche Anzeige mit ID: ${adId}`);
 
             const csrfToken = await resolveCsrfToken();
+            timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
             const response = await fetch(`https://www.kleinanzeigen.de/m-anzeigen-loeschen.json?ids=${adId}`, {
                 method: 'POST',
                 headers: {
@@ -1240,6 +1271,7 @@
             CONFIG, getExponentialBackoffWait, readFormFields, getAdFormRoot, collectImageUrls, fetchAsBlob,
             injectSiteAdBlockerStyles,
             handleConfirmationPage,
+            deleteAd, resolveCsrfToken,
             startSaveWatchdog,
             awaitFormReady,
             waitUntilPageLoaded,
