@@ -27,6 +27,13 @@
     // Default Anzeigenlaufzeit auf Kleinanzeigen = 60 Tage. Eine Anzeige gilt
     // als "aelter als 7 Tage", wenn das Enddatum hoechstens (60 - 7) = 53 Tage
     // in der Zukunft liegt.
+    //
+    // Historischer Schwellwert: im Produktivcode liest ihn keine Stelle mehr.
+    // Ueber Alter und Auswahl entscheiden heute ageFromDaysLeft() und ageBand()
+    // sowie die Praedikate der Schnellwahl im Overlay -- statt einer einzigen
+    // Ja/Nein-Grenze gibt es Altersbaender. Die Konstante bleibt, weil
+    // tests/helper.logic.test.js den Wert 53 als dokumentierte Herleitung
+    // festhaelt und der Kommentar zu AD_RUNTIME_DAYS darauf verweist.
     const MIN_DAYS_TO_END = 53;
 
     // Regellaufzeit einer Kleinanzeige. Die Kartenliste nennt nur das ENDdatum,
