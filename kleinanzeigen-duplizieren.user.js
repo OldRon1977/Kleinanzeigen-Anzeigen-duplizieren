@@ -67,6 +67,10 @@
         IMAGE_FETCH_CONCURRENCY: 4
     };
 
+    // Die beiden Buttons der Floating-Toolbar. Muss mit den Klassennamen in
+    // createButtons() und der CSS-Regel in ensureStyles() uebereinstimmen.
+    const ACTION_BUTTON_SELECTOR = '.ka-duplicate-btn, .ka-smart-btn';
+
     // === LOGGING ===
     const logger = {
         log: (msg, data) => console.log(`[KA-Script] ${msg}`, data || ''),
@@ -352,6 +356,15 @@
         document.body.appendChild(spinner);
     }
 
+    // Spinner weg, Buttons wieder klickbar. Stand an sechs Stellen wortgleich
+    // als Zeilenpaar. Der Selektor muss zu den Klassennamen aus createButtons()
+    // und zur CSS-Regel in ensureStyles() passen -- eine Umbenennung dort ist
+    // jetzt an einer Stelle nachzuziehen statt an sechs.
+    function releaseBusyUi() {
+        showLoadingSpinner(false);
+        document.querySelectorAll(ACTION_BUTTON_SELECTOR).forEach(btn => btn.disabled = false);
+    }
+
     // === API FUNKTIONEN ===
     function getCsrfToken() {
         const metaTag = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]');
@@ -610,8 +623,7 @@
             try {
                 if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
                     logger.error('Save-Watchdog: Keine Navigation nach Speichern-Klick erkannt, gebe UI frei');
-                    showLoadingSpinner(false);
-                    document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                    releaseBusyUi();
                     showNotification('Speichern scheint fehlgeschlagen - bitte Seite prüfen und ggf. manuell speichern.', 'error');
                     // Der Tab steht noch hier, war also nie auf der Bestaetigungs-Seite.
                     // Damit ist dieser Vorgang beendet und seine Marker sind wertlos.
@@ -701,8 +713,7 @@
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
             showNotification('Fehler: ' + error.message, 'error');
-            showLoadingSpinner(false);
-            document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+            releaseBusyUi();
         }
     }
 
@@ -926,8 +937,7 @@
                         describeAdIdLookup(document, originalId));
                 }
                 showNotification('Voraussetzung fehlt (' + missing + ') - Abbruch, Original bleibt erhalten.', 'error');
-                showLoadingSpinner(false);
-                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                releaseBusyUi();
                 if (batchMode) {
                     batchSetResult(originalId, 'error:precondition_failed:' + missing);
                 }
@@ -953,8 +963,7 @@
             } catch (e) {
                 logger.error('Snapshot fehlgeschlagen, Abbruch vor Loeschung', e);
                 showNotification('Snapshot fehlgeschlagen - Abbruch', 'error');
-                showLoadingSpinner(false);
-                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                releaseBusyUi();
                 if (batchMode) {
                     batchSetResult(originalId, 'error:snapshot_failed:' + (e.message || 'unbekannt'));
                 }
@@ -983,8 +992,7 @@
             if (!saveBtn || !adIdInput) {
                 logger.error('Referenzen vor dem Speichern nicht mehr aufloesbar');
                 showNotification('Formular nicht auffindbar - Abbruch, das Original bleibt bestehen.', 'error');
-                showLoadingSpinner(false);
-                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                releaseBusyUi();
                 if (batchMode) {
                     batchSetResult(originalId, 'error:save_failed:not_deleted');
                 }
@@ -1045,8 +1053,7 @@
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
             showNotification('Fehler: ' + error.message, 'error');
-            showLoadingSpinner(false);
-            document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+            releaseBusyUi();
             // Kein Datenverlust mehr moeglich: Geloescht wird erst auf der
             // Bestaetigungs-Seite, und dorthin kommt der Ablauf nur, wenn die
             // neue Anzeige existiert. Scheitert hier etwas, steht das
