@@ -91,3 +91,79 @@ describe('renderProgress: Nenner bleibt die Gesamtzahl', () => {
         expect(progressText()).toContain('2 / 5');
     });
 });
+
+describe('renderProgress: Stop-Button ueberlebt die Aktualisierung', () => {
+    it('behaelt dasselbe Button-Element ueber viele Aktualisierungen', () => {
+        const state = makeState({ total: 5, queue: new Array(4).fill({ adId: 'x', title: 't' }) });
+
+        renderProgress(state, function () {});
+        const ersterButton = document.querySelector('button');
+
+        // So oft, wie der Ticker in einer kurzen Pause feuert.
+        for (let i = 0; i < 30; i++) {
+            state.nextEtaText = (30 - i) + 's';
+            renderProgress(state, function () {});
+        }
+
+        expect(document.querySelector('button')).toBe(ersterButton);
+    });
+
+    it('verliert den Klick nicht, wenn zwischendurch aktualisiert wurde', () => {
+        const state = makeState({ total: 3, queue: [{ adId: 'x', title: 't' }] });
+        let geklickt = 0;
+        const onStop = () => { geklickt++; };
+
+        renderProgress(state, onStop);
+        const btn = document.querySelector('button');
+
+        state.nextEtaText = '12s';
+        renderProgress(state, onStop);
+        state.nextEtaText = '11s';
+        renderProgress(state, onStop);
+
+        // Der Button aus dem ersten Rendern haengt noch im Dokument und traegt
+        // den aktuellen Handler.
+        expect(document.body.contains(btn)).toBe(true);
+        btn.click();
+        expect(geklickt).toBe(1);
+    });
+
+    it('zeigt die ETA und blendet sie beim Stop wieder aus', () => {
+        const state = makeState({ total: 3, queue: [{ adId: 'x', title: 't' }], nextEtaText: '42s' });
+
+        renderProgress(state, function () {});
+        expect(document.body.textContent).toContain('Nächste in: 42s');
+
+        state.stopping = true;
+        renderProgress(state, function () {});
+        const text = document.body.textContent;
+        expect(text).not.toContain('Nächste in');
+        expect(text).toContain('Stop angefordert');
+    });
+
+    it('sperrt den Stop-Button nach der Anforderung', () => {
+        const state = makeState({ total: 2, queue: [{ adId: 'x', title: 't' }] });
+        renderProgress(state, function () {});
+        expect(document.querySelector('button').disabled).toBe(false);
+
+        state.stopping = true;
+        renderProgress(state, function () {});
+        const btn = document.querySelector('button');
+        expect(btn.disabled).toBe(true);
+        expect(btn.textContent).toContain('Wird beendet');
+    });
+
+    it('baut neu auf, wenn ein anderes Overlay den Container geleert hat', () => {
+        const state = makeState({ total: 2, queue: [{ adId: 'x', title: 't' }] });
+        renderProgress(state, function () {});
+        const alterButton = document.querySelector('button');
+
+        // Das macht renderConfirm bzw. renderDone mit dem Overlay.
+        alterButton.closest('div[id]').innerHTML = '';
+
+        renderProgress(state, function () {});
+        const neuerButton = document.querySelector('button');
+        expect(neuerButton).not.toBe(alterButton);
+        expect(document.body.textContent).toContain('0 / 2');
+    });
+});

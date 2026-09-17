@@ -1538,75 +1538,126 @@
         updateSummary();
     }
 
-    function renderProgress(state, onStop) {
-        const overlay = ensureOverlay();
-        overlay.innerHTML = '';
+    // Der Fortschritt wird waehrend der Pause jede Sekunde neu gemeldet. Baute
+    // renderProgress das Overlay dabei jedes Mal von Null auf, wurde der
+    // Stop-Button bei der Standardpause von 3 bis 6 Minuten rund 200-mal
+    // verworfen und neu erzeugt. Ein Klick, der genau in einen solchen Neuaufbau
+    // faellt, geht verloren, weil das geklickte Element nicht mehr im Dokument
+    // haengt -- und genau dieser Button ist der einzige Weg, den Batch zu
+    // stoppen.
+    //
+    // Deshalb entsteht das Geruest einmal, danach werden nur noch Texte und
+    // Zustaende geschrieben. Die Referenzen liegen in progressUi; leert ein
+    // anderes Overlay den Container (renderConfirm, renderDone), erkennt der
+    // contains-Test das und baut neu.
+    let progressUi = null;
+
+    function buildProgressUi(overlay) {
+        const root = document.createElement('div');
 
         const header = document.createElement('div');
         header.style.cssText = OVERLAY_HEADER_CSS;
         header.textContent = 'Batch läuft \u2026';
-        overlay.appendChild(header);
+        root.appendChild(header);
 
         const status = document.createElement('div');
         status.style.cssText = 'padding:10px 14px;line-height:1.4;';
-        const idx = state.processed.length + state.failed.length;
-        const total = state.total;
 
         const main = document.createElement('div');
         const strong = document.createElement('strong');
-        strong.textContent = idx + ' / ' + total;
         main.appendChild(strong);
         main.appendChild(document.createTextNode(' Anzeigen verarbeitet.'));
         status.appendChild(main);
 
         const cur = document.createElement('div');
         cur.style.cssText = 'color:#666;margin-top:4px;';
-        cur.textContent = 'Aktuell: ' + (state.currentLabel || '\u2013');
         status.appendChild(cur);
 
-        if (state.stopping) {
-            const note = document.createElement('div');
-            note.dataset.kaStopNote = 'true';
-            note.style.cssText = 'color:#e74c3c;margin-top:4px;font-weight:600;';
-            note.textContent = 'Stop angefordert – der laufende Vorgang wird noch zu Ende geführt.';
-            status.appendChild(note);
-        } else if (state.nextEtaText) {
-            const eta = document.createElement('div');
-            eta.style.cssText = 'color:#666;margin-top:4px;';
-            eta.textContent = 'Nächste in: ' + state.nextEtaText;
-            status.appendChild(eta);
-        }
+        // Beide Hinweiszeilen gehoeren zum Geruest und werden ueber display
+        // ein- und ausgeblendet. Es ist immer hoechstens eine sichtbar, wie
+        // vorher auch.
+        const note = document.createElement('div');
+        note.dataset.kaStopNote = 'true';
+        note.style.cssText = 'color:#e74c3c;margin-top:4px;font-weight:600;';
+        note.style.display = 'none';
+        status.appendChild(note);
+
+        const eta = document.createElement('div');
+        eta.style.cssText = 'color:#666;margin-top:4px;';
+        eta.style.display = 'none';
+        status.appendChild(eta);
 
         const ok = document.createElement('div');
         ok.style.cssText = 'color:#27ae60;margin-top:6px;';
-        ok.textContent = 'OK: ' + state.processed.length;
         status.appendChild(ok);
 
         const fail = document.createElement('div');
         fail.style.cssText = 'color:#e74c3c;';
-        fail.textContent = 'Fehler: ' + state.failed.length;
         status.appendChild(fail);
 
-        overlay.appendChild(status);
+        root.appendChild(status);
 
         const actions = document.createElement('div');
         actions.style.cssText = OVERLAY_FOOTER_CSS;
-        const stop = makeButton(state.stopping ? 'Wird beendet \u2026' : 'Stop', false);
+        const stop = makeButton('Stop', false);
         stop.style.borderColor = '#e74c3c';
         stop.style.color = '#e74c3c';
         stop.style.background = '#fff';
         stop.style.fontWeight = '600';
+        actions.appendChild(stop);
+        root.appendChild(actions);
+
+        overlay.innerHTML = '';
+        overlay.appendChild(root);
+
+        return {
+            overlay: overlay, root: root,
+            strong: strong, cur: cur, note: note, eta: eta,
+            ok: ok, fail: fail, stop: stop
+        };
+    }
+
+    function renderProgress(state, onStop) {
+        const overlay = ensureOverlay();
+        if (!progressUi || progressUi.overlay !== overlay || !overlay.contains(progressUi.root)) {
+            progressUi = buildProgressUi(overlay);
+        }
+        const ui = progressUi;
+
+        const idx = state.processed.length + state.failed.length;
+        ui.strong.textContent = idx + ' / ' + state.total;
+        ui.cur.textContent = 'Aktuell: ' + (state.currentLabel || '\u2013');
+
+        // Ausgeblendete Zeilen werden auch geleert, nicht nur versteckt:
+        // textContent des Overlays soll denselben Inhalt haben wie vorher, als
+        // die jeweilige Zeile gar nicht existierte.
+        if (state.stopping) {
+            ui.note.textContent = 'Stop angefordert – der laufende Vorgang wird noch zu Ende geführt.';
+            ui.note.style.display = '';
+        } else {
+            ui.note.textContent = '';
+            ui.note.style.display = 'none';
+        }
+
+        if (!state.stopping && state.nextEtaText) {
+            ui.eta.textContent = 'Nächste in: ' + state.nextEtaText;
+            ui.eta.style.display = '';
+        } else {
+            ui.eta.textContent = '';
+            ui.eta.style.display = 'none';
+        }
+
+        ui.ok.textContent = 'OK: ' + state.processed.length;
+        ui.fail.textContent = 'Fehler: ' + state.failed.length;
+
+        ui.stop.textContent = state.stopping ? 'Wird beendet \u2026' : 'Stop';
         // Nach dem ersten Klick ist nichts mehr anzufordern: ein zweiter Klick
         // koennte nichts beschleunigen und wuerde nur so aussehen, als haette
         // der erste nicht gewirkt.
-        stop.disabled = !!state.stopping;
-        if (state.stopping) {
-            stop.style.opacity = '0.6';
-            stop.style.cursor = 'not-allowed';
-        }
-        stop.onclick = onStop;
-        actions.appendChild(stop);
-        overlay.appendChild(actions);
+        ui.stop.disabled = !!state.stopping;
+        ui.stop.style.opacity = state.stopping ? '0.6' : '';
+        ui.stop.style.cursor = state.stopping ? 'not-allowed' : '';
+        ui.stop.onclick = onStop;
     }
 
     async function renderDone(state) {
