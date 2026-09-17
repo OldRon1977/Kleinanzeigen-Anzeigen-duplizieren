@@ -17,10 +17,10 @@ Quelle der Wahrheit — dieses Dokument beschreibt ihn, ersetzt ihn aber nicht.
 Der Helper öffnet den Worker-Tab per `GM_openInTab` (Fallback `window.open`)
 mit einer URL, deren Hash das Verhalten des Worker-Scripts steuert:
 
-| Hash | Bedeutung | Ausgelöst von |
-|---|---|---|
-| `#smartRepublish` | Batch-/Smart-Republish-Flow: Snapshot erstellen, neu einstellen, danach das Original löschen (Reihenfolge seit 3.10.0, siehe unten) | Helper (`processOne`), auch manuell über den "Smart neu einstellen"-Button im Worker |
-| `#duplicate` | Reines Duplizieren ohne Löschung, kein Ergebnis-Signal, kein Snapshot | Externe Aufrufe per URL-Hash (historisch Helper 1.2.0); der Duplizieren-Button ruft `duplicateAd()` direkt auf, ohne Hash. Vom aktuellen Helper nicht verwendet |
+| Hash              | Bedeutung                                                                                                                           | Ausgelöst von                                                                                                                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `#smartRepublish` | Batch-/Smart-Republish-Flow: Snapshot erstellen, neu einstellen, danach das Original löschen (Reihenfolge seit 3.10.0, siehe unten) | Helper (`processOne`), auch manuell über den "Smart neu einstellen"-Button im Worker                                                                            |
+| `#duplicate`      | Reines Duplizieren ohne Löschung, kein Ergebnis-Signal, kein Snapshot                                                               | Externe Aufrufe per URL-Hash (historisch Helper 1.2.0); der Duplizieren-Button ruft `duplicateAd()` direkt auf, ohne Hash. Vom aktuellen Helper nicht verwendet |
 
 `isBatchMode()` im Worker prüft exakt `window.location.hash === '#smartRepublish'`.
 Nur in diesem Modus werden Result-Key und Batch-Watchdog aktiv. Der Snapshot
@@ -32,12 +32,12 @@ Worker selbst wieder ab, siehe Snapshot-Abschnitt).
 Beide Scripts öffnen dieselbe Datenbank mit identischer Struktur (Konstanten
 sind in beiden Dateien separat hart kodiert, siehe unten):
 
-| Eigenschaft | Wert |
-|---|---|
-| DB-Name | `ka-batch` |
-| DB-Version | `1` |
+| Eigenschaft  | Wert        |
+| ------------ | ----------- |
+| DB-Name      | `ka-batch`  |
+| DB-Version   | `1`         |
 | Object Store | `snapshots` |
-| keyPath | `adId` |
+| keyPath      | `adId`      |
 
 ### Snapshot-Objektform (geschrieben vom Worker, gelesen vom Helper)
 
@@ -77,39 +77,50 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
 
 ### sessionStorage-Schlüssel
 
-| Schlüssel | Gesetzt von | Bedeutung |
-|-----------|-------------|-----------|
-| `ka-batch-original-adid` | `smartRepublish()` | adId, an die auf der Bestätigungs-Seite das Ergebnis gemeldet wird |
-| `ka-manual-mode` | `smartRepublish()` (nur ohne Helper) | Bestätigungs-Seite räumt den eigenen Snapshot ab, statt einen Result-Key zu schreiben |
-| `ka-delete-after-create` | `smartRepublish()` (ab 3.10.0) | Auftrag, dieses Original zu löschen, sobald die Neuanlage bestätigt ist. Fehlt der Schlüssel, wird **nichts** gelöscht |
-| `ka-duplicate-adid` | `duplicateAd()` | Signalisiert dem Helper den Abschluss einer Duplizierung |
+| Schlüssel                | Gesetzt von                          | Bedeutung                                                                                                              |
+| ------------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `ka-batch-original-adid` | `smartRepublish()`                   | adId, an die auf der Bestätigungs-Seite das Ergebnis gemeldet wird                                                     |
+| `ka-manual-mode`         | `smartRepublish()` (nur ohne Helper) | Bestätigungs-Seite räumt den eigenen Snapshot ab, statt einen Result-Key zu schreiben                                  |
+| `ka-delete-after-create` | `smartRepublish()` (ab 3.10.0)       | Auftrag, dieses Original zu löschen, sobald die Neuanlage bestätigt ist. Fehlt der Schlüssel, wird **nichts** gelöscht |
+| `ka-duplicate-adid`      | `duplicateAd()`                      | Signalisiert dem Helper den Abschluss einer Duplizierung                                                               |
 
 ### localStorage: sonstige Schlüssel
 
-| Schlüssel | Besitzer | Bedeutung |
-|-----------|----------|-----------|
-| `ka-batch-delay` | Helper (ab 1.10.0) | Eingestellte Pausenspanne in Minuten als JSON `{min,max}`. Nur Helper-intern, der Worker liest sie nie. Fehlt der Eintrag oder ist er unbrauchbar, greift der Standard 3 bis 6 |
-| `ka-duplicate-result-<adId>` | Worker schreibt, Helper liest | Abschlusssignal einer Duplizierung (Wert `ok`) |
+| Schlüssel                    | Besitzer                      | Bedeutung                                                                                                                                                                      |
+| ---------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ka-batch-delay`             | Helper (ab 1.10.0)            | Eingestellte Pausenspanne in Minuten als JSON `{min,max}`. Nur Helper-intern, der Worker liest sie nie. Fehlt der Eintrag oder ist er unbrauchbar, greift der Standard 3 bis 6 |
+| `ka-duplicate-result-<adId>` | Worker schreibt, Helper liest | Abschlusssignal einer Duplizierung (Wert `ok`)                                                                                                                                 |
 
 ## localStorage: Result-Keys
 
-| Eigenschaft | Wert |
-|---|---|
-| Key-Präfix | `ka-batch-result-` |
-| Vollständiger Key | `ka-batch-result-<adId>` |
-| Wertformat | `ok` oder `error:<code>[:<detail>]` |
+| Eigenschaft       | Wert                                |
+| ----------------- | ----------------------------------- |
+| Key-Präfix        | `ka-batch-result-`                  |
+| Vollständiger Key | `ka-batch-result-<adId>`            |
+| Wertformat        | `ok` oder `error:<code>[:<detail>]` |
 
-- **Geschrieben von:** ausschließlich der Worker (`batchSetResult`), an drei
-  Stellen:
-  1. `smartRepublish()` bei Snapshot-Fehlschlag (vor jeder Löschung).
-  2. `smartRepublish()`-Catch-Block bei sonstigen Fehlern (Klassifikation
-     nach `phase`, siehe unten).
-  3. `init()` auf der Bestätigungs-Seite (`p-anzeige-aufgeben-bestaetigung.html`),
-     wenn `sessionStorage['ka-batch-original-adid']` gesetzt ist → schreibt `ok`.
+- **Geschrieben von:** ausschließlich dem Worker, über sieben Codestellen mit
+  sechs Auslösern. Fünf davon laufen über `batchSetResult()`, der Erfolgsfall
+  schreibt direkt per `localStorage.setItem`:
+  1. `smartRepublish()`, Preflight fehlgeschlagen → `error:precondition_failed:<sub>`.
+  2. `smartRepublish()` bei Snapshot-Fehlschlag (vor jeder Löschung) →
+     `error:snapshot_failed:<text>`.
+  3. `smartRepublish()`, Referenzen vor dem Speichern nicht mehr auflösbar →
+     `error:save_failed:not_deleted`.
+  4. Batch-Watchdog in `smartRepublish()` nach `CONFIG.SAVE_WATCHDOG_TIMEOUT_MS`
+     ohne Navigation → `error:save_failed:not_deleted`.
+  5. `smartRepublish()`-Catch-Block bei sonstigen Fehlern (Klassifikation nach
+     `phase`, siehe unten) → `error:save_failed:not_deleted` oder
+     `error:exception:<message>`.
+  6. `handleConfirmationPage()` auf der Bestätigungs-Seite
+     (`p-anzeige-aufgeben-bestaetigung.html`, aufgerufen aus `init()`), wenn
+     `sessionStorage['ka-batch-original-adid']` gesetzt ist → schreibt `ok`
+     bzw. `ok:delete_failed`. Diese Stelle umgeht `batchSetResult` und schreibt
+     direkt.
 - **Gelesen/gelöscht von:** ausschließlich der Helper (`processOne`), über
   zwei parallele Kanäle:
   - `storage`-Event-Listener (`window.addEventListener('storage', ...)`) —
-    reagiert nur zuverlässig, wenn der Worker-Tab ein *anderer* Tab als der
+    reagiert nur zuverlässig, wenn der Worker-Tab ein _anderer_ Tab als der
     Helper-Tab ist (Standardfall).
   - 1-Sekunden-Polling (`setInterval(..., 1000)`) als Fallback/Redundanz.
   - Der Key wird vom Helper vor dem Öffnen des Tabs entfernt (Aufräumen von
@@ -151,28 +162,28 @@ erfolgreichen `openSmartRepublish()` und nach einem erfolgreichen
 
 Vom Worker über localStorage geschrieben:
 
-| Code | Bedeutung | Auslöser |
-|---|---|---|
-| `precondition_failed` | Preflight fehlgeschlagen: Speichern-Button oder adId-Input nicht auffindbar → Abbruch, **kein Datenverlust**. Sub-Detail: `save_button_missing` oder `adid_input_missing` | Worker-seitiger Preflight in `smartRepublish()`, vor dem Speichern |
-| `snapshot_failed` | Snapshot-Erstellung fehlgeschlagen, vor dem Speichern abgebrochen | Fehler in `buildSnapshot()`/`batchPutSnapshot()` |
-| `save_failed:delete_ok` | **Nur noch aus Worker < 3.10.0.** Speichern fehlgeschlagen, Original bereits gelöscht → Datenverlust | Exception nach `phase === 'delete_ok'` oder `'save_clicked'`; oder Watchdog nach 45s, wenn Original erfolgreich gelöscht wurde |
-| `save_failed:delete_failed` | **Nur noch aus Worker < 3.10.0.** Speichern fehlgeschlagen, Original-Löschung war bereits fehlgeschlagen | Exception nach `phase === 'delete_failed'` — diese Phase existiert seit 3.10.0 nicht mehr |
-| `save_failed:not_deleted` | Speichern der neuen Anzeige fehlgeschlagen. **Original steht noch** — kein Datenverlust. Ab 3.10.0 der einzige `save_failed`-Fall | Referenzen vor dem Speichern nicht auflösbar; Watchdog nach 45s ohne Navigation; Exception nach `phase === 'save_clicked'` |
-| `exception:<message>` | Sonstiger, nicht genauer klassifizierter Fehler vor dem Speichern (`phase === 'init'` oder `'snapshot_done'`) | Allgemeiner Catch-Block in `smartRepublish()` |
+| Code                        | Bedeutung                                                                                                                                                                 | Auslöser                                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `precondition_failed`       | Preflight fehlgeschlagen: Speichern-Button oder adId-Input nicht auffindbar → Abbruch, **kein Datenverlust**. Sub-Detail: `save_button_missing` oder `adid_input_missing` | Worker-seitiger Preflight in `smartRepublish()`, vor dem Speichern                                                             |
+| `snapshot_failed`           | Snapshot-Erstellung fehlgeschlagen, vor dem Speichern abgebrochen                                                                                                         | Fehler in `buildSnapshot()`/`batchPutSnapshot()`                                                                               |
+| `save_failed:delete_ok`     | **Nur noch aus Worker < 3.10.0.** Speichern fehlgeschlagen, Original bereits gelöscht → Datenverlust                                                                      | Exception nach `phase === 'delete_ok'` oder `'save_clicked'`; oder Watchdog nach 45s, wenn Original erfolgreich gelöscht wurde |
+| `save_failed:delete_failed` | **Nur noch aus Worker < 3.10.0.** Speichern fehlgeschlagen, Original-Löschung war bereits fehlgeschlagen                                                                  | Exception nach `phase === 'delete_failed'` — diese Phase existiert seit 3.10.0 nicht mehr                                      |
+| `save_failed:not_deleted`   | Speichern der neuen Anzeige fehlgeschlagen. **Original steht noch** — kein Datenverlust. Ab 3.10.0 der einzige `save_failed`-Fall                                         | Referenzen vor dem Speichern nicht auflösbar; Watchdog nach 45s ohne Navigation; Exception nach `phase === 'save_clicked'`     |
+| `exception:<message>`       | Sonstiger, nicht genauer klassifizierter Fehler vor dem Speichern (`phase === 'init'` oder `'snapshot_done'`)                                                             | Allgemeiner Catch-Block in `smartRepublish()`                                                                                  |
 
 Ausschließlich Helper-intern erzeugt (**nicht** über localStorage
 übertragen, sondern direkt als `code` im Promise-Ergebnis von `processOne`):
 
-| Code | Bedeutung |
-|---|---|
-| `timeout` | Kein Result-Wert innerhalb von `RESULT_WAIT_TIMEOUT_MS` (180s) empfangen |
-| `popup_blocked` | Weder `GM_openInTab` noch `window.open` konnten einen Tab öffnen |
+| Code            | Bedeutung                                                                |
+| --------------- | ------------------------------------------------------------------------ |
+| `timeout`       | Kein Result-Wert innerhalb von `RESULT_WAIT_TIMEOUT_MS` (180s) empfangen |
+| `popup_blocked` | Weder `GM_openInTab` noch `window.open` konnten einen Tab öffnen         |
 
 ### Erfolgswerte mit Hinweis (ab 3.10.0)
 
-| Wert | Bedeutung |
-|------|-----------|
-| `ok` | Neue Anzeige erstellt, Original gelöscht |
+| Wert               | Bedeutung                                                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ok`               | Neue Anzeige erstellt, Original gelöscht                                                                                                                                          |
 | `ok:delete_failed` | Neue Anzeige erstellt, **Original blieb bestehen** → Duplikat online. Kein Datenverlust, aber der Nutzer muss es erfahren; der Helper zeigt es im Abschlussbildschirm als Hinweis |
 
 ### Reihenfolge (geändert in 3.10.0)
@@ -203,9 +214,9 @@ damit ein Reload der Bestätigungs-Seite nicht ein zweites Mal löscht.
 
 ```js
 let dataLoss = false;
-if (code === 'save_failed') {
-    const sub = tail.split(':')[1] || '';
-    dataLoss = (sub === 'delete_ok');
+if (code === "save_failed") {
+  const sub = tail.split(":")[1] || "";
+  dataLoss = sub === "delete_ok";
 }
 ```
 
@@ -244,6 +255,14 @@ Bestätigungs-Seite (kein Zugriff durch den Helper):
   Modus** (also wenn nicht `isBatchMode()`).
 - `ka-delete-after-create` wird ebenfalls dort gesetzt (ab 3.10.0) und traegt
   den Loeschauftrag fuer das Original.
+- Entfernt werden alle drei Marker außerdem, wenn der Vorgang **nicht** bis zur
+  Bestätigungs-Seite kommt: `startSaveWatchdog()` räumt sie nach
+  `CONFIG.SAVE_WATCHDOG_TIMEOUT_MS` ab, falls der Tab dann noch auf der
+  Bearbeiten-Seite steht, und der Catch-Block von `smartRepublish()` tut es in
+  beiden Modi. Das ist nötig, weil `sessionStorage` tab-gebunden ist und
+  Navigationen überlebt: ein liegengebliebener `ka-delete-after-create` würde
+  sonst von einem _späteren_ Vorgang im selben Tab ausgeführt und eine Anzeige
+  löschen, die in diesem Vorgang niemand neu eingestellt hat.
 - Gelesen und sofort entfernt (alle drei Marker) in `handleConfirmationPage()`
   auf `p-anzeige-aufgeben-bestaetigung.html*`:
   - **Batch-Modus** (`ka-manual-mode` fehlt): der Worker löscht das Original
@@ -255,11 +274,13 @@ Bestätigungs-Seite (kein Zugriff durch den Helper):
 
 ## Timing-Verträge
 
-| Konstante | Wert | Datei | Bedeutung |
-|---|---|---|---|
-| `RESULT_WAIT_TIMEOUT_MS` | 180 000 ms (180s) | `helper.user.js` | Maximale Wartezeit des Helpers auf einen Result-Wert, bevor `code: 'timeout'` ausgelöst wird |
-| `CONFIG.SAVE_WATCHDOG_TIMEOUT_MS` | 45 000 ms (45s) | `kleinanzeigen-duplizieren.user.js` (`startSaveWatchdog()` und der Batch-Watchdog in `smartRepublish()`) | Prüft nach dem Klick auf "Anzeige speichern", ob der Tab **noch** auf `p-anzeige-bearbeiten.html` steht; falls ja, schreibt er `error:save_failed:not_deleted` und raeumt den Loesch-Auftrag ab |
-| Polling-Intervall | 1 000 ms | `helper.user.js` (`processOne`) | Fallback-Polling auf den Result-Key, redundant zum `storage`-Event |
+| Konstante                          | Wert              | Datei                                                                                                    | Bedeutung                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `RESULT_WAIT_TIMEOUT_MS`           | 180 000 ms (180s) | `helper.user.js`                                                                                         | Maximale Wartezeit des Helpers auf einen Result-Wert, bevor `code: 'timeout'` ausgelöst wird                                                                                                                                                                                   |
+| `CONFIG.SAVE_WATCHDOG_TIMEOUT_MS`  | 45 000 ms (45s)   | `kleinanzeigen-duplizieren.user.js` (`startSaveWatchdog()` und der Batch-Watchdog in `smartRepublish()`) | Prüft nach dem Klick auf "Anzeige speichern", ob der Tab **noch** auf `p-anzeige-bearbeiten.html` steht. Falls ja, gibt `startSaveWatchdog()` die UI frei und räumt alle drei sessionStorage-Marker ab; der Batch-Watchdog schreibt zusätzlich `error:save_failed:not_deleted` |
+| `CONFIG.DELETE_REQUEST_TIMEOUT_MS` | 8 000 ms (8s)     | `kleinanzeigen-duplizieren.user.js` (`deleteAd()`)                                                       | Budget des Lösch-Requests. Der Timer startet **erst nach** der Auflösung des CSRF-Tokens, damit ein langsames Nachladen dieses Budget nicht verbraucht                                                                                                                         |
+| `CONFIG.CSRF_FETCH_TIMEOUT_MS`     | 8 000 ms (8s)     | `kleinanzeigen-duplizieren.user.js` (`resolveCsrfToken()`)                                               | Eigenes Budget für das Nachladen des CSRF-Tokens aus "Meine Anzeigen". Ein Abbruch meldet `CSRF-Token nicht ermittelbar (Timeout)`. Die Summe beider Budgets plus `DELETE_WAIT_AFTER_CREATE_MS` (18s) bleibt unter `RESULT_WAIT_TIMEOUT_MS`                                    |
+| Polling-Intervall                  | 1 000 ms          | `helper.user.js` (`processOne`)                                                                          | Fallback-Polling auf den Result-Key, redundant zum `storage`-Event                                                                                                                                                                                                             |
 
 ## Kompatibilitätsregeln
 
