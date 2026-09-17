@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.10.1
+// @version       3.11.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @credits       Andi (Zer089) - Selektoren des Werbeblockers, MIT-Lizenz: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -37,7 +37,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.10.1'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.11.0'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
