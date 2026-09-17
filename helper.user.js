@@ -918,6 +918,13 @@
         const fallback = defaultDelayConfig();
         const src = (raw && typeof raw === 'object') ? raw : {};
         const read = function (value, def) {
+            // Nur Zahl und String sind verwertbare Eingaben. Ohne diese Schranke
+            // liefe alles andere durch Number(): null, false und [] ergeben
+            // jeweils 0, isFinite(0) ist wahr und DELAY_LIMIT_MIN_MINUTES ist 0
+            // -- die 0 kaeme also durch und der Batch liefe ohne jede Pause.
+            // Genau das soll der Kommentar ueber dieser Funktion verhindern.
+            // Eine echte 0 als Zahl bleibt weiter erlaubt.
+            if (typeof value !== 'number' && typeof value !== 'string') return def;
             const n = (typeof value === 'string') ? Number(value.trim()) : Number(value);
             if (typeof value === 'string' && value.trim() === '') return def;
             if (!isFinite(n)) return def;

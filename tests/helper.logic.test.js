@@ -136,6 +136,21 @@ describe('sanitizeDelayConfig', () => {
         expect(sanitizeDelayConfig({ min: 10, max: 'x' })).toEqual({ min: 6, max: 10 });
     });
 
+    // Number(null), Number(false) und Number([]) sind jeweils 0. Da die untere
+    // Grenze 0 ist, kamen diese Werte vorher als "keine Pause" durch, statt auf
+    // den Default zu fallen -- der Batch haette ohne Abstand gelaufen.
+    it('faellt bei Werten zurueck, die nur zufaellig zu 0 konvertieren', () => {
+        expect(sanitizeDelayConfig({ min: null, max: null })).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({ min: false, max: false })).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({ min: [], max: [] })).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({ min: {}, max: {} })).toEqual({ min: 3, max: 6 });
+        expect(sanitizeDelayConfig({ min: true, max: true })).toEqual({ min: 3, max: 6 });
+    });
+
+    it('behandelt einen einzelnen solchen Wert wie jeden anderen kaputten Einzelwert', () => {
+        expect(sanitizeDelayConfig({ min: null, max: 9 })).toEqual({ min: 3, max: 9 });
+    });
+
     it('liest Zahlen auch aus Strings', () => {
         expect(sanitizeDelayConfig({ min: '4', max: ' 12 ' })).toEqual({ min: 4, max: 12 });
     });
