@@ -469,10 +469,20 @@
     }
 
     // === HAUPTFUNKTIONEN ===
-    function findSaveButton() {
-        return Array.from(document.querySelectorAll('button')).find(
+    // Die Erkennungsregel des Speichern-Buttons steht hier einmal. Sie stand
+    // vorher zusaetzlich in describeAdIdLookup(), dort als indexOf(...) === 0 --
+    // zwei Formulierungen derselben Regel, und der Button-Text ist genau die
+    // Stelle, die Kleinanzeigen aendern kann.
+    function findSaveButtonIn(doc) {
+        return Array.from(doc.querySelectorAll('button')).find(
             b => b.textContent.trim().startsWith('Anzeige speichern')
         );
+    }
+
+    // Bleibt parameterlos: die Funktion wird als Referenz an waitForElement()
+    // uebergeben und dort ohne Argument aufgerufen.
+    function findSaveButton() {
+        return findSaveButtonIn(document);
     }
 
     // Bekannte Namen/IDs des versteckten Ad-ID-Felds. Kleinanzeigen hat den
@@ -559,9 +569,7 @@
     function describeAdIdLookup(doc, urlAdId) {
         return {
             urlAdId: urlAdId ? 'vorhanden' : 'fehlt',
-            speichernButton: !!Array.from(doc.querySelectorAll('button')).find(
-                function (b) { return b.textContent.trim().indexOf('Anzeige speichern') === 0; }
-            ),
+            speichernButton: !!findSaveButtonIn(doc),
             inputs: doc.querySelectorAll('input').length,
             hiddenFelder: Array.from(doc.querySelectorAll('input[type="hidden"]'))
                 .map(function (i) { return (i.name || i.id || '(ohne name)') + ':' + (i.value || '').length; })
@@ -621,7 +629,7 @@
     function startSaveWatchdog() {
         setTimeout(function () {
             try {
-                if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
+                if (isEditPage()) {
                     logger.error('Save-Watchdog: Keine Navigation nach Speichern-Klick erkannt, gebe UI frei');
                     releaseBusyUi();
                     showNotification('Speichern scheint fehlgeschlagen - bitte Seite prüfen und ggf. manuell speichern.', 'error');
@@ -764,6 +772,10 @@
     }
 
     function isBatchMode() { return window.location.hash === '#smartRepublish'; }
+
+    // Steht der Tab auf der Bearbeiten-Seite? Wird zum Aufrufzeitpunkt gelesen,
+    // nicht beim Definieren -- beide Watchdogs pruefen das 45 Sekunden spaeter.
+    function isEditPage() { return window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0; }
 
     /**
      * Wurzel fuer alle Formular-Lesevorgaenge: das Formular der Anzeige, nicht
@@ -1039,7 +1051,7 @@
             if (batchMode) {
                 setTimeout(function () {
                     try {
-                        if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
+                        if (isEditPage()) {
                             logger.error('Watchdog: Save scheint nicht navigiert zu haben');
                             // Nicht navigiert heisst: nie bei der Bestaetigungs-Seite
                             // angekommen, also wurde auch nichts geloescht.
@@ -1242,7 +1254,7 @@
         // Ab hier nur noch die Bearbeiten-Seite. Auf allen uebrigen Seiten der
         // Domain bleibt es beim Werbeblocker oben -- keine Buttons, keine
         // Observer, kein Zugriff auf Formulare.
-        if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') !== 0) {
+        if (!isEditPage()) {
             return;
         }
 
