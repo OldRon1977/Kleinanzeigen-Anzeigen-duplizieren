@@ -1,10 +1,17 @@
 // Test-Umgebung, kein Produktivcode.
 //
-// jsdom 29 stellt in dieser Konfiguration sessionStorage bereit, localStorage
-// aber nicht: 'localStorage' in window ist true, der Wert ist undefined
-// (empirisch geprueft, unabhaengig von environmentOptions.jsdom.url). Beide
-// Userscripts nutzen localStorage -- der Helper fuer das Tab-Protokoll und die
-// Pausen-Einstellung, das Hauptskript fuer die Result-Signale.
+// In dieser Umgebung ist localStorage nicht nutzbar, sessionStorage schon:
+// 'localStorage' in globalThis ist true, der Wert ist undefined. Die Ursache
+// liegt nicht bei jsdom, sondern bei Node selbst -- es bringt inzwischen ein
+// eigenes, experimentelles localStorage-Global mit, das ohne
+// --localstorage-file undefined bleibt und die jsdom-Variante ueberschattet.
+// Gemessen mit Node v26.7.0: node -e "console.log('localStorage' in globalThis,
+// typeof globalThis.localStorage)" liefert "true undefined", dazu die
+// Node-Warnung "localStorage is not available because --localstorage-file was
+// not provided" -- dieselbe Warnung erscheint in jedem Testlauf.
+//
+// Beide Userscripts nutzen localStorage -- der Helper fuer das Tab-Protokoll
+// und die Pausen-Einstellung, das Hauptskript fuer die Result-Signale.
 //
 // Dieser Shim ergaenzt ausschliesslich, was fehlt. Ist localStorage vorhanden,
 // bleibt es unberuehrt.
