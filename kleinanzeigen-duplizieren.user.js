@@ -902,9 +902,27 @@
         return { fields: fields, rawFields: rawFields };
     }
 
-    function collectImageUrls() {
+    // Bilder werden wie die Felder bevorzugt im Formular der Anzeige gesucht.
+    // Die Begruendung aus getAdFormRoot gilt hier genauso: ein Bild aus einer
+    // Empfehlungsliste oder einem Werbeblock hat im Recovery-Snapshot nichts zu
+    // suchen, und der Filter auf img.kleinanzeigen.de mit /prod-ads/images/
+    // schliesst fremde Anzeigenbilder gerade nicht aus.
+    //
+    // Zurueckgefallen wird bewusst auf das ganze Dokument, wenn im Formular kein
+    // einziges Bild steckt: liegt die Galerie ausserhalb des <form>, waere ein
+    // strikter Scope schlimmer als das Problem -- der Snapshot haette dann gar
+    // keine Bilder mehr. So wird die Erfassung nie schlechter als vorher.
+    function collectImageUrls(doc, urlAdId) {
+        const d = doc || document;
+        const root = getAdFormRoot(d, urlAdId);
+        const urls = collectImageUrlsIn(root);
+        if (urls.length > 0 || root === d) return urls;
+        return collectImageUrlsIn(d);
+    }
+
+    function collectImageUrlsIn(root) {
         const urls = new Set();
-        document.querySelectorAll('img').forEach(function (img) {
+        root.querySelectorAll('img').forEach(function (img) {
             const src = img.src || img.getAttribute('data-src') || '';
             if (src && src.indexOf('img.kleinanzeigen.de') >= 0 && src.indexOf('/prod-ads/images/') >= 0) {
                 // Auf groesste Variante normalisieren (rule=$_57.JPG = full size).
