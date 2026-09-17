@@ -131,6 +131,13 @@
     const TRIGGER_BTN_ID = 'ka-batch-trigger';
     const OVERLAY_ID = 'ka-batch-overlay';
 
+    // Die beiden Stylestrings, die in mehreren Overlays identisch auftraten.
+    // Liefen sie auseinander, saehe eines der Overlays unbemerkt anders aus.
+    // Der laengere Header von renderConfirm bleibt bewusst inline -- er ist ein
+    // anderer String.
+    const OVERLAY_FOOTER_CSS = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
+    const OVERLAY_HEADER_CSS = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;';
+
     const log = (msg, data) => console.log('[KA-Helper] ' + msg, data || '');
     const warn = (msg, data) => console.warn('[KA-Helper] ' + msg, data || '');
 
@@ -1442,7 +1449,7 @@
         await appendRecoveryIfPresent(overlay);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
         const cancel = makeButton('Abbrechen', false);
         cancel.onclick = closeOverlay;
         const start = makeButton('Start', true);
@@ -1508,7 +1515,7 @@
         overlay.innerHTML = '';
 
         const header = document.createElement('div');
-        header.style.cssText = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;';
+        header.style.cssText = OVERLAY_HEADER_CSS;
         header.textContent = 'Batch läuft \u2026';
         overlay.appendChild(header);
 
@@ -1555,7 +1562,7 @@
         overlay.appendChild(status);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
         const stop = makeButton(state.stopping ? 'Wird beendet \u2026' : 'Stop', false);
         stop.style.borderColor = '#e74c3c';
         stop.style.color = '#e74c3c';
@@ -1579,7 +1586,7 @@
         overlay.innerHTML = '';
 
         const header = document.createElement('div');
-        header.style.cssText = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;';
+        header.style.cssText = OVERLAY_HEADER_CSS;
         if (state.autoStopped) {
             header.textContent = '\u26A0 Batch automatisch gestoppt';
             header.style.color = '#a06200';
@@ -1652,7 +1659,7 @@
         await appendRecoveryIfPresent(overlay);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
         const close = makeButton('Schließen', false);
         close.onclick = closeOverlay;
         actions.appendChild(close);
@@ -1713,6 +1720,9 @@
         return new Promise(function (resolve) {
             const adId = item.adId;
             const lsKey = LS_RESULT_PREFIX + adId;
+            // Einmal gebildet statt zweimal -- der Hash steuert laut PROTOCOL.md
+            // das Verhalten des Workers und muss in beiden Zweigen derselbe sein.
+            const url = 'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish';
             try { localStorage.removeItem(lsKey); } catch (e) {}
 
             log('Öffne Tab für adId ' + adId);
@@ -1723,7 +1733,7 @@
             try {
                 if (typeof GM_openInTab === 'function') {
                     tabHandle = GM_openInTab(
-                        'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
+                        url,
                         { active: true, insert: true, setParent: true }
                     );
                 }
@@ -1732,7 +1742,7 @@
             }
             if (!tabHandle) {
                 const w = window.open(
-                    'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
+                    url,
                     '_blank'
                 );
                 if (!w) {
