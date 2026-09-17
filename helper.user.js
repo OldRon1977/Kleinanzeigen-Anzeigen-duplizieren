@@ -1133,8 +1133,8 @@
             const t = document.createElement('div');
             t.style.cssText = 'font-weight:500;';
             t.textContent = m.title;
-            const meta = document.createElement('div');
-            meta.style.cssText = 'color:#666;font-size:12px;';
+            const metaLine = document.createElement('div');
+            metaLine.style.cssText = 'color:#666;font-size:12px;';
             let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt';
             // Aus der JSON-Quelle ist das Alter exakt, aus dem DOM geschaetzt.
             // Der Unterschied gehoert an die Anzeige, nicht nur in die Fussnote.
@@ -1153,9 +1153,9 @@
                     ? 'nicht gemerkt'
                     : m.favCount + '\u00D7 gemerkt');
             }
-            meta.textContent = metaText;
+            metaLine.textContent = metaText;
             texts.appendChild(t);
-            texts.appendChild(meta);
+            texts.appendChild(metaLine);
 
             label.appendChild(cb);
             label.appendChild(dot);
@@ -1802,18 +1802,18 @@
                 // Abbruch VOR der Restzeit-Meldung: ein abgebrochener Lauf soll
                 // keine neue ETA mehr in die Oberflaeche schreiben.
                 if (shouldAbort && shouldAbort()) {
-                    clearInterval(tick);
+                    clearInterval(tickId);
                     resolve(false);
                     return;
                 }
                 const remaining = Math.max(0, ms - (Date.now() - start));
                 if (onTick) onTick(remaining);
                 if (remaining <= 0) {
-                    clearInterval(tick);
+                    clearInterval(tickId);
                     resolve(true);
                 }
             };
-            const tick = setInterval(step, 1000);
+            const tickId = setInterval(step, 1000);
             // Einmal sofort: sonst bleibt die Restzeit die erste Sekunde leer,
             // und ein Stop in genau dieser Sekunde wuerde erst danach bemerkt.
             step();
