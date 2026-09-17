@@ -1508,7 +1508,7 @@
         const status = document.createElement('div');
         status.style.cssText = 'padding:10px 14px;line-height:1.4;';
         const idx = state.processed.length + state.failed.length;
-        const total = state.queue.length + idx;
+        const total = state.total;
 
         const main = document.createElement('div');
         const strong = document.createElement('strong');
@@ -1834,6 +1834,10 @@
 
         const state = {
             queue: matches.slice(),
+            // Feste Gesamtzahl fuer die Anzeige. Aus queue.length laesst sie
+            // sich nicht ableiten: die laufende Anzeige ist per shift() schon
+            // aus der Queue heraus, steht aber noch in keiner Ergebnisliste.
+            total: matches.length,
             processed: [],
             failed: [],
             warnings: [],
@@ -1973,6 +1977,7 @@
             waitMs,
             formatRemaining,
             renderConfirm,
+            renderProgress,
             sanitize,
             crc32,
             utf8,
