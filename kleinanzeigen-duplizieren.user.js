@@ -911,6 +911,10 @@
             // Wiederherstellung von Hand noetig ist. rawFields bleibt dadurch, was
             // es immer war -- die sichtbaren Eingaben.
             if (el.type === 'hidden') {
+                // adImages[n].url: signierte Vorschau-Adressen mit jwt. Die
+                // Reihenfolge daraus nutzt collectImageUrls, die Bilder selbst
+                // liegen als Datei im Snapshot -- die Adresse braucht niemand.
+                if (name.indexOf('adImages[') === 0) return;
                 hiddenFields[name] = String(v).slice(0, 500);
                 return;
             }
@@ -940,30 +944,53 @@
     // einziges Bild steckt: liegt die Galerie ausserhalb des <form>, waere ein
     // strikter Scope schlimmer als das Problem -- der Snapshot haette dann gar
     // keine Bilder mehr. So wird die Erfassung nie schlechter als vorher.
+    // Reihenfolge der Bilder, wie Kleinanzeigen sie fuehrt: Das Formular traegt
+    // je Bild ein Hidden-Feld adImages[n].url, n ist die Position (0 = Titelbild).
+    // Sie wird im ZIP zu image_01, image_02, ... Die Vorschaubilder der Seite
+    // stehen heute in derselben Reihenfolge (live geprueft 09/2026), verbindlich
+    // ist aber nur der Index.
+    const AD_IMAGE_FIELD = /^adImages\[(\d+)\]\.url$/;
+
+    function collectImageUrlsFromFields(root) {
+        const indexed = [];
+        root.querySelectorAll('input[name^="adImages["]').forEach(function (el) {
+            const m = AD_IMAGE_FIELD.exec(el.getAttribute('name') || '');
+            const url = m && normalizeImageUrl(el.value);
+            if (url) indexed.push({ index: Number(m[1]), url: url });
+        });
+        indexed.sort(function (a, b) { return a.index - b.index; });
+        return Array.from(new Set(indexed.map(function (e) { return e.url; })));
+    }
+
     function collectImageUrls(doc, urlAdId) {
         const d = doc || document;
         const root = getAdFormRoot(d, urlAdId);
+        const ordered = collectImageUrlsFromFields(root);
+        if (ordered.length > 0) return ordered;
         const urls = collectImageUrlsIn(root);
         if (urls.length > 0 || root === d) return urls;
         return collectImageUrlsIn(d);
     }
 
+    // Auf groesste Variante normalisieren (rule=$_57.JPG = full size).
+    // Die gesamte Query wird ersetzt, nicht nur ein vorhandenes
+    // rule=: Die Bearbeiten-Seite liefert Vorschaubilder als
+    // ?AccessKeyId=...&jwt=..., wobei das signierte jwt die Groesse
+    // auf 96x96 festlegt. Ohne rule= griff die alte Ersetzung nicht,
+    // und der Snapshot enthielt nur diese Vorschauen. Die Bild-ID im
+    // Pfad liefert mit rule=$_57.JPG ohne jwt die volle Aufloesung.
+    // Nebenbei faellt damit das jwt weg -- es landet nie im Snapshot.
+    function normalizeImageUrl(src) {
+        if (!src || src.indexOf('img.kleinanzeigen.de') < 0 || src.indexOf('/prod-ads/images/') < 0) return null;
+        const q = src.indexOf('?');
+        return (q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG';
+    }
+
     function collectImageUrlsIn(root) {
         const urls = new Set();
         root.querySelectorAll('img').forEach(function (img) {
-            const src = img.src || img.getAttribute('data-src') || '';
-            if (src && src.indexOf('img.kleinanzeigen.de') >= 0 && src.indexOf('/prod-ads/images/') >= 0) {
-                // Auf groesste Variante normalisieren (rule=$_57.JPG = full size).
-                // Die gesamte Query wird ersetzt, nicht nur ein vorhandenes
-                // rule=: Die Bearbeiten-Seite liefert Vorschaubilder als
-                // ?AccessKeyId=...&jwt=..., wobei das signierte jwt die Groesse
-                // auf 96x96 festlegt. Ohne rule= griff die alte Ersetzung nicht,
-                // und der Snapshot enthielt nur diese Vorschauen. Die Bild-ID im
-                // Pfad liefert mit rule=$_57.JPG ohne jwt die volle Aufloesung.
-                const q = src.indexOf('?');
-                const url = (q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG';
-                urls.add(url);
-            }
+            const url = normalizeImageUrl(img.src || img.getAttribute('data-src') || '');
+            if (url) urls.add(url);
         });
         return Array.from(urls);
     }

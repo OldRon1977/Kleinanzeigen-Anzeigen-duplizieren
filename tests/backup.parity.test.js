@@ -106,6 +106,52 @@ describe('Sicherung: Auslese-Kopien stimmen mit dem Hauptscript ueberein', () =>
         expect(rawFields.categoryId).toBeUndefined();
     });
 
+    // Hidden-Felder in anderer Reihenfolge als die Vorschaubilder: der Index
+    // in adImages[n] entscheidet, nicht die Position im Markup.
+    const ORDERED = `<form>
+        <input type="hidden" name="adId" value="5">
+        <input type="hidden" name="adImages[2].url" value="${'https://img.kleinanzeigen.de/api/v1/prod-ads/images/cc/drei?AccessKeyId=k&jwt=eyJ.x.y'}">
+        <input type="hidden" name="adImages[0].url" value="${'https://img.kleinanzeigen.de/api/v1/prod-ads/images/aa/eins?AccessKeyId=k&jwt=eyJ.x.y'}">
+        <input type="hidden" name="adImages[10].url" value="${'https://img.kleinanzeigen.de/api/v1/prod-ads/images/dd/elf?AccessKeyId=k&jwt=eyJ.x.y'}">
+        <input type="hidden" name="adImages[1].url" value="${'https://img.kleinanzeigen.de/api/v1/prod-ads/images/bb/zwei?AccessKeyId=k&jwt=eyJ.x.y'}">
+        <input type="hidden" name="adImages[3].url" value="https://static.kleinanzeigen.de/fremd.png">
+        <input type="hidden" name="categoryId" value="160">
+        <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/dd/elf?jwt=a">
+        <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/bb/zwei?jwt=a">
+        <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/aa/eins?jwt=a">
+    </form>`;
+    const IMG = 'https://img.kleinanzeigen.de/api/v1/prod-ads/images/';
+
+    it('Bildreihenfolge kommt aus dem Index von adImages[n] (beide Scripts)', () => {
+        [worker, helper].forEach((impl) => {
+            expect(impl.collectImageUrls(parse(ORDERED), '5')).toEqual([
+                IMG + 'aa/eins?rule=$_57.JPG',
+                IMG + 'bb/zwei?rule=$_57.JPG',
+                IMG + 'cc/drei?rule=$_57.JPG',
+                IMG + 'dd/elf?rule=$_57.JPG'
+            ]);
+        });
+    });
+
+    it('adImages-Adressen samt jwt landen nicht in hiddenFields (beide Scripts)', () => {
+        [worker, helper].forEach((impl) => {
+            const { hiddenFields } = impl.readFormFields(parse(ORDERED), '5');
+            expect(hiddenFields).toEqual({ adId: '5', categoryId: '160' });
+            expect(JSON.stringify(impl.readFormFields(parse(ORDERED), '5'))).not.toContain('jwt');
+        });
+    });
+
+    it('ohne adImages-Felder gilt weiter die Reihenfolge der Vorschaubilder', () => {
+        const html = ORDERED.replace(/<input type="hidden" name="adImages[^>]*>/g, '');
+        [worker, helper].forEach((impl) => {
+            expect(impl.collectImageUrls(parse(html), '5')).toEqual([
+                IMG + 'dd/elf?rule=$_57.JPG',
+                IMG + 'bb/zwei?rule=$_57.JPG',
+                IMG + 'aa/eins?rule=$_57.JPG'
+            ]);
+        });
+    });
+
     it('laesst Token-artige Felder in jeder Feldart draussen', () => {
         const html = `<form>
             <input type="hidden" name="adId" value="1">

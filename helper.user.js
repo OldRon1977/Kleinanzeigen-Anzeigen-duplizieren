@@ -482,6 +482,10 @@
             // Wiederherstellung von Hand noetig ist. rawFields bleibt dadurch, was
             // es immer war -- die sichtbaren Eingaben.
             if (el.type === 'hidden') {
+                // adImages[n].url: signierte Vorschau-Adressen mit jwt. Die
+                // Reihenfolge daraus nutzt collectImageUrls, die Bilder selbst
+                // liegen als Datei im Snapshot -- die Adresse braucht niemand.
+                if (name.indexOf('adImages[') === 0) return;
                 hiddenFields[name] = String(v).slice(0, 500);
                 return;
             }
@@ -501,22 +505,45 @@
         return { fields: fields, rawFields: rawFields, hiddenFields: hiddenFields };
     }
 
+    // Reihenfolge der Bilder, wie Kleinanzeigen sie fuehrt: Das Formular traegt
+    // je Bild ein Hidden-Feld adImages[n].url, n ist die Position (0 = Titelbild).
+    // Sie wird im ZIP zu image_01, image_02, ... Die Vorschaubilder der Seite
+    // stehen heute in derselben Reihenfolge (live geprueft 09/2026), verbindlich
+    // ist aber nur der Index.
+    const AD_IMAGE_FIELD = /^adImages\[(\d+)\]\.url$/;
+
+    function collectImageUrlsFromFields(root) {
+        const indexed = [];
+        root.querySelectorAll('input[name^="adImages["]').forEach(function (el) {
+            const m = AD_IMAGE_FIELD.exec(el.getAttribute('name') || '');
+            const url = m && normalizeImageUrl(el.value);
+            if (url) indexed.push({ index: Number(m[1]), url: url });
+        });
+        indexed.sort(function (a, b) { return a.index - b.index; });
+        return Array.from(new Set(indexed.map(function (e) { return e.url; })));
+    }
+
     function collectImageUrls(doc, urlAdId) {
         const root = getAdFormRoot(doc, urlAdId);
+        const ordered = collectImageUrlsFromFields(root);
+        if (ordered.length > 0) return ordered;
         const urls = collectImageUrlsIn(root);
         if (urls.length > 0 || root === doc) return urls;
         return collectImageUrlsIn(doc);
     }
 
+    // Volle Aufloesung statt der 96x96-Vorschau, ohne jwt -- siehe Hauptscript.
+    function normalizeImageUrl(src) {
+        if (!src || src.indexOf('img.kleinanzeigen.de') < 0 || src.indexOf('/prod-ads/images/') < 0) return null;
+        const q = src.indexOf('?');
+        return (q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG';
+    }
+
     function collectImageUrlsIn(root) {
         const urls = new Set();
         root.querySelectorAll('img').forEach(function (img) {
-            const src = img.src || img.getAttribute('data-src') || '';
-            if (src && src.indexOf('img.kleinanzeigen.de') >= 0 && src.indexOf('/prod-ads/images/') >= 0) {
-                // Volle Aufloesung statt der 96x96-Vorschau, siehe Hauptscript.
-                const q = src.indexOf('?');
-                urls.add((q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG');
-            }
+            const url = normalizeImageUrl(img.src || img.getAttribute('data-src') || '');
+            if (url) urls.add(url);
         });
         return Array.from(urls);
     }
