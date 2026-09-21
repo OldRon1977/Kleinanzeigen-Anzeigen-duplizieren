@@ -12,6 +12,7 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Batch mit Auswahl**: Mehrere Anzeigen in einem Durchgang neu einstellen — ausgewählt per Checkbox, mit Farbcodierung nach Alter
 - **Anzeigenkontingent**: Zeigt über der Anzeigenliste, wie viele Anzeigen in den letzten 30 Tagen neu aufgegeben wurden
 - **Recovery-Snapshot**: Vor jeder Löschung werden Texte, Felder und Bilder lokal gesichert
+- **Auswahl sichern**: Ausgewählte Anzeigen samt Bildern als ZIP sichern, ohne etwas zu verändern
 - **Fehlerbehandlung**: Jeder Netzwerk-Zugriff hat ein eigenes Zeitlimit und bricht danach mit einer sprechenden Meldung ab — ein nicht antwortender Server hält keinen Vorgang mehr unbegrenzt auf. Wiederholversuche mit steigendem Abstand gibt es beim Aufbau der Buttons, nicht bei Netzwerk-Zugriffen
 
 ## Installation
@@ -100,6 +101,20 @@ Zahnrad beim Script → "Nach Updates suchen".
 
 > **Zum Alter**: Aus der JSON-Quelle ist das Alter exakt. Nur wenn auf die Seitenansicht zurückgefallen wird, muss es aus der Restlaufzeit abgeleitet werden (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es dann ungenau. Betroffene Einträge sind im Overlay mit "(geschätzt)" markiert, und die Fußnote erscheint nur dann.
 
+### Auswahl sichern (Helper ab v1.13.0)
+
+Im Auswahl-Fenster steht neben **Start** der Button **"Auswahl sichern (ZIP)"**. Er sichert die angehakten Anzeigen, ohne etwas an ihnen zu ändern.
+
+1. Anzeigen anhaken wie für einen Batch. Es gilt dieselbe Auswahl wie bei Start, der Merk-Filter wirkt also auch hier. Eine ungültige Pause sperrt nur Start, nicht die Sicherung
+2. **Auswahl sichern (ZIP)** klicken. Das Script holt je Anzeige die Bearbeiten-Seite im Hintergrund, es öffnet sich kein Tab. Zwischen zwei Anzeigen liegen 1–2 Sekunden. **Stop** beendet nach der laufenden Anzeige, das bis dahin Gesicherte bleibt
+3. Am Ende **ZIP herunterladen** klicken. Der Download startet nur auf Knopfdruck
+
+Die ZIP enthält pro Anzeige einen Ordner `<adId>-<Titel>/` mit `data.json` und `image_01.jpg`, `image_02.jpg`, … in voller Auflösung, dazu `protokoll.txt` mit Feldern, Bildern (geladen/gefunden) und Fehlern je Anzeige. `image_01` ist das Titelbild; die Reihenfolge folgt der Anzeige.
+
+In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle sichtbaren Formularwerte (`rawFields`) und die versteckten Felder mit Kategorie (`categoryId`), Attributen wie Größe, Farbe und Zustand (`attributeMap[…]`) und Versandart (`hiddenFields`). Tokens und signierte Bildadressen werden nie gespeichert. Das Format ist dasselbe wie im Recovery-ZIP. Wiederhergestellt wird von Hand: neue Anzeige aufgeben, Bilder in der Reihenfolge der Dateinamen hochladen, Werte aus `data.json` übernehmen.
+
+> Scheitert eine Anzeige — etwa weil der Login abgelaufen ist —, läuft die Sicherung weiter und die Anzeige steht als FEHLER im Protokoll. Holt das Script statt der Bearbeiten-Seite eine andere Seite, wird die Anzeige nicht als leere Sicherung in die ZIP geschrieben.
+
 ### Reihenfolge beim Neu-Einstellen (geändert in v3.10.0)
 
 Bis v3.9.0 löschte das Script zuerst die alte Anzeige und legte danach die neue an. Scheiterte der zweite Schritt, war die Anzeige weg — dagegen halfen nur der Recovery-Snapshot und der Auto-Stop.
@@ -157,7 +172,8 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - **CSRF-Token nachladen** (Hauptscript, wenn keines im DOM steht): `GET /m-meine-anzeigen.html`
 - **Anzeigenliste** (Helper): `GET /m-meine-anzeigen-verwalten.json?pageNum={n}&sort=DEFAULT`, höchstens 20 Seiten
 - **Anzeigenkontingent** (Helper): `GET /m-einstellungen-bearbeiten.json`, Feld `newAdCount`
-- **Anzeigenbilder** (Hauptscript, für den Snapshot): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
+- **Anzeigenbilder** (Hauptscript für den Snapshot, Helper für die Sicherung): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
+- **Bearbeiten-Seite** (Helper, für "Auswahl sichern"): `GET /p-anzeige-bearbeiten.html?adId={adId}`, nur lesend
 - **CSRF-Token im DOM**: zuerst `meta[name="_csrf"], meta[name="csrf-token"]` als ein Selektorpaar — es gewinnt das Element, das im Dokument zuerst steht, nicht die Reihenfolge im Selektor. Erst danach `input[name="_csrf"]`
 
 ## Fehlerbehebung
@@ -198,8 +214,13 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ### Version 3.11.0 / Helper 1.13.0 (September 2026)
 
-Vier Fehler, die ein Review beider Scripts gefunden hat, dazu Timeouts für alle
-Netzwerk-Zugriffe.
+Vier Fehler, die ein Review beider Scripts gefunden hat, Timeouts für alle
+Netzwerk-Zugriffe und eine neue Sicherung ausgewählter Anzeigen als ZIP.
+
+- **Neu: Auswahl sichern (ZIP).** Im Auswahl-Fenster sichert ein eigener Button die angehakten Anzeigen: Texte, Felder und Bilder in voller Auflösung, dazu ein Protokoll. Das Script holt dafür die Bearbeiten-Seiten im Hintergrund, öffnet keinen Tab und ändert nichts an den Anzeigen. Details unter [Auswahl sichern](#auswahl-sichern-helper-ab-v1130).
+- **Neu: Kategorie, Attribute und Versand in der Sicherungskopie.** Diese Werte stehen bei Kleinanzeigen in versteckten Formularfeldern, die seit 3.5.x komplett ausgeschlossen waren, um das CSRF-Token fernzuhalten. Sie stehen jetzt getrennt unter `hiddenFields`. Draußen bleiben weiterhin alle Felder, deren Name nach Token aussieht (csrf, token, jwt, session …), und die signierten Bildadressen. Gilt für das Recovery-ZIP und die Sicherung.
+- **Fix: Preis in der Sicherungskopie.** Kleinanzeigen nennt das Feld inzwischen `priceAmount`; `fields.price` blieb dadurch leer. Der Preistyp wird jetzt unabhängig von der Feldart gefunden.
+- **Bildreihenfolge nach der Anzeige.** `image_01`, `image_02`, … folgen der Reihenfolge, die Kleinanzeigen für die Anzeige führt (`adImages[n]`), statt der Anordnung der Vorschaubilder auf der Seite.
 
 - **Fix: Kein Löschen mehr aus einem abgebrochenen Vorgang.** Beim "Smart neu einstellen" merkt sich das Script im Tab, welche Anzeige nach der Neuanlage gelöscht werden soll. Brach der Vorgang vor der Bestätigungsseite ab — Serverfehler, Formularfehler, Tab-Wechsel — blieb dieser Auftrag stehen. Stellte man später **im selben Tab** eine andere Anzeige neu ein, wurde die alte Anzeige aus dem abgebrochenen Vorgang mitgelöscht, und bei einem manuellen Lauf zusätzlich deren Sicherungskopie. Der Auftrag wird jetzt in beiden Modi aufgeräumt und verfällt nach zehn Minuten.
 - **Fix: "Timeout beim Löschen" stimmt jetzt.** Fehlt das CSRF-Token auf der Bestätigungsseite — der Normalfall — lädt das Script es nach. Dieses Nachladen verbrauchte die 8 Sekunden, die für den Löschvorgang gedacht waren: der Löschauftrag wurde dann sofort abgewiesen und als Timeout gemeldet, obwohl er nie gesendet wurde. Antwortete der Server gar nicht, hing der Vorgang unbegrenzt und der Batch lief in seine 180 Sekunden. Beide Schritte haben jetzt ihr eigenes Zeitbudget.
@@ -208,7 +229,7 @@ Netzwerk-Zugriffe.
 - **Fix: Der Stop-Button geht nicht mehr verloren.** Das Fortschritts-Fenster wurde im Sekundentakt komplett neu gebaut; ein Klick, der genau dazwischen fiel, kam nicht an. Jetzt bleibt der Button stehen und nur die Texte werden aktualisiert.
 - **Neu: Timeouts für alle Netzwerk-Zugriffe.** Bisher hatte nur der Löschauftrag eine Abbruchkante. Ein nicht antwortender Server konnte den Bild-Download beim Sichern (und damit das Neu-Einstellen) oder den Aufbau der Auswahl-Liste unbegrenzt aufhalten.
 - **Neu: Bilder für die Sicherungskopie kommen aus dem Anzeigen-Formular.** Vorher wurde die ganze Seite durchsucht, also auch Empfehlungslisten mit fremden Anzeigenbildern. Steckt im Formular kein Bild, wird weiterhin die ganze Seite durchsucht — die Sicherung wird dadurch nie schlechter.
-- **Tests**: 299 Tests (vorher 226). Neu ist eine IndexedDB-Umgebung für die Tests, mit der sich die Sicherungskopien erstmals überhaupt prüfen lassen, dazu Verhaltenstests für das Öffnen und Abwarten der Worker-Tabs.
+- **Tests**: 334 Tests (vorher 226). Neu ist eine IndexedDB-Umgebung für die Tests, mit der sich die Sicherungskopien erstmals überhaupt prüfen lassen, dazu Verhaltenstests für das Öffnen und Abwarten der Worker-Tabs und ein Abgleich, der die Auslese-Logik in Hauptscript und Helper gleich hält.
 
 ### Helper 1.12.0 (September 2026)
 
