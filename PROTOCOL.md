@@ -48,11 +48,16 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
   title: string,          // fields.title || ''
   fields: {                // ausgewählte, benannte Felder
     title?, description?, price?, priceType?, location?
+    // price aus "priceAmount" (aktuell) oder "price" (früher)
   },
   rawFields: {              // alle benannten input/textarea/select-Werte
     [name: string]: string  // je auf 5000 Zeichen gekappt; ausgeschlossen sind
                             // Passwort-, File- und Hidden-Felder sowie "_csrf"
   },
+  hiddenFields: {           // Hidden-Felder (u.a. Kategorie), je auf 500 Zeichen
+    [name: string]: string  // gekappt; Namen nach Muster csrf|xsrf|token|jwt|
+                            // session|captcha|secret|password|auth fehlen immer
+  },                        // (fehlt in Snapshots von Hauptscript < 3.11.0)
   images: [
     { url: string, blob: Blob|null, mime: string|null }
     // blob/mime sind null, wenn der Bild-Fetch fehlgeschlagen ist

@@ -37,6 +37,25 @@ Zweite Zeile.</textarea>
     </form>
     </body></html>`;
 
+// Feldnamen wie in der Sicherung vom 21.09.2026 (data.json aus dem Test des
+// Nutzers). Preistyp als Radio und categoryId sind angenommen, nicht belegt.
+const LIVE_2026_09 = `
+    <form>
+        <input type="hidden" name="adId" value="3519053727">
+        <input type="hidden" name="_csrf" value="geheim">
+        <input type="hidden" name="categoryId" value="225">
+        <input type="radio" name="adType" value="OFFER" checked>
+        <input name="title" value="AMD A6-7400">
+        <textarea name="description">Verkaufe meinen Prozessor.</textarea>
+        <input type="checkbox" name="attributeMap[pc_zubehoer_software.versand]" value="ja" checked>
+        <input name="priceAmount" value="10">
+        <input type="radio" name="priceType" value="FIXED">
+        <input type="radio" name="priceType" value="NEGOTIABLE" checked>
+        <input type="radio" name="buyNow" value="false" checked>
+        <input name="zipCode" value="41372">
+        <input name="contactName" value="Name">
+    </form>`;
+
 const NO_FORM_ID = `
     <html><body>
     <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/cc/bild3?rule=$_2.JPG">
@@ -66,6 +85,42 @@ describe('Sicherung: Auslese-Kopien stimmen mit dem Hauptscript ueberein', () =>
             const a = helper.findAdIdInput(parse(html), adId);
             const b = worker.findAdIdInput(parse(html), adId);
             expect(a && a.outerHTML).toBe(b && b.outerHTML);
+        });
+    });
+
+    it.each([
+        ['Live-Form 09/2026', LIVE_2026_09, '3519053727']
+    ])('readFormFields und collectImageUrls: %s', (_, html, adId) => {
+        expect(helper.readFormFields(parse(html), adId))
+            .toEqual(worker.readFormFields(parse(html), adId));
+        expect(helper.collectImageUrls(parse(html), adId))
+            .toEqual(worker.collectImageUrls(parse(html), adId));
+    });
+
+    it('Live-Form 09/2026: Preis aus priceAmount, Preistyp als Radio, Kategorie versteckt', () => {
+        const { fields, rawFields, hiddenFields } = worker.readFormFields(parse(LIVE_2026_09), '3519053727');
+        expect(fields.price).toBe('10');
+        expect(fields.priceType).toBe('NEGOTIABLE');
+        expect(hiddenFields).toEqual({ adId: '3519053727', categoryId: '225' });
+        expect(rawFields.priceAmount).toBe('10');
+        expect(rawFields.categoryId).toBeUndefined();
+    });
+
+    it('laesst Token-artige Felder in jeder Feldart draussen', () => {
+        const html = `<form>
+            <input type="hidden" name="adId" value="1">
+            <input type="hidden" name="_csrf" value="a">
+            <input type="hidden" name="csrf-token" value="b">
+            <input type="hidden" name="xsrfToken" value="c">
+            <input type="hidden" name="sessionId" value="d">
+            <input name="captchaAnswer" value="e">
+            <input type="hidden" name="jwt" value="f">
+            <input type="hidden" name="categoryId" value="225">
+        </form>`;
+        [worker, helper].forEach((impl) => {
+            const { rawFields, hiddenFields } = impl.readFormFields(parse(html), '1');
+            expect(rawFields).toEqual({});
+            expect(hiddenFields).toEqual({ adId: '1', categoryId: '225' });
         });
     });
 

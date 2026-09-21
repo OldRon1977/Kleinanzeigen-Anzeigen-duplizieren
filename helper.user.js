@@ -364,6 +364,7 @@
             title: s.title,
             fields: s.fields || {},
             rawFields: s.rawFields || {},
+            hiddenFields: s.hiddenFields || {},
             imageUrls: (s.images || []).map(function (i) { return i.url; })
         };
         files.push({ name: folder + 'data.json', data: utf8(JSON.stringify(meta, null, 2)) });
@@ -438,9 +439,30 @@
         return doc.querySelector('form') || doc;
     }
 
+    // Namen, die nie in Snapshot oder ZIP gehoeren -- auch nicht als Hidden-Feld.
+    // Muster statt fester Liste: ein umbenanntes Token ("csrf-token", "xsrfToken")
+    // soll ohne Codeaenderung draussen bleiben.
+    const SECRET_FIELD_PATTERN = /csrf|xsrf|token|jwt|session|captcha|secret|password|auth/i;
+
+    // Wert eines Formularfelds nach Namen. Bei Radio-Gruppen zaehlt nur der
+    // gewaehlte Eintrag; Feldart egal (select, input, hidden), weil Kleinanzeigen
+    // z. B. den Preistyp je nach Kategorie unterschiedlich ausspielt.
+    function formValue(root, names) {
+        for (let n = 0; n < names.length; n++) {
+            const els = root.querySelectorAll('[name="' + names[n] + '"]');
+            for (let i = 0; i < els.length; i++) {
+                const el = els[i];
+                if ((el.type === 'radio' || el.type === 'checkbox') && !el.checked) continue;
+                if (el.value !== undefined && el.value !== null && el.value !== '') return el.value;
+            }
+        }
+        return undefined;
+    }
+
     function readFormFields(doc, urlAdId) {
         const fields = {};
         const rawFields = {};
+        const hiddenFields = {};
         const root = getAdFormRoot(doc, urlAdId);
         root.querySelectorAll('input, textarea, select').forEach(function (el) {
             const name = el.getAttribute('name');
@@ -448,24 +470,35 @@
             if (el.type === 'checkbox' || el.type === 'radio') {
                 if (!el.checked) return;
             }
-            // Kein CSRF-Token, keine Hidden-, Passwort- oder Datei-Felder in der
-            // ZIP -- Begruendung am Original im Hauptscript.
-            if (el.type === 'password' || el.type === 'file' || el.type === 'hidden' || name === '_csrf') return;
+            // Sicherheits-Artefakte gehoeren nicht in den Snapshot: Der Snapshot/ZIP
+            // ist fuer die manuelle Wiederherstellung durch Menschen gedacht, nicht
+            // fuer Tokens. Passwort-/Datei-Felder und alles, dessen Name nach Token
+            // aussieht (u.a. das CSRF-Token in input[name="_csrf"], siehe
+            // getCsrfToken()), bleiben draussen.
+            if (el.type === 'password' || el.type === 'file' || name === '_csrf' || SECRET_FIELD_PATTERN.test(name)) return;
             const v = el.value;
             if (v === undefined || v === null || v === '') return;
+            // Hidden-Felder getrennt: dort steckt u.a. die Kategorie, die fuer eine
+            // Wiederherstellung von Hand noetig ist. rawFields bleibt dadurch, was
+            // es immer war -- die sichtbaren Eingaben.
+            if (el.type === 'hidden') {
+                hiddenFields[name] = String(v).slice(0, 500);
+                return;
+            }
             rawFields[name] = String(v).slice(0, 5000);
         });
         const titleInput = root.querySelector('input[name="title"], input#title');
         if (titleInput) fields.title = titleInput.value;
         const descTa = root.querySelector('textarea[name="description"], textarea#description');
         if (descTa) fields.description = descTa.value;
-        const priceInput = root.querySelector('input[name="price"], input#price');
-        if (priceInput) fields.price = priceInput.value;
-        const priceTypeSel = root.querySelector('select[name="priceType"], select#priceType');
-        if (priceTypeSel) fields.priceType = priceTypeSel.value;
+        // "priceAmount" ist der aktuelle Name (live gesehen 09/2026), "price" der fruehere.
+        const price = formValue(root, ['priceAmount', 'price']);
+        if (price !== undefined) fields.price = price;
+        const priceType = formValue(root, ['priceType']);
+        if (priceType !== undefined) fields.priceType = priceType;
         const locInput = root.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
         if (locInput) fields.location = locInput.value;
-        return { fields: fields, rawFields: rawFields };
+        return { fields: fields, rawFields: rawFields, hiddenFields: hiddenFields };
     }
 
     function collectImageUrls(doc, urlAdId) {
@@ -562,6 +595,7 @@
             title: ff.fields.title || listTitle || '',
             fields: ff.fields,
             rawFields: ff.rawFields,
+            hiddenFields: ff.hiddenFields,
             images: images,
             problems: problems
         };
@@ -581,6 +615,7 @@
             const loaded = s.images.filter(function (i) { return i.blob; }).length;
             lines.push('OK     ' + s.adId + '  ' + (s.title || '(ohne Titel)') +
                 '  | Felder: ' + Object.keys(s.rawFields).length +
+                ' (+' + Object.keys(s.hiddenFields || {}).length + ' versteckt)' +
                 ', Bilder: ' + loaded + '/' + s.images.length);
             s.problems.forEach(function (p) { lines.push('       Hinweis: ' + p); });
         });
@@ -628,6 +663,7 @@
                 state.done.push(snap);
                 log('Gesichert adId ' + m.adId, {
                     felder: Object.keys(snap.rawFields).length,
+                    versteckt: Object.keys(snap.hiddenFields).length,
                     bilder: snap.images.length,
                     hinweise: snap.problems
                 });

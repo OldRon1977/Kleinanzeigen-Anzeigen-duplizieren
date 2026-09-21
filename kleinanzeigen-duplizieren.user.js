@@ -868,9 +868,30 @@
         return d.querySelector('form') || d;
     }
 
+    // Namen, die nie in Snapshot oder ZIP gehoeren -- auch nicht als Hidden-Feld.
+    // Muster statt fester Liste: ein umbenanntes Token ("csrf-token", "xsrfToken")
+    // soll ohne Codeaenderung draussen bleiben.
+    const SECRET_FIELD_PATTERN = /csrf|xsrf|token|jwt|session|captcha|secret|password|auth/i;
+
+    // Wert eines Formularfelds nach Namen. Bei Radio-Gruppen zaehlt nur der
+    // gewaehlte Eintrag; Feldart egal (select, input, hidden), weil Kleinanzeigen
+    // z. B. den Preistyp je nach Kategorie unterschiedlich ausspielt.
+    function formValue(root, names) {
+        for (let n = 0; n < names.length; n++) {
+            const els = root.querySelectorAll('[name="' + names[n] + '"]');
+            for (let i = 0; i < els.length; i++) {
+                const el = els[i];
+                if ((el.type === 'radio' || el.type === 'checkbox') && !el.checked) continue;
+                if (el.value !== undefined && el.value !== null && el.value !== '') return el.value;
+            }
+        }
+        return undefined;
+    }
+
     function readFormFields(doc, urlAdId) {
         const fields = {};
         const rawFields = {};
+        const hiddenFields = {};
         const root = getAdFormRoot(doc, urlAdId);
         root.querySelectorAll('input, textarea, select').forEach(function (el) {
             const name = el.getAttribute('name');
@@ -880,26 +901,33 @@
             }
             // Sicherheits-Artefakte gehoeren nicht in den Snapshot: Der Snapshot/ZIP
             // ist fuer die manuelle Wiederherstellung durch Menschen gedacht, nicht
-            // fuer Tokens. Hidden-Felder (u.a. das CSRF-Token in input[name="_csrf"],
-            // siehe getCsrfToken()) sowie Passwort-/Datei-Felder werden ausgeschlossen.
-            // "_csrf" zusaetzlich per Namens-Denylist, falls das Token je in einem
-            // nicht-hidden Feld auftauchen sollte.
-            if (el.type === 'password' || el.type === 'file' || el.type === 'hidden' || name === '_csrf') return;
+            // fuer Tokens. Passwort-/Datei-Felder und alles, dessen Name nach Token
+            // aussieht (u.a. das CSRF-Token in input[name="_csrf"], siehe
+            // getCsrfToken()), bleiben draussen.
+            if (el.type === 'password' || el.type === 'file' || name === '_csrf' || SECRET_FIELD_PATTERN.test(name)) return;
             const v = el.value;
             if (v === undefined || v === null || v === '') return;
+            // Hidden-Felder getrennt: dort steckt u.a. die Kategorie, die fuer eine
+            // Wiederherstellung von Hand noetig ist. rawFields bleibt dadurch, was
+            // es immer war -- die sichtbaren Eingaben.
+            if (el.type === 'hidden') {
+                hiddenFields[name] = String(v).slice(0, 500);
+                return;
+            }
             rawFields[name] = String(v).slice(0, 5000);
         });
         const titleInput = root.querySelector('input[name="title"], input#title');
         if (titleInput) fields.title = titleInput.value;
         const descTa = root.querySelector('textarea[name="description"], textarea#description');
         if (descTa) fields.description = descTa.value;
-        const priceInput = root.querySelector('input[name="price"], input#price');
-        if (priceInput) fields.price = priceInput.value;
-        const priceTypeSel = root.querySelector('select[name="priceType"], select#priceType');
-        if (priceTypeSel) fields.priceType = priceTypeSel.value;
+        // "priceAmount" ist der aktuelle Name (live gesehen 09/2026), "price" der fruehere.
+        const price = formValue(root, ['priceAmount', 'price']);
+        if (price !== undefined) fields.price = price;
+        const priceType = formValue(root, ['priceType']);
+        if (priceType !== undefined) fields.priceType = priceType;
         const locInput = root.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
         if (locInput) fields.location = locInput.value;
-        return { fields: fields, rawFields: rawFields };
+        return { fields: fields, rawFields: rawFields, hiddenFields: hiddenFields };
     }
 
     // Bilder werden wie die Felder bevorzugt im Formular der Anzeige gesucht.
@@ -1008,6 +1036,7 @@
             title: ff.fields.title || '',
             fields: ff.fields,
             rawFields: ff.rawFields,
+            hiddenFields: ff.hiddenFields,
             images: images
         };
     }

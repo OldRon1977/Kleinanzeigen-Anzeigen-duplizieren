@@ -222,11 +222,12 @@ describe('buildBackupZip', () => {
         expect(data.adId).toBe('1');
         expect(data.fields.description).toBe('Beschreibung');
         expect(data.imageUrls.length).toBe(2);
+        expect(data.hiddenFields).toEqual({ adId: '1' });
         expect(Array.from(entries['1-Titel_1/image_01.jpg'])).toEqual([9, 9]);
 
         const report = new TextDecoder().decode(entries['protokoll.txt']);
         expect(report).toContain('Gesichert: 1 von 2');
-        expect(report).toContain('OK     1  Titel 1  | Felder: 2, Bilder: 1/2');
+        expect(report).toContain('OK     1  Titel 1  | Felder: 2 (+1 versteckt), Bilder: 1/2');
         expect(report).toContain('Hinweis: 1 von 2 Bild(ern) nicht geladen');
         expect(report).toContain('FEHLER 2  Stuhl  | Timeout nach 20000 ms');
     });
