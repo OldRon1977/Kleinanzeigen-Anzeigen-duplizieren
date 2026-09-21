@@ -352,41 +352,395 @@
         return String(str || '').replace(/[\\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').slice(0, 60);
     }
 
-    async function downloadRecoveryZip() {
-        const snaps = await getSnapshotsAll();
-        if (!snaps.length) return;
+    // Ordner einer Anzeige im ZIP: data.json plus image_NN.jpg. Recovery und
+    // Sicherung der Auswahl teilen sich dieses Format, damit eine Anzeige aus
+    // beiden Quellen gleich wiederhergestellt wird.
+    async function snapshotZipFiles(s) {
         const files = [];
-        for (const s of snaps) {
-            const folder = s.adId + '-' + sanitize(s.title || 'untitled') + '/';
-            const meta = {
-                adId: s.adId,
-                capturedAt: new Date(s.capturedAt || Date.now()).toISOString(),
-                title: s.title,
-                fields: s.fields || {},
-                rawFields: s.rawFields || {},
-                imageUrls: (s.images || []).map(function (i) { return i.url; })
-            };
-            files.push({ name: folder + 'data.json', data: utf8(JSON.stringify(meta, null, 2)) });
-            const imgs = s.images || [];
-            for (let i = 0; i < imgs.length; i++) {
-                const img = imgs[i];
-                if (!img.blob) continue;
-                const buf = new Uint8Array(await img.blob.arrayBuffer());
-                const ext = (img.mime && img.mime.indexOf('png') >= 0) ? 'png' : 'jpg';
-                const idx = String(i + 1).padStart(2, '0');
-                files.push({ name: folder + 'image_' + idx + '.' + ext, data: buf });
-            }
+        const folder = s.adId + '-' + sanitize(s.title || 'untitled') + '/';
+        const meta = {
+            adId: s.adId,
+            capturedAt: new Date(s.capturedAt || Date.now()).toISOString(),
+            title: s.title,
+            fields: s.fields || {},
+            rawFields: s.rawFields || {},
+            imageUrls: (s.images || []).map(function (i) { return i.url; })
+        };
+        files.push({ name: folder + 'data.json', data: utf8(JSON.stringify(meta, null, 2)) });
+        const imgs = s.images || [];
+        for (let i = 0; i < imgs.length; i++) {
+            const img = imgs[i];
+            if (!img.blob) continue;
+            const buf = new Uint8Array(await img.blob.arrayBuffer());
+            const ext = (img.mime && img.mime.indexOf('png') >= 0) ? 'png' : 'jpg';
+            const idx = String(i + 1).padStart(2, '0');
+            files.push({ name: folder + 'image_' + idx + '.' + ext, data: buf });
         }
-        const zip = await buildZip(files);
-        const url = URL.createObjectURL(zip);
+        return files;
+    }
+
+    function zipTimestamp() {
+        return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    }
+
+    function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         a.href = url;
-        a.download = 'ka-recovery-' + ts + '.zip';
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    async function downloadRecoveryZip() {
+        const snaps = await getSnapshotsAll();
+        if (!snaps.length) return;
+        let files = [];
+        for (const s of snaps) {
+            files = files.concat(await snapshotZipFiles(s));
+        }
+        triggerDownload(await buildZip(files), 'ka-recovery-' + zipTimestamp() + '.zip');
+    }
+
+    // === SICHERUNG DER AUSWAHL ===
+    // Liest ausgewaehlte Anzeigen, ohne etwas zu veraendern: Die Bearbeiten-
+    // Seite wird per fetch geholt und im Speicher ausgewertet, es oeffnet sich
+    // kein Tab. Das Ergebnis ist eine ZIP im Format des Recovery-Snapshots.
+    //
+    // Die Auslese-Funktionen unten sind Kopien aus kleinanzeigen-duplizieren.user.js
+    // (findAdIdInput, getAdFormRoot, readFormFields, collectImageUrls). Die beiden
+    // Scripts laufen getrennt und koennen keinen Code teilen. Dass die Kopien
+    // gleich bleiben, prueft tests/backup.parity.test.js gegen dasselbe Markup.
+    const AD_EDIT_PATH = '/p-anzeige-bearbeiten.html?adId=';
+    const AD_ID_SELECTOR = 'input[name="adId"], #postad-id, input[name="postad-id"], input[name="id"]';
+    const BACKUP_PAGE_TIMEOUT_MS = 20000;
+    const BACKUP_IMAGE_TIMEOUT_MS = 20000;
+    const BACKUP_IMAGE_CONCURRENCY = 4;
+    // Abstand zwischen zwei Anzeigen. Die Sicherung aendert nichts, braucht also
+    // nicht die Minuten-Pause des Batch -- aber auch kein Dauerfeuer auf den Server.
+    const BACKUP_GAP_MIN_MS = 1000;
+    const BACKUP_GAP_MAX_MS = 2000;
+
+    function findAdIdInput(doc, urlAdId) {
+        const direct = doc.querySelector(AD_ID_SELECTOR);
+        if (direct) return direct;
+        if (!urlAdId) return null;
+        const candidates = Array.from(doc.querySelectorAll('input[type="hidden"]'))
+            .filter(function (i) { return i.value === urlAdId; });
+        return candidates.length === 1 ? candidates[0] : null;
+    }
+
+    function getAdFormRoot(doc, urlAdId) {
+        const adIdInput = findAdIdInput(doc, urlAdId);
+        if (adIdInput && adIdInput.form) return adIdInput.form;
+        return doc.querySelector('form') || doc;
+    }
+
+    function readFormFields(doc, urlAdId) {
+        const fields = {};
+        const rawFields = {};
+        const root = getAdFormRoot(doc, urlAdId);
+        root.querySelectorAll('input, textarea, select').forEach(function (el) {
+            const name = el.getAttribute('name');
+            if (!name) return;
+            if (el.type === 'checkbox' || el.type === 'radio') {
+                if (!el.checked) return;
+            }
+            // Kein CSRF-Token, keine Hidden-, Passwort- oder Datei-Felder in der
+            // ZIP -- Begruendung am Original im Hauptscript.
+            if (el.type === 'password' || el.type === 'file' || el.type === 'hidden' || name === '_csrf') return;
+            const v = el.value;
+            if (v === undefined || v === null || v === '') return;
+            rawFields[name] = String(v).slice(0, 5000);
+        });
+        const titleInput = root.querySelector('input[name="title"], input#title');
+        if (titleInput) fields.title = titleInput.value;
+        const descTa = root.querySelector('textarea[name="description"], textarea#description');
+        if (descTa) fields.description = descTa.value;
+        const priceInput = root.querySelector('input[name="price"], input#price');
+        if (priceInput) fields.price = priceInput.value;
+        const priceTypeSel = root.querySelector('select[name="priceType"], select#priceType');
+        if (priceTypeSel) fields.priceType = priceTypeSel.value;
+        const locInput = root.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
+        if (locInput) fields.location = locInput.value;
+        return { fields: fields, rawFields: rawFields };
+    }
+
+    function collectImageUrls(doc, urlAdId) {
+        const root = getAdFormRoot(doc, urlAdId);
+        const urls = collectImageUrlsIn(root);
+        if (urls.length > 0 || root === doc) return urls;
+        return collectImageUrlsIn(doc);
+    }
+
+    function collectImageUrlsIn(root) {
+        const urls = new Set();
+        root.querySelectorAll('img').forEach(function (img) {
+            const src = img.src || img.getAttribute('data-src') || '';
+            if (src && src.indexOf('img.kleinanzeigen.de') >= 0 && src.indexOf('/prod-ads/images/') >= 0) {
+                // Volle Aufloesung statt der 96x96-Vorschau, siehe Hauptscript.
+                const q = src.indexOf('?');
+                urls.add((q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG');
+            }
+        });
+        return Array.from(urls);
+    }
+
+    // Reihenfolge der Ergebnisse = Reihenfolge der Eingabe; sie wird im ZIP
+    // zur Bildreihenfolge. `worker` darf nicht ablehnen.
+    async function mapLimit(items, limit, worker) {
+        const results = new Array(items.length);
+        let next = 0;
+        const run = async function () {
+            while (true) {
+                const i = next++;
+                if (i >= items.length) return;
+                results[i] = await worker(items[i], i);
+            }
+        };
+        const pool = [];
+        const size = Math.max(1, Math.min(limit, items.length));
+        for (let i = 0; i < size; i++) pool.push(run());
+        await Promise.all(pool);
+        return results;
+    }
+
+    // Holt die Bearbeiten-Seite und prueft, dass sie wirklich das Formular DIESER
+    // Anzeige enthaelt. Ohne die Pruefung landete bei abgelaufenem Login die
+    // Anmeldeseite als "gesicherte Anzeige" mit leeren Feldern in der ZIP.
+    async function fetchAdEditDocument(adId) {
+        const res = await fetchWithTimeout(AD_EDIT_PATH + encodeURIComponent(adId), {
+            credentials: 'same-origin'
+        }, BACKUP_PAGE_TIMEOUT_MS);
+        if (!res.ok) throw new Error('Bearbeiten-Seite: HTTP ' + res.status);
+        if (res.redirected && String(res.url || '').indexOf('p-anzeige-bearbeiten') < 0) {
+            throw new Error('Bearbeiten-Seite umgeleitet (Login abgelaufen?)');
+        }
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const idInput = findAdIdInput(doc, adId);
+        if (!idInput || idInput.value !== adId) {
+            throw new Error('Formular der Anzeige nicht gefunden (Login abgelaufen oder Seite umgebaut?)');
+        }
+        return doc;
+    }
+
+    // Ohne Cookies, wie im Hauptscript: der Bild-Server erlaubt keine Anfragen
+    // mit Credentials (CORS).
+    async function fetchImageBlob(url) {
+        const res = await fetchWithTimeout(url, { credentials: 'omit' }, BACKUP_IMAGE_TIMEOUT_MS);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.blob();
+    }
+
+    // Liefert einen Snapshot im Recovery-Format plus `problems`: Befunde, die
+    // nicht zum Abbruch fuehren, aber im Protokoll der ZIP stehen sollen.
+    async function backupOneAd(adId, listTitle) {
+        const doc = await fetchAdEditDocument(adId);
+        const ff = readFormFields(doc, adId);
+        const urls = collectImageUrls(doc, adId);
+        const images = await mapLimit(urls, BACKUP_IMAGE_CONCURRENCY, async function (u) {
+            try {
+                const blob = await fetchImageBlob(u);
+                return { url: u, blob: blob, mime: blob.type || 'image/jpeg' };
+            } catch (e) {
+                warn('Sicherung: Bild nicht geladen', { adId: adId, error: String(e) });
+                return { url: u, blob: null, mime: null };
+            }
+        });
+        const problems = [];
+        if (!ff.fields.title) problems.push('kein Titel im Formular');
+        if (!ff.fields.description) problems.push('keine Beschreibung im Formular');
+        if (urls.length === 0) problems.push('keine Bilder gefunden');
+        const failedImages = images.filter(function (i) { return !i.blob; }).length;
+        if (failedImages > 0) problems.push(failedImages + ' von ' + urls.length + ' Bild(ern) nicht geladen');
+        return {
+            adId: String(adId),
+            capturedAt: Date.now(),
+            title: ff.fields.title || listTitle || '',
+            fields: ff.fields,
+            rawFields: ff.rawFields,
+            images: images,
+            problems: problems
+        };
+    }
+
+    // Klartext-Protokoll im Wurzelverzeichnis der ZIP: was gesichert wurde, was
+    // fehlt und woran es scheiterte.
+    function buildBackupReport(state) {
+        const lines = [
+            'Sicherung der Auswahl – ' + new Date(state.startedAt).toLocaleString(),
+            'Gesichert: ' + state.done.length + ' von ' + state.total +
+                (state.aborted ? ' (abgebrochen)' : ''),
+            'Fehlgeschlagen: ' + state.failed.length,
+            ''
+        ];
+        state.done.forEach(function (s) {
+            const loaded = s.images.filter(function (i) { return i.blob; }).length;
+            lines.push('OK     ' + s.adId + '  ' + (s.title || '(ohne Titel)') +
+                '  | Felder: ' + Object.keys(s.rawFields).length +
+                ', Bilder: ' + loaded + '/' + s.images.length);
+            s.problems.forEach(function (p) { lines.push('       Hinweis: ' + p); });
+        });
+        state.failed.forEach(function (f) {
+            lines.push('FEHLER ' + f.adId + '  ' + (f.title || '') + '  | ' + f.error);
+        });
+        return lines.join('\n') + '\n';
+    }
+
+    async function buildBackupZip(state) {
+        let files = [{ name: 'protokoll.txt', data: utf8(buildBackupReport(state)) }];
+        for (const s of state.done) {
+            files = files.concat(await snapshotZipFiles(s));
+        }
+        return buildZip(files);
+    }
+
+    let backupStopRequested = false;
+
+    function randomBackupGapMs() {
+        return BACKUP_GAP_MIN_MS + Math.floor(Math.random() * (BACKUP_GAP_MAX_MS - BACKUP_GAP_MIN_MS + 1));
+    }
+
+    // Arbeitet die Auswahl nacheinander ab. Eine fehlgeschlagene Anzeige
+    // stoppt die Sicherung nicht -- sie steht als FEHLER im Protokoll.
+    async function runBackup(matches, onProgress, options) {
+        const opts = options || {};
+        const gapMs = opts.gapMs || randomBackupGapMs;
+        const state = {
+            startedAt: Date.now(),
+            total: matches.length,
+            done: [],
+            failed: [],
+            current: null,
+            aborted: false
+        };
+        backupStopRequested = false;
+        for (let i = 0; i < matches.length; i++) {
+            if (backupStopRequested) { state.aborted = true; break; }
+            const m = matches[i];
+            state.current = m;
+            if (onProgress) onProgress(state);
+            try {
+                const snap = await backupOneAd(m.adId, m.title);
+                state.done.push(snap);
+                log('Gesichert adId ' + m.adId, {
+                    felder: Object.keys(snap.rawFields).length,
+                    bilder: snap.images.length,
+                    hinweise: snap.problems
+                });
+            } catch (e) {
+                state.failed.push({ adId: m.adId, title: m.title, error: e.message || String(e) });
+                warn('Sicherung fehlgeschlagen adId ' + m.adId, e);
+            }
+            if (i < matches.length - 1 && !backupStopRequested) {
+                await waitMs(gapMs(), null, function () { return backupStopRequested; });
+            }
+        }
+        state.current = null;
+        if (onProgress) onProgress(state);
+        return state;
+    }
+
+    function renderBackupProgress(state) {
+        const overlay = ensureOverlay();
+        overlay.innerHTML = '';
+        const header = document.createElement('div');
+        header.style.cssText = OVERLAY_HEADER_CSS;
+        header.textContent = 'Sicherung läuft';
+        overlay.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px 14px;line-height:1.5;';
+        const count = document.createElement('div');
+        count.setAttribute('data-ka-backup', 'count');
+        count.textContent = (state.done.length + state.failed.length) + ' von ' + state.total + ' bearbeitet';
+        body.appendChild(count);
+        if (state.current) {
+            const cur = document.createElement('div');
+            cur.style.cssText = 'color:#555;font-size:12px;';
+            cur.textContent = 'Aktuell: ' + (state.current.title || 'ID ' + state.current.adId);
+            body.appendChild(cur);
+        }
+        overlay.appendChild(body);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
+        const stop = makeButton(backupStopRequested ? 'Wird gestoppt …' : 'Stop', false);
+        stop.disabled = backupStopRequested;
+        stop.onclick = function () {
+            backupStopRequested = true;
+            stop.disabled = true;
+            stop.textContent = 'Wird gestoppt …';
+        };
+        actions.appendChild(stop);
+        overlay.appendChild(actions);
+    }
+
+    function renderBackupDone(state, zipBlob, filename) {
+        const overlay = ensureOverlay();
+        overlay.innerHTML = '';
+        const header = document.createElement('div');
+        header.style.cssText = OVERLAY_HEADER_CSS;
+        header.textContent = state.aborted ? 'Sicherung abgebrochen' : 'Sicherung abgeschlossen';
+        overlay.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px 14px;line-height:1.5;';
+        const okLine = document.createElement('div');
+        okLine.textContent = 'Gesichert: ' + state.done.length + ' von ' + state.total;
+        body.appendChild(okLine);
+
+        const withProblems = state.done.filter(function (s) { return s.problems.length > 0; });
+        if (withProblems.length > 0) {
+            const note = document.createElement('div');
+            note.style.cssText = 'background:#fff7e6;border:1px solid #ffd591;padding:8px;border-radius:4px;margin-top:8px;color:#a06200;font-size:12px;';
+            note.textContent = withProblems.length + ' Anzeige(n) unvollständig gesichert – Details in protokoll.txt in der ZIP.';
+            body.appendChild(note);
+        }
+        if (state.failed.length > 0) {
+            const ul = document.createElement('ul');
+            ul.style.cssText = 'margin:6px 0 0 18px;color:#e74c3c;font-size:12px;';
+            state.failed.forEach(function (f) {
+                const li = document.createElement('li');
+                li.textContent = (f.title || f.adId) + ': ' + f.error;
+                ul.appendChild(li);
+            });
+            body.appendChild(ul);
+        }
+        const hint = document.createElement('div');
+        hint.style.cssText = 'color:#777;font-size:11px;margin-top:8px;';
+        hint.textContent = 'Die ZIP enthält pro Anzeige data.json (Texte und Felder) und die Bilder in voller Auflösung.';
+        body.appendChild(hint);
+        overlay.appendChild(body);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
+        const close = makeButton('Schließen', false);
+        close.onclick = closeOverlay;
+        actions.appendChild(close);
+        if (zipBlob) {
+            const dl = makeButton('ZIP herunterladen', true);
+            dl.onclick = function () { triggerDownload(zipBlob, filename); };
+            actions.appendChild(dl);
+        }
+        overlay.appendChild(actions);
+    }
+
+    async function startBackupFlow(matches) {
+        log('Sicherung gestartet', { anzeigen: matches.length });
+        const state = await runBackup(matches, renderBackupProgress);
+        log('Sicherung fertig', { ok: state.done.length, fail: state.failed.length, aborted: state.aborted });
+        if (!state.done.length) {
+            renderBackupDone(state, null, null);
+            return;
+        }
+        // Download nur auf Knopfdruck: ein Download ohne Klick nach einem
+        // minutenlangen Lauf blockieren manche Browser ohnehin.
+        const zip = await buildBackupZip(state);
+        renderBackupDone(state, zip, 'ka-sicherung-' + zipTimestamp() + '.zip');
     }
 
     // === EINZEL-BUTTONS PRO ANZEIGE ===
@@ -1536,7 +1890,20 @@
             if (!delayState.ok) return;
             onStart(chosen, { min: delayState.min, max: delayState.max });
         };
+        // Sicherung nutzt dieselbe Auswahlpruefung wie Start, haengt aber
+        // nicht an der Pause: sie veraendert nichts.
+        let backup = null;
+        if (meta && typeof meta.onBackup === 'function') {
+            backup = makeButton('Auswahl sichern (ZIP)', false);
+            backup.title = 'Texte, Felder und Bilder der ausgewählten Anzeigen als ZIP sichern. Es wird nichts verändert.';
+            backup.onclick = function () {
+                const chosen = confirmedSelection();
+                if (!chosen.length) return;
+                meta.onBackup(chosen);
+            };
+        }
         actions.appendChild(cancel);
+        if (backup) actions.appendChild(backup);
         actions.appendChild(start);
         overlay.appendChild(actions);
 
@@ -1574,6 +1941,13 @@
             start.disabled = blocked;
             start.style.opacity = blocked ? '0.5' : '1';
             start.style.cursor = blocked ? 'not-allowed' : 'pointer';
+            if (backup) {
+                // Nur die leere Auswahl sperrt -- eine ungueltige Pause betrifft
+                // die Sicherung nicht.
+                backup.disabled = count === 0;
+                backup.style.opacity = count === 0 ? '0.5' : '1';
+                backup.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
         }
         updateDelayNote();
         updateSummary();
@@ -1804,7 +2178,8 @@
             source: result.source,
             fromCache: !!result.fromCache,
             ageSeconds: result.ageSeconds || 0,
-            onReload: function () { startBatchFlow({ force: true }); }
+            onReload: function () { startBatchFlow({ force: true }); },
+            onBackup: function (matches) { startBackupFlow(matches); }
         });
     }
 
@@ -2123,6 +2498,12 @@
             utf8,
             dosTime,
             buildZip,
+            snapshotZipFiles,
+            findAdIdInput, getAdFormRoot, readFormFields, collectImageUrls,
+            fetchAdEditDocument, backupOneAd, buildBackupReport, buildBackupZip,
+            runBackup, renderBackupProgress, renderBackupDone, startBackupFlow,
+            requestBackupStop: function () { backupStopRequested = true; },
+            AD_EDIT_PATH, BACKUP_GAP_MIN_MS, BACKUP_GAP_MAX_MS,
             classifyResultValue
         };
         return; // im Test-Kontext keine Initialisierung/Timer
