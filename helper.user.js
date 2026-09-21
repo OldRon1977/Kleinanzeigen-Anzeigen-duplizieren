@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.12.0
+// @version       1.13.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -27,6 +27,13 @@
     // Default Anzeigenlaufzeit auf Kleinanzeigen = 60 Tage. Eine Anzeige gilt
     // als "aelter als 7 Tage", wenn das Enddatum hoechstens (60 - 7) = 53 Tage
     // in der Zukunft liegt.
+    //
+    // Historischer Schwellwert: im Produktivcode liest ihn keine Stelle mehr.
+    // Ueber Alter und Auswahl entscheiden heute ageFromDaysLeft() und ageBand()
+    // sowie die Praedikate der Schnellwahl im Overlay -- statt einer einzigen
+    // Ja/Nein-Grenze gibt es Altersbaender. Die Konstante bleibt, weil
+    // tests/helper.logic.test.js den Wert 53 als dokumentierte Herleitung
+    // festhaelt und der Kommentar zu AD_RUNTIME_DAYS darauf verweist.
     const MIN_DAYS_TO_END = 53;
 
     // Regellaufzeit einer Kleinanzeige. Die Kartenliste nennt nur das ENDdatum,
@@ -131,8 +138,36 @@
     const TRIGGER_BTN_ID = 'ka-batch-trigger';
     const OVERLAY_ID = 'ka-batch-overlay';
 
+    // Die beiden Stylestrings, die in mehreren Overlays identisch auftraten.
+    // Liefen sie auseinander, saehe eines der Overlays unbemerkt anders aus.
+    // Der laengere Header von renderConfirm bleibt bewusst inline -- er ist ein
+    // anderer String.
+    const OVERLAY_FOOTER_CSS = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
+    const OVERLAY_HEADER_CSS = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;';
+
     const log = (msg, data) => console.log('[KA-Helper] ' + msg, data || '');
     const warn = (msg, data) => console.warn('[KA-Helper] ' + msg, data || '');
+
+    // Budget je JSON-Request an Kleinanzeigen. Die Anzeigenliste holt bis zu
+    // MAX_JSON_PAGES Seiten nacheinander; ohne Abbruchkante haelt eine einzige
+    // haengende Seite den ganzen Aufbau der Auswahl auf, und der Nutzer sieht
+    // ein Overlay, das nie fertig wird.
+    const JSON_FETCH_TIMEOUT_MS = 10000;
+
+    // Wie im Worker: jeder Netzwerk-Request bekommt eine Abbruchkante. Der
+    // Fehlertext nennt die URL nicht, damit keine Query-Parameter im Log landen.
+    async function fetchWithTimeout(url, options, timeoutMs) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('Timeout nach ' + timeoutMs + ' ms');
+            throw e;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
 
     // === INDEXEDDB-WRAPPER ===
     function openIDB() {
@@ -317,41 +352,458 @@
         return String(str || '').replace(/[\\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').slice(0, 60);
     }
 
-    async function downloadRecoveryZip() {
-        const snaps = await getSnapshotsAll();
-        if (!snaps.length) return;
+    // Ordner einer Anzeige im ZIP: data.json plus image_NN.jpg. Recovery und
+    // Sicherung der Auswahl teilen sich dieses Format, damit eine Anzeige aus
+    // beiden Quellen gleich wiederhergestellt wird.
+    async function snapshotZipFiles(s) {
         const files = [];
-        for (const s of snaps) {
-            const folder = s.adId + '-' + sanitize(s.title || 'untitled') + '/';
-            const meta = {
-                adId: s.adId,
-                capturedAt: new Date(s.capturedAt || Date.now()).toISOString(),
-                title: s.title,
-                fields: s.fields || {},
-                rawFields: s.rawFields || {},
-                imageUrls: (s.images || []).map(function (i) { return i.url; })
-            };
-            files.push({ name: folder + 'data.json', data: utf8(JSON.stringify(meta, null, 2)) });
-            const imgs = s.images || [];
-            for (let i = 0; i < imgs.length; i++) {
-                const img = imgs[i];
-                if (!img.blob) continue;
-                const buf = new Uint8Array(await img.blob.arrayBuffer());
-                const ext = (img.mime && img.mime.indexOf('png') >= 0) ? 'png' : 'jpg';
-                const idx = String(i + 1).padStart(2, '0');
-                files.push({ name: folder + 'image_' + idx + '.' + ext, data: buf });
-            }
+        const folder = s.adId + '-' + sanitize(s.title || 'untitled') + '/';
+        const meta = {
+            adId: s.adId,
+            capturedAt: new Date(s.capturedAt || Date.now()).toISOString(),
+            title: s.title,
+            fields: s.fields || {},
+            rawFields: s.rawFields || {},
+            hiddenFields: s.hiddenFields || {},
+            imageUrls: (s.images || []).map(function (i) { return i.url; })
+        };
+        files.push({ name: folder + 'data.json', data: utf8(JSON.stringify(meta, null, 2)) });
+        const imgs = s.images || [];
+        for (let i = 0; i < imgs.length; i++) {
+            const img = imgs[i];
+            if (!img.blob) continue;
+            const buf = new Uint8Array(await img.blob.arrayBuffer());
+            const ext = (img.mime && img.mime.indexOf('png') >= 0) ? 'png' : 'jpg';
+            const idx = String(i + 1).padStart(2, '0');
+            files.push({ name: folder + 'image_' + idx + '.' + ext, data: buf });
         }
-        const zip = await buildZip(files);
-        const url = URL.createObjectURL(zip);
+        return files;
+    }
+
+    function zipTimestamp() {
+        return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    }
+
+    function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         a.href = url;
-        a.download = 'ka-recovery-' + ts + '.zip';
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    async function downloadRecoveryZip() {
+        const snaps = await getSnapshotsAll();
+        if (!snaps.length) return;
+        let files = [];
+        for (const s of snaps) {
+            files = files.concat(await snapshotZipFiles(s));
+        }
+        triggerDownload(await buildZip(files), 'ka-recovery-' + zipTimestamp() + '.zip');
+    }
+
+    // === SICHERUNG DER AUSWAHL ===
+    // Liest ausgewaehlte Anzeigen, ohne etwas zu veraendern: Die Bearbeiten-
+    // Seite wird per fetch geholt und im Speicher ausgewertet, es oeffnet sich
+    // kein Tab. Das Ergebnis ist eine ZIP im Format des Recovery-Snapshots.
+    //
+    // Die Auslese-Funktionen unten sind Kopien aus kleinanzeigen-duplizieren.user.js
+    // (findAdIdInput, getAdFormRoot, readFormFields, collectImageUrls). Die beiden
+    // Scripts laufen getrennt und koennen keinen Code teilen. Dass die Kopien
+    // gleich bleiben, prueft tests/backup.parity.test.js gegen dasselbe Markup.
+    const AD_EDIT_PATH = '/p-anzeige-bearbeiten.html?adId=';
+    const AD_ID_SELECTOR = 'input[name="adId"], #postad-id, input[name="postad-id"], input[name="id"]';
+    const BACKUP_PAGE_TIMEOUT_MS = 20000;
+    const BACKUP_IMAGE_TIMEOUT_MS = 20000;
+    const BACKUP_IMAGE_CONCURRENCY = 4;
+    // Abstand zwischen zwei Anzeigen. Die Sicherung aendert nichts, braucht also
+    // nicht die Minuten-Pause des Batch -- aber auch kein Dauerfeuer auf den Server.
+    const BACKUP_GAP_MIN_MS = 1000;
+    const BACKUP_GAP_MAX_MS = 2000;
+
+    function findAdIdInput(doc, urlAdId) {
+        const direct = doc.querySelector(AD_ID_SELECTOR);
+        if (direct) return direct;
+        if (!urlAdId) return null;
+        const candidates = Array.from(doc.querySelectorAll('input[type="hidden"]'))
+            .filter(function (i) { return i.value === urlAdId; });
+        return candidates.length === 1 ? candidates[0] : null;
+    }
+
+    function getAdFormRoot(doc, urlAdId) {
+        const adIdInput = findAdIdInput(doc, urlAdId);
+        if (adIdInput && adIdInput.form) return adIdInput.form;
+        return doc.querySelector('form') || doc;
+    }
+
+    // Namen, die nie in Snapshot oder ZIP gehoeren -- auch nicht als Hidden-Feld.
+    // Muster statt fester Liste: ein umbenanntes Token ("csrf-token", "xsrfToken")
+    // soll ohne Codeaenderung draussen bleiben.
+    const SECRET_FIELD_PATTERN = /csrf|xsrf|token|jwt|session|captcha|secret|password|auth/i;
+
+    // Wert eines Formularfelds nach Namen. Bei Radio-Gruppen zaehlt nur der
+    // gewaehlte Eintrag; Feldart egal (select, input, hidden), weil Kleinanzeigen
+    // z. B. den Preistyp je nach Kategorie unterschiedlich ausspielt.
+    function formValue(root, names) {
+        for (let n = 0; n < names.length; n++) {
+            const els = root.querySelectorAll('[name="' + names[n] + '"]');
+            for (let i = 0; i < els.length; i++) {
+                const el = els[i];
+                if ((el.type === 'radio' || el.type === 'checkbox') && !el.checked) continue;
+                if (el.value !== undefined && el.value !== null && el.value !== '') return el.value;
+            }
+        }
+        return undefined;
+    }
+
+    function readFormFields(doc, urlAdId) {
+        const fields = {};
+        const rawFields = {};
+        const hiddenFields = {};
+        const root = getAdFormRoot(doc, urlAdId);
+        root.querySelectorAll('input, textarea, select').forEach(function (el) {
+            const name = el.getAttribute('name');
+            if (!name) return;
+            if (el.type === 'checkbox' || el.type === 'radio') {
+                if (!el.checked) return;
+            }
+            // Sicherheits-Artefakte gehoeren nicht in den Snapshot: Der Snapshot/ZIP
+            // ist fuer die manuelle Wiederherstellung durch Menschen gedacht, nicht
+            // fuer Tokens. Passwort-/Datei-Felder und alles, dessen Name nach Token
+            // aussieht (u.a. das CSRF-Token in input[name="_csrf"], siehe
+            // getCsrfToken()), bleiben draussen.
+            if (el.type === 'password' || el.type === 'file' || name === '_csrf' || SECRET_FIELD_PATTERN.test(name)) return;
+            const v = el.value;
+            if (v === undefined || v === null || v === '') return;
+            // Hidden-Felder getrennt: dort steckt u.a. die Kategorie, die fuer eine
+            // Wiederherstellung von Hand noetig ist. rawFields bleibt dadurch, was
+            // es immer war -- die sichtbaren Eingaben.
+            if (el.type === 'hidden') {
+                // adImages[n].url: signierte Vorschau-Adressen mit jwt. Die
+                // Reihenfolge daraus nutzt collectImageUrls, die Bilder selbst
+                // liegen als Datei im Snapshot -- die Adresse braucht niemand.
+                if (name.indexOf('adImages[') === 0) return;
+                hiddenFields[name] = String(v).slice(0, 500);
+                return;
+            }
+            rawFields[name] = String(v).slice(0, 5000);
+        });
+        const titleInput = root.querySelector('input[name="title"], input#title');
+        if (titleInput) fields.title = titleInput.value;
+        const descTa = root.querySelector('textarea[name="description"], textarea#description');
+        if (descTa) fields.description = descTa.value;
+        // "priceAmount" ist der aktuelle Name (live gesehen 09/2026), "price" der fruehere.
+        const price = formValue(root, ['priceAmount', 'price']);
+        if (price !== undefined) fields.price = price;
+        const priceType = formValue(root, ['priceType']);
+        if (priceType !== undefined) fields.priceType = priceType;
+        const locInput = root.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
+        if (locInput) fields.location = locInput.value;
+        return { fields: fields, rawFields: rawFields, hiddenFields: hiddenFields };
+    }
+
+    // Reihenfolge der Bilder, wie Kleinanzeigen sie fuehrt: Das Formular traegt
+    // je Bild ein Hidden-Feld adImages[n].url, n ist die Position (0 = Titelbild).
+    // Sie wird im ZIP zu image_01, image_02, ... Die Vorschaubilder der Seite
+    // stehen heute in derselben Reihenfolge (live geprueft 09/2026), verbindlich
+    // ist aber nur der Index.
+    const AD_IMAGE_FIELD = /^adImages\[(\d+)\]\.url$/;
+
+    function collectImageUrlsFromFields(root) {
+        const indexed = [];
+        root.querySelectorAll('input[name^="adImages["]').forEach(function (el) {
+            const m = AD_IMAGE_FIELD.exec(el.getAttribute('name') || '');
+            const url = m && normalizeImageUrl(el.value);
+            if (url) indexed.push({ index: Number(m[1]), url: url });
+        });
+        indexed.sort(function (a, b) { return a.index - b.index; });
+        return Array.from(new Set(indexed.map(function (e) { return e.url; })));
+    }
+
+    function collectImageUrls(doc, urlAdId) {
+        const root = getAdFormRoot(doc, urlAdId);
+        const ordered = collectImageUrlsFromFields(root);
+        if (ordered.length > 0) return ordered;
+        const urls = collectImageUrlsIn(root);
+        if (urls.length > 0 || root === doc) return urls;
+        return collectImageUrlsIn(doc);
+    }
+
+    // Volle Aufloesung statt der 96x96-Vorschau, ohne jwt -- siehe Hauptscript.
+    function normalizeImageUrl(src) {
+        if (!src || src.indexOf('img.kleinanzeigen.de') < 0 || src.indexOf('/prod-ads/images/') < 0) return null;
+        const q = src.indexOf('?');
+        return (q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG';
+    }
+
+    function collectImageUrlsIn(root) {
+        const urls = new Set();
+        root.querySelectorAll('img').forEach(function (img) {
+            const url = normalizeImageUrl(img.src || img.getAttribute('data-src') || '');
+            if (url) urls.add(url);
+        });
+        return Array.from(urls);
+    }
+
+    // Reihenfolge der Ergebnisse = Reihenfolge der Eingabe; sie wird im ZIP
+    // zur Bildreihenfolge. `worker` darf nicht ablehnen.
+    async function mapLimit(items, limit, worker) {
+        const results = new Array(items.length);
+        let next = 0;
+        const run = async function () {
+            while (true) {
+                const i = next++;
+                if (i >= items.length) return;
+                results[i] = await worker(items[i], i);
+            }
+        };
+        const pool = [];
+        const size = Math.max(1, Math.min(limit, items.length));
+        for (let i = 0; i < size; i++) pool.push(run());
+        await Promise.all(pool);
+        return results;
+    }
+
+    // Holt die Bearbeiten-Seite und prueft, dass sie wirklich das Formular DIESER
+    // Anzeige enthaelt. Ohne die Pruefung landete bei abgelaufenem Login die
+    // Anmeldeseite als "gesicherte Anzeige" mit leeren Feldern in der ZIP.
+    async function fetchAdEditDocument(adId) {
+        const res = await fetchWithTimeout(AD_EDIT_PATH + encodeURIComponent(adId), {
+            credentials: 'same-origin'
+        }, BACKUP_PAGE_TIMEOUT_MS);
+        if (!res.ok) throw new Error('Bearbeiten-Seite: HTTP ' + res.status);
+        if (res.redirected && String(res.url || '').indexOf('p-anzeige-bearbeiten') < 0) {
+            throw new Error('Bearbeiten-Seite umgeleitet (Login abgelaufen?)');
+        }
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const idInput = findAdIdInput(doc, adId);
+        if (!idInput || idInput.value !== adId) {
+            throw new Error('Formular der Anzeige nicht gefunden (Login abgelaufen oder Seite umgebaut?)');
+        }
+        return doc;
+    }
+
+    // Ohne Cookies, wie im Hauptscript: der Bild-Server erlaubt keine Anfragen
+    // mit Credentials (CORS).
+    async function fetchImageBlob(url) {
+        const res = await fetchWithTimeout(url, { credentials: 'omit' }, BACKUP_IMAGE_TIMEOUT_MS);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.blob();
+    }
+
+    // Liefert einen Snapshot im Recovery-Format plus `problems`: Befunde, die
+    // nicht zum Abbruch fuehren, aber im Protokoll der ZIP stehen sollen.
+    async function backupOneAd(adId, listTitle) {
+        const doc = await fetchAdEditDocument(adId);
+        const ff = readFormFields(doc, adId);
+        const urls = collectImageUrls(doc, adId);
+        const images = await mapLimit(urls, BACKUP_IMAGE_CONCURRENCY, async function (u) {
+            try {
+                const blob = await fetchImageBlob(u);
+                return { url: u, blob: blob, mime: blob.type || 'image/jpeg' };
+            } catch (e) {
+                warn('Sicherung: Bild nicht geladen', { adId: adId, error: String(e) });
+                return { url: u, blob: null, mime: null };
+            }
+        });
+        const problems = [];
+        if (!ff.fields.title) problems.push('kein Titel im Formular');
+        if (!ff.fields.description) problems.push('keine Beschreibung im Formular');
+        if (urls.length === 0) problems.push('keine Bilder gefunden');
+        const failedImages = images.filter(function (i) { return !i.blob; }).length;
+        if (failedImages > 0) problems.push(failedImages + ' von ' + urls.length + ' Bild(ern) nicht geladen');
+        return {
+            adId: String(adId),
+            capturedAt: Date.now(),
+            title: ff.fields.title || listTitle || '',
+            fields: ff.fields,
+            rawFields: ff.rawFields,
+            hiddenFields: ff.hiddenFields,
+            images: images,
+            problems: problems
+        };
+    }
+
+    // Klartext-Protokoll im Wurzelverzeichnis der ZIP: was gesichert wurde, was
+    // fehlt und woran es scheiterte.
+    function buildBackupReport(state) {
+        const lines = [
+            'Sicherung der Auswahl – ' + new Date(state.startedAt).toLocaleString(),
+            'Gesichert: ' + state.done.length + ' von ' + state.total +
+                (state.aborted ? ' (abgebrochen)' : ''),
+            'Fehlgeschlagen: ' + state.failed.length,
+            ''
+        ];
+        state.done.forEach(function (s) {
+            const loaded = s.images.filter(function (i) { return i.blob; }).length;
+            lines.push('OK     ' + s.adId + '  ' + (s.title || '(ohne Titel)') +
+                '  | Felder: ' + Object.keys(s.rawFields).length +
+                ' (+' + Object.keys(s.hiddenFields || {}).length + ' versteckt)' +
+                ', Bilder: ' + loaded + '/' + s.images.length);
+            s.problems.forEach(function (p) { lines.push('       Hinweis: ' + p); });
+        });
+        state.failed.forEach(function (f) {
+            lines.push('FEHLER ' + f.adId + '  ' + (f.title || '') + '  | ' + f.error);
+        });
+        return lines.join('\n') + '\n';
+    }
+
+    async function buildBackupZip(state) {
+        let files = [{ name: 'protokoll.txt', data: utf8(buildBackupReport(state)) }];
+        for (const s of state.done) {
+            files = files.concat(await snapshotZipFiles(s));
+        }
+        return buildZip(files);
+    }
+
+    let backupStopRequested = false;
+
+    function randomBackupGapMs() {
+        return BACKUP_GAP_MIN_MS + Math.floor(Math.random() * (BACKUP_GAP_MAX_MS - BACKUP_GAP_MIN_MS + 1));
+    }
+
+    // Arbeitet die Auswahl nacheinander ab. Eine fehlgeschlagene Anzeige
+    // stoppt die Sicherung nicht -- sie steht als FEHLER im Protokoll.
+    async function runBackup(matches, onProgress, options) {
+        const opts = options || {};
+        const gapMs = opts.gapMs || randomBackupGapMs;
+        const state = {
+            startedAt: Date.now(),
+            total: matches.length,
+            done: [],
+            failed: [],
+            current: null,
+            aborted: false
+        };
+        backupStopRequested = false;
+        for (let i = 0; i < matches.length; i++) {
+            if (backupStopRequested) { state.aborted = true; break; }
+            const m = matches[i];
+            state.current = m;
+            if (onProgress) onProgress(state);
+            try {
+                const snap = await backupOneAd(m.adId, m.title);
+                state.done.push(snap);
+                log('Gesichert adId ' + m.adId, {
+                    felder: Object.keys(snap.rawFields).length,
+                    versteckt: Object.keys(snap.hiddenFields).length,
+                    bilder: snap.images.length,
+                    hinweise: snap.problems
+                });
+            } catch (e) {
+                state.failed.push({ adId: m.adId, title: m.title, error: e.message || String(e) });
+                warn('Sicherung fehlgeschlagen adId ' + m.adId, e);
+            }
+            if (i < matches.length - 1 && !backupStopRequested) {
+                await waitMs(gapMs(), null, function () { return backupStopRequested; });
+            }
+        }
+        state.current = null;
+        if (onProgress) onProgress(state);
+        return state;
+    }
+
+    function renderBackupProgress(state) {
+        const overlay = ensureOverlay();
+        overlay.innerHTML = '';
+        const header = document.createElement('div');
+        header.style.cssText = OVERLAY_HEADER_CSS;
+        header.textContent = 'Sicherung läuft';
+        overlay.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px 14px;line-height:1.5;';
+        const count = document.createElement('div');
+        count.setAttribute('data-ka-backup', 'count');
+        count.textContent = (state.done.length + state.failed.length) + ' von ' + state.total + ' bearbeitet';
+        body.appendChild(count);
+        if (state.current) {
+            const cur = document.createElement('div');
+            cur.style.cssText = 'color:#555;font-size:12px;';
+            cur.textContent = 'Aktuell: ' + (state.current.title || 'ID ' + state.current.adId);
+            body.appendChild(cur);
+        }
+        overlay.appendChild(body);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
+        const stop = makeButton(backupStopRequested ? 'Wird gestoppt …' : 'Stop', false);
+        stop.disabled = backupStopRequested;
+        stop.onclick = function () {
+            backupStopRequested = true;
+            stop.disabled = true;
+            stop.textContent = 'Wird gestoppt …';
+        };
+        actions.appendChild(stop);
+        overlay.appendChild(actions);
+    }
+
+    function renderBackupDone(state, zipBlob, filename) {
+        const overlay = ensureOverlay();
+        overlay.innerHTML = '';
+        const header = document.createElement('div');
+        header.style.cssText = OVERLAY_HEADER_CSS;
+        header.textContent = state.aborted ? 'Sicherung abgebrochen' : 'Sicherung abgeschlossen';
+        overlay.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px 14px;line-height:1.5;';
+        const okLine = document.createElement('div');
+        okLine.textContent = 'Gesichert: ' + state.done.length + ' von ' + state.total;
+        body.appendChild(okLine);
+
+        const withProblems = state.done.filter(function (s) { return s.problems.length > 0; });
+        if (withProblems.length > 0) {
+            const note = document.createElement('div');
+            note.style.cssText = 'background:#fff7e6;border:1px solid #ffd591;padding:8px;border-radius:4px;margin-top:8px;color:#a06200;font-size:12px;';
+            note.textContent = withProblems.length + ' Anzeige(n) unvollständig gesichert – Details in protokoll.txt in der ZIP.';
+            body.appendChild(note);
+        }
+        if (state.failed.length > 0) {
+            const ul = document.createElement('ul');
+            ul.style.cssText = 'margin:6px 0 0 18px;color:#e74c3c;font-size:12px;';
+            state.failed.forEach(function (f) {
+                const li = document.createElement('li');
+                li.textContent = (f.title || f.adId) + ': ' + f.error;
+                ul.appendChild(li);
+            });
+            body.appendChild(ul);
+        }
+        const hint = document.createElement('div');
+        hint.style.cssText = 'color:#777;font-size:11px;margin-top:8px;';
+        hint.textContent = 'Die ZIP enthält pro Anzeige data.json (Texte und Felder) und die Bilder in voller Auflösung.';
+        body.appendChild(hint);
+        overlay.appendChild(body);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
+        const close = makeButton('Schließen', false);
+        close.onclick = closeOverlay;
+        actions.appendChild(close);
+        if (zipBlob) {
+            const dl = makeButton('ZIP herunterladen', true);
+            dl.onclick = function () { triggerDownload(zipBlob, filename); };
+            actions.appendChild(dl);
+        }
+        overlay.appendChild(actions);
+    }
+
+    async function startBackupFlow(matches) {
+        log('Sicherung gestartet', { anzeigen: matches.length });
+        const state = await runBackup(matches, renderBackupProgress);
+        log('Sicherung fertig', { ok: state.done.length, fail: state.failed.length, aborted: state.aborted });
+        if (!state.done.length) {
+            renderBackupDone(state, null, null);
+            return;
+        }
+        // Download nur auf Knopfdruck: ein Download ohne Klick nach einem
+        // minutenlangen Lauf blockieren manche Browser ohnehin.
+        const zip = await buildBackupZip(state);
+        renderBackupDone(state, zip, 'ka-sicherung-' + zipTimestamp() + '.zip');
     }
 
     // === EINZEL-BUTTONS PRO ANZEIGE ===
@@ -541,10 +993,10 @@
     // Kosten entstehen; der Counter ist deshalb ein transparenter Serverwert,
     // aber keine Kostenprognose fuer jede einzelne Kategorie.
     async function fetchAdQuota() {
-        const res = await fetch(AD_QUOTA_JSON_PATH, {
+        const res = await fetchWithTimeout(AD_QUOTA_JSON_PATH, {
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin'
-        });
+        }, JSON_FETCH_TIMEOUT_MS);
         if (!res.ok) throw new Error('HTTP ' + res.status);
 
         const data = await res.json();
@@ -628,10 +1080,10 @@
         let lastPage = null;
 
         for (let pageNum = 1; pageNum <= MAX_JSON_PAGES; pageNum++) {
-            const res = await fetch(AD_LIST_JSON_PATH + '?pageNum=' + pageNum + '&sort=DEFAULT', {
+            const res = await fetchWithTimeout(AD_LIST_JSON_PATH + '?pageNum=' + pageNum + '&sort=DEFAULT', {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin'
-            });
+            }, JSON_FETCH_TIMEOUT_MS);
             if (!res.ok) throw new Error('HTTP ' + res.status);
 
             const data = await res.json();
@@ -843,6 +1295,16 @@
         return b;
     }
 
+    // Der Aufruf stand dreimal wortgleich in den Overlays, inklusive desselben
+    // Log-Texts. Ein Textwechsel an zwei von drei Stellen waere eine lautlose
+    // Inkonsistenz gewesen.
+    async function appendRecoveryIfPresent(parent) {
+        try {
+            const snapsMeta = await listSnapshotMeta();
+            await appendRecoverySection(parent, snapsMeta);
+        } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+    }
+
     async function appendRecoverySection(parent, snapsMeta) {
         if (!snapsMeta.length) return;
         const sec = document.createElement('div');
@@ -918,6 +1380,13 @@
         const fallback = defaultDelayConfig();
         const src = (raw && typeof raw === 'object') ? raw : {};
         const read = function (value, def) {
+            // Nur Zahl und String sind verwertbare Eingaben. Ohne diese Schranke
+            // liefe alles andere durch Number(): null, false und [] ergeben
+            // jeweils 0, isFinite(0) ist wahr und DELAY_LIMIT_MIN_MINUTES ist 0
+            // -- die 0 kaeme also durch und der Batch liefe ohne jede Pause.
+            // Genau das soll der Kommentar ueber dieser Funktion verhindern.
+            // Eine echte 0 als Zahl bleibt weiter erlaubt.
+            if (typeof value !== 'number' && typeof value !== 'string') return def;
             const n = (typeof value === 'string') ? Number(value.trim()) : Number(value);
             if (typeof value === 'string' && value.trim() === '') return def;
             if (!isFinite(n)) return def;
@@ -997,11 +1466,56 @@
             : 'ca. ' + range.minMinutes + '-' + range.maxMinutes + ' Minuten';
     }
 
-    async function renderConfirm(matches, skipped, onStart, meta) {
-        const overlay = ensureOverlay();
+    // Ein Minutenfeld des Pausen-Formulars. Haengt an keinem Zustand von
+    // renderConfirm, nur an den Argumenten und den beiden Limit-Konstanten --
+    // deshalb hier auf Modulebene statt eingebettet in eine 490-Zeilen-Funktion.
+    function makeMinuteField(labelText, value, name) {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = 'display:flex;gap:5px;align-items:center;font-size:12px;color:#333;';
+        wrap.appendChild(document.createTextNode(labelText));
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = String(DELAY_LIMIT_MIN_MINUTES);
+        input.max = String(DELAY_LIMIT_MAX_MINUTES);
+        input.step = '1';
+        input.value = String(value);
+        // Als Attribut im DOM, damit die Felder im Browser und im Test
+        // eindeutig adressierbar sind.
+        input.dataset.kaDelay = name;
+        input.style.cssText = 'width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
+        wrap.appendChild(input);
+        wrap.appendChild(document.createTextNode('min'));
+        return { wrap: wrap, input: input };
+    }
 
-        overlay.innerHTML = '';
+    // Ist eine Zeile wirklich sichtbar? Geprueft wird nicht das Modell, sondern
+    // das DOM: hidden-Attribut, Inline-Style und die berechnete Darstellung.
+    // getComputedStyle steht bewusst in try/catch -- faellt es aus, entscheiden
+    // die beiden ersten Kriterien. Haengt an keinem Zustand von renderConfirm.
+    function isVisible(el) {
+        if (el.hidden) return false;
+        if (el.style && el.style.display === 'none') return false;
+        try {
+            const view = el.ownerDocument && el.ownerDocument.defaultView;
+            const cs = view && view.getComputedStyle ? view.getComputedStyle(el) : null;
+            if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+        } catch (e) { /* ohne Layout-Engine bleibt es bei den Attributen */ }
+        return true;
+    }
 
+    // === ABSCHNITTE DES AUSWAHL-OVERLAYS ===
+    // Herausgezogen sind genau die Abschnitte, die keinen Zustand von
+    // renderConfirm brauchen -- sie bekommen ihre Daten als Argument und geben
+    // ein Element zurueck. Die Reihenfolge des Anhaengens bleibt beim Aufrufer,
+    // weil die DOM-Tests sie ueber Indizes abnehmen.
+    //
+    // Nicht herausgezogen ist der verzahnte Kern: Auswahl-Set, Merk-Filter,
+    // Sichtbarkeit, Pausen-Formular, Sicherheitsnetz und Zusammenfassung greifen
+    // gegenseitig auf denselben Zustand zu. Sie zu trennen hiesse, diesen
+    // Zustand als Objekt durchzureichen -- eine Entwurfsentscheidung mit eigenem
+    // Anlass, keine Extraktion.
+
+    function buildConfirmHeader() {
         const header = document.createElement('div');
         header.style.cssText = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;display:flex;justify-content:space-between;align-items:center;';
         const title = document.createElement('span');
@@ -1013,7 +1527,157 @@
         closeBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;color:#888;';
         closeBtn.onclick = closeOverlay;
         header.appendChild(closeBtn);
-        overlay.appendChild(header);
+        return header;
+    }
+
+    // Herkunft der Liste offenlegen. Wer eine Anzeige in einem anderen Tab
+    // geaendert hat, soll sehen, dass hier ein zwischengespeicherter Stand
+    // steht -- und ihn mit einem Klick auffrischen koennen.
+    function buildSourceLine(meta) {
+        if (!meta || !meta.onReload) return null;
+        const line3 = document.createElement('div');
+        line3.style.cssText = 'color:#999;margin-top:4px;font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
+        const label = document.createElement('span');
+        if (meta.fromCache) {
+            label.textContent = 'Liste zwischengespeichert (' + (meta.ageSeconds || 0) + 's alt).';
+        } else {
+            label.textContent = meta.source === 'json'
+                ? 'Liste frisch geladen.'
+                : 'Liste aus der Seitenansicht – nur die sichtbare Seite.';
+        }
+        const reload = document.createElement('button');
+        reload.type = 'button';
+        reload.textContent = 'Neu laden';
+        reload.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:11px;text-decoration:underline;';
+        reload.onclick = function () {
+            reload.disabled = true;
+            reload.textContent = 'Lädt \u2026';
+            meta.onReload();
+        };
+        line3.appendChild(label);
+        line3.appendChild(reload);
+        return line3;
+    }
+
+    // Eine Zeile der Liste. Der onchange-Handler der Checkbox bleibt beim
+    // Aufrufer: er haengt am Auswahl-Set und an der Zusammenfassung.
+    function buildAdRow(m) {
+        const li = document.createElement('li');
+        li.style.cssText = 'margin:4px 0;line-height:1.3;';
+
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;gap:8px;align-items:flex-start;cursor:pointer;';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = false;
+        cb.style.cssText = 'margin-top:2px;flex:none;cursor:pointer;';
+
+        // Zweiter, unsichtbarer Haken. Wird NIE vom Nutzer gesetzt, sondern
+        // ausschliesslich vom Merk-Filter. Verarbeitet wird nur, was beide
+        // Haken hat. Er steht bewusst als echtes Element im DOM und traegt
+        // data-ka-gate="fav": so laesst sich die Absicherung im Browser
+        // nachpruefen, statt dass man ihr glauben muss.
+        const gate = document.createElement('input');
+        gate.type = 'checkbox';
+        gate.dataset.kaGate = 'fav';
+        gate.dataset.adid = m.adId;
+        gate.checked = true;
+        gate.hidden = true;
+        gate.tabIndex = -1;
+        gate.setAttribute('aria-hidden', 'true');
+        gate.style.cssText = 'display:none;';
+
+        // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
+        // Text daneben), damit sie nicht allein an der Farbe haengt.
+        const age = typeof m.ageDays === 'number' ? m.ageDays : ageFromDaysLeft(m.daysLeft);
+        const band = ageBand(age);
+        const dot = document.createElement('span');
+        dot.className = 'ka-age-dot';
+        dot.dataset.band = band.key;
+        dot.title = 'Alter ' + band.label;
+        dot.style.cssText = 'width:10px;height:10px;border-radius:50%;flex:none;margin-top:5px;background:' + band.color + ';';
+
+        const texts = document.createElement('div');
+        const t = document.createElement('div');
+        t.style.cssText = 'font-weight:500;';
+        t.textContent = m.title;
+        const metaLine = document.createElement('div');
+        metaLine.style.cssText = 'color:#666;font-size:12px;';
+        let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt';
+        // Aus der JSON-Quelle ist das Alter exakt, aus dem DOM geschaetzt.
+        // Der Unterschied gehoert an die Anzeige, nicht nur in die Fussnote.
+        if (m.ageExact !== true) metaText += ' (gesch\u00E4tzt)';
+        if (m.endText) {
+            metaText += ' \u00B7 endet ' + m.endText;
+            if (typeof m.daysLeft === 'number') metaText += ' (' + m.daysLeft + ' Tage)';
+        }
+        if (typeof m.viewCount === 'number') {
+            metaText += ' \u00B7 ' + m.viewCount + ' Aufrufe';
+        }
+        // Merk-Status im Klartext, damit nachvollziehbar bleibt, warum der
+        // Zusatzfilter eine Anzeige aussortiert hat.
+        if (typeof m.favCount === 'number') {
+            metaText += ' \u00B7 ' + (m.favCount === 0
+                ? 'nicht gemerkt'
+                : m.favCount + '\u00D7 gemerkt');
+        }
+        metaLine.textContent = metaText;
+        texts.appendChild(t);
+        texts.appendChild(metaLine);
+
+        label.appendChild(cb);
+        label.appendChild(dot);
+        label.appendChild(texts);
+        li.appendChild(label);
+        li.appendChild(gate);
+
+        return { li: li, cb: cb, gate: gate };
+    }
+
+    // Legende: erklaert die Farbpunkte und macht transparent, dass das Alter
+    // aus der Restlaufzeit abgeleitet ist (die Karte nennt kein Erstelldatum).
+    function buildAgeLegend() {
+        const legend = document.createElement('div');
+        legend.style.cssText = 'padding:0 14px 8px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#666;';
+        AGE_BANDS.forEach(function (band) {
+            const item = document.createElement('span');
+            item.style.cssText = 'display:flex;gap:4px;align-items:center;';
+            const dot = document.createElement('span');
+            dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + band.color + ';';
+            item.appendChild(dot);
+            item.appendChild(document.createTextNode(band.label));
+            legend.appendChild(item);
+        });
+        return legend;
+    }
+
+    // Die Fussnote gilt nur fuer geschaetzte Alter. Kommt die Liste aus der
+    // JSON-Quelle, steht dort das echte Erstelldatum -- dann waere der
+    // Hinweis schlicht falsch.
+    function buildEstimateHint(matches) {
+        if (!matches.some(function (m) { return m.ageExact !== true; })) return null;
+        const hint = document.createElement('div');
+        hint.style.cssText = 'padding:0 14px 8px;font-size:11px;color:#999;';
+        hint.textContent = 'Alter geschätzt aus der Restlaufzeit (' + AD_RUNTIME_DAYS +
+            ' Tage Regellaufzeit) – bei verlängerten Anzeigen ungenau.';
+        return hint;
+    }
+
+    function buildSkippedNote(skipped) {
+        if (!skipped.length) return null;
+        const sk = document.createElement('div');
+        sk.style.cssText = 'padding:8px 14px;color:#888;font-size:12px;border-top:1px solid #eee;';
+        sk.textContent = skipped.length + ' Karte(n) ohne Datum übersprungen.';
+        return sk;
+    }
+
+    async function renderConfirm(matches, skipped, onStart, meta) {
+        const overlay = ensureOverlay();
+
+        overlay.innerHTML = '';
+
+        overlay.appendChild(buildConfirmHeader());
 
         const summary = document.createElement('div');
         summary.style.cssText = 'padding:10px 14px;border-bottom:1px solid #eee;';
@@ -1021,10 +1685,7 @@
             summary.textContent = 'Keine Anzeigen mit lesbarem Enddatum gefunden.';
             overlay.appendChild(summary);
             // Trotzdem Recovery-Section anzeigen, falls Snapshots da sind
-            try {
-                const meta = await listSnapshotMeta();
-                await appendRecoverySection(overlay, meta);
-            } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+            await appendRecoveryIfPresent(overlay);
             return;
         }
         // Auswahl startet LEER. Gelistet sind alle Anzeigen, auch frische --
@@ -1040,115 +1701,23 @@
         line2.style.cssText = 'color:#666;margin-top:4px;';
         summary.appendChild(line2);
 
-        // Herkunft der Liste offenlegen. Wer eine Anzeige in einem anderen Tab
-        // geaendert hat, soll sehen, dass hier ein zwischengespeicherter Stand
-        // steht -- und ihn mit einem Klick auffrischen koennen.
-        if (meta && meta.onReload) {
-            const line3 = document.createElement('div');
-            line3.style.cssText = 'color:#999;margin-top:4px;font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
-            const label = document.createElement('span');
-            if (meta.fromCache) {
-                label.textContent = 'Liste zwischengespeichert (' + (meta.ageSeconds || 0) + 's alt).';
-            } else {
-                label.textContent = meta.source === 'json'
-                    ? 'Liste frisch geladen.'
-                    : 'Liste aus der Seitenansicht – nur die sichtbare Seite.';
-            }
-            const reload = document.createElement('button');
-            reload.type = 'button';
-            reload.textContent = 'Neu laden';
-            reload.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:11px;text-decoration:underline;';
-            reload.onclick = function () {
-                reload.disabled = true;
-                reload.textContent = 'Lädt \u2026';
-                meta.onReload();
-            };
-            line3.appendChild(label);
-            line3.appendChild(reload);
-            summary.appendChild(line3);
-        }
+        const sourceLine = buildSourceLine(meta);
+        if (sourceLine) summary.appendChild(sourceLine);
 
         overlay.appendChild(summary);
 
         const list = document.createElement('ul');
         list.style.cssText = 'margin:0;padding:8px 14px;max-height:240px;overflow-y:auto;list-style:none;';
         matches.forEach(function (m) {
-            const li = document.createElement('li');
-            li.style.cssText = 'margin:4px 0;line-height:1.3;';
-
-            const label = document.createElement('label');
-            label.style.cssText = 'display:flex;gap:8px;align-items:flex-start;cursor:pointer;';
-
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = false;
-            cb.style.cssText = 'margin-top:2px;flex:none;cursor:pointer;';
+            const row = buildAdRow(m);
+            const cb = row.cb;
             cb.onchange = function () {
                 if (cb.checked) selected.add(m.adId);
                 else selected.delete(m.adId);
                 updateSummary();
             };
-            // Zweiter, unsichtbarer Haken. Wird NIE vom Nutzer gesetzt, sondern
-            // ausschliesslich vom Merk-Filter. Verarbeitet wird nur, was beide
-            // Haken hat. Er steht bewusst als echtes Element im DOM und traegt
-            // data-ka-gate="fav": so laesst sich die Absicherung im Browser
-            // nachpruefen, statt dass man ihr glauben muss.
-            const gate = document.createElement('input');
-            gate.type = 'checkbox';
-            gate.dataset.kaGate = 'fav';
-            gate.dataset.adid = m.adId;
-            gate.checked = true;
-            gate.hidden = true;
-            gate.tabIndex = -1;
-            gate.setAttribute('aria-hidden', 'true');
-            gate.style.cssText = 'display:none;';
-
-            entries.push({ match: m, cb: cb, gate: gate, li: li, hiddenSelected: false });
-
-            // Farbpunkt nach Alter -- traegt die Information doppelt (Farbe und
-            // Text daneben), damit sie nicht allein an der Farbe haengt.
-            const age = typeof m.ageDays === 'number' ? m.ageDays : ageFromDaysLeft(m.daysLeft);
-            const band = ageBand(age);
-            const dot = document.createElement('span');
-            dot.className = 'ka-age-dot';
-            dot.dataset.band = band.key;
-            dot.title = 'Alter ' + band.label;
-            dot.style.cssText = 'width:10px;height:10px;border-radius:50%;flex:none;margin-top:5px;background:' + band.color + ';';
-
-            const texts = document.createElement('div');
-            const t = document.createElement('div');
-            t.style.cssText = 'font-weight:500;';
-            t.textContent = m.title;
-            const meta = document.createElement('div');
-            meta.style.cssText = 'color:#666;font-size:12px;';
-            let metaText = 'ID ' + m.adId + ' \u00B7 ' + age + ' Tage alt';
-            // Aus der JSON-Quelle ist das Alter exakt, aus dem DOM geschaetzt.
-            // Der Unterschied gehoert an die Anzeige, nicht nur in die Fussnote.
-            if (m.ageExact !== true) metaText += ' (gesch\u00E4tzt)';
-            if (m.endText) {
-                metaText += ' \u00B7 endet ' + m.endText;
-                if (typeof m.daysLeft === 'number') metaText += ' (' + m.daysLeft + ' Tage)';
-            }
-            if (typeof m.viewCount === 'number') {
-                metaText += ' \u00B7 ' + m.viewCount + ' Aufrufe';
-            }
-            // Merk-Status im Klartext, damit nachvollziehbar bleibt, warum der
-            // Zusatzfilter eine Anzeige aussortiert hat.
-            if (typeof m.favCount === 'number') {
-                metaText += ' \u00B7 ' + (m.favCount === 0
-                    ? 'nicht gemerkt'
-                    : m.favCount + '\u00D7 gemerkt');
-            }
-            meta.textContent = metaText;
-            texts.appendChild(t);
-            texts.appendChild(meta);
-
-            label.appendChild(cb);
-            label.appendChild(dot);
-            label.appendChild(texts);
-            li.appendChild(label);
-            li.appendChild(gate);
-            list.appendChild(li);
+            entries.push({ match: m, cb: cb, gate: row.gate, li: row.li, hiddenSelected: false });
+            list.appendChild(row.li);
         });
         overlay.appendChild(list);
 
@@ -1257,38 +1826,13 @@
 
         overlay.appendChild(bulk);
 
-        // Legende: erklaert die Farbpunkte und macht transparent, dass das Alter
-        // aus der Restlaufzeit abgeleitet ist (die Karte nennt kein Erstelldatum).
-        const legend = document.createElement('div');
-        legend.style.cssText = 'padding:0 14px 8px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#666;';
-        AGE_BANDS.forEach(function (band) {
-            const item = document.createElement('span');
-            item.style.cssText = 'display:flex;gap:4px;align-items:center;';
-            const dot = document.createElement('span');
-            dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + band.color + ';';
-            item.appendChild(dot);
-            item.appendChild(document.createTextNode(band.label));
-            legend.appendChild(item);
-        });
-        overlay.appendChild(legend);
+        overlay.appendChild(buildAgeLegend());
 
-        // Die Fussnote gilt nur fuer geschaetzte Alter. Kommt die Liste aus der
-        // JSON-Quelle, steht dort das echte Erstelldatum -- dann waere der
-        // Hinweis schlicht falsch.
-        if (matches.some(function (m) { return m.ageExact !== true; })) {
-            const hint = document.createElement('div');
-            hint.style.cssText = 'padding:0 14px 8px;font-size:11px;color:#999;';
-            hint.textContent = 'Alter geschätzt aus der Restlaufzeit (' + AD_RUNTIME_DAYS +
-                ' Tage Regellaufzeit) – bei verlängerten Anzeigen ungenau.';
-            overlay.appendChild(hint);
-        }
+        const estimateHint = buildEstimateHint(matches);
+        if (estimateHint) overlay.appendChild(estimateHint);
 
-        if (skipped.length > 0) {
-            const sk = document.createElement('div');
-            sk.style.cssText = 'padding:8px 14px;color:#888;font-size:12px;border-top:1px solid #eee;';
-            sk.textContent = skipped.length + ' Karte(n) ohne Datum übersprungen.';
-            overlay.appendChild(sk);
-        }
+        const skippedNote = buildSkippedNote(skipped);
+        if (skippedNote) overlay.appendChild(skippedNote);
 
         // === PAUSE ZWISCHEN ZWEI ANZEIGEN ===
         // Gespeicherter Stand gewinnt. Die Standardwerte greifen nur, wenn
@@ -1305,25 +1849,6 @@
 
         const delayRow = document.createElement('div');
         delayRow.style.cssText = 'display:flex;gap:14px;align-items:center;flex-wrap:wrap;';
-
-        function makeMinuteField(labelText, value, name) {
-            const wrap = document.createElement('label');
-            wrap.style.cssText = 'display:flex;gap:5px;align-items:center;font-size:12px;color:#333;';
-            wrap.appendChild(document.createTextNode(labelText));
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.min = String(DELAY_LIMIT_MIN_MINUTES);
-            input.max = String(DELAY_LIMIT_MAX_MINUTES);
-            input.step = '1';
-            input.value = String(value);
-            // Als Attribut im DOM, damit die Felder im Browser und im Test
-            // eindeutig adressierbar sind.
-            input.dataset.kaDelay = name;
-            input.style.cssText = 'width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
-            wrap.appendChild(input);
-            wrap.appendChild(document.createTextNode('min'));
-            return { wrap: wrap, input: input };
-        }
 
         const minField = makeMinuteField('von', delayCfg.min, 'min');
         const maxField = makeMinuteField('bis', delayCfg.max, 'max');
@@ -1382,21 +1907,6 @@
         overlay.appendChild(delaySec);
 
         // === SICHERHEITSNETZ ===
-        // Ist eine Zeile wirklich sichtbar? Geprueft wird nicht das Modell,
-        // sondern das DOM: hidden-Attribut, Inline-Style und die berechnete
-        // Darstellung. getComputedStyle steht bewusst in try/catch -- faellt es
-        // aus, entscheiden die beiden ersten Kriterien.
-        function isVisible(el) {
-            if (el.hidden) return false;
-            if (el.style && el.style.display === 'none') return false;
-            try {
-                const view = el.ownerDocument && el.ownerDocument.defaultView;
-                const cs = view && view.getComputedStyle ? view.getComputedStyle(el) : null;
-                if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
-            } catch (e) { /* ohne Layout-Engine bleibt es bei den Attributen */ }
-            return true;
-        }
-
         // Was tatsaechlich verarbeitet wird. Eine Anzeige muss FUENF Bedingungen
         // gleichzeitig erfuellen:
         //   1. im Auswahl-Set (Modell)
@@ -1422,13 +1932,10 @@
         }
 
         // Recovery-Section vor dem Action-Footer
-        try {
-            const meta = await listSnapshotMeta();
-            await appendRecoverySection(overlay, meta);
-        } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+        await appendRecoveryIfPresent(overlay);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
         const cancel = makeButton('Abbrechen', false);
         cancel.onclick = closeOverlay;
         const start = makeButton('Start', true);
@@ -1446,7 +1953,20 @@
             if (!delayState.ok) return;
             onStart(chosen, { min: delayState.min, max: delayState.max });
         };
+        // Sicherung nutzt dieselbe Auswahlpruefung wie Start, haengt aber
+        // nicht an der Pause: sie veraendert nichts.
+        let backup = null;
+        if (meta && typeof meta.onBackup === 'function') {
+            backup = makeButton('Auswahl sichern (ZIP)', false);
+            backup.title = 'Texte, Felder und Bilder der ausgewählten Anzeigen als ZIP sichern. Es wird nichts verändert.';
+            backup.onclick = function () {
+                const chosen = confirmedSelection();
+                if (!chosen.length) return;
+                meta.onBackup(chosen);
+            };
+        }
         actions.appendChild(cancel);
+        if (backup) actions.appendChild(backup);
         actions.appendChild(start);
         overlay.appendChild(actions);
 
@@ -1484,80 +2004,138 @@
             start.disabled = blocked;
             start.style.opacity = blocked ? '0.5' : '1';
             start.style.cursor = blocked ? 'not-allowed' : 'pointer';
+            if (backup) {
+                // Nur die leere Auswahl sperrt -- eine ungueltige Pause betrifft
+                // die Sicherung nicht.
+                backup.disabled = count === 0;
+                backup.style.opacity = count === 0 ? '0.5' : '1';
+                backup.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
         }
         updateDelayNote();
         updateSummary();
     }
 
-    function renderProgress(state, onStop) {
-        const overlay = ensureOverlay();
-        overlay.innerHTML = '';
+    // Der Fortschritt wird waehrend der Pause jede Sekunde neu gemeldet. Baute
+    // renderProgress das Overlay dabei jedes Mal von Null auf, wurde der
+    // Stop-Button bei der Standardpause von 3 bis 6 Minuten rund 200-mal
+    // verworfen und neu erzeugt. Ein Klick, der genau in einen solchen Neuaufbau
+    // faellt, geht verloren, weil das geklickte Element nicht mehr im Dokument
+    // haengt -- und genau dieser Button ist der einzige Weg, den Batch zu
+    // stoppen.
+    //
+    // Deshalb entsteht das Geruest einmal, danach werden nur noch Texte und
+    // Zustaende geschrieben. Die Referenzen liegen in progressUi; leert ein
+    // anderes Overlay den Container (renderConfirm, renderDone), erkennt der
+    // contains-Test das und baut neu.
+    let progressUi = null;
+
+    function buildProgressUi(overlay) {
+        const root = document.createElement('div');
 
         const header = document.createElement('div');
-        header.style.cssText = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;';
+        header.style.cssText = OVERLAY_HEADER_CSS;
         header.textContent = 'Batch läuft \u2026';
-        overlay.appendChild(header);
+        root.appendChild(header);
 
         const status = document.createElement('div');
         status.style.cssText = 'padding:10px 14px;line-height:1.4;';
-        const idx = state.processed.length + state.failed.length;
-        const total = state.queue.length + idx;
 
         const main = document.createElement('div');
         const strong = document.createElement('strong');
-        strong.textContent = idx + ' / ' + total;
         main.appendChild(strong);
         main.appendChild(document.createTextNode(' Anzeigen verarbeitet.'));
         status.appendChild(main);
 
         const cur = document.createElement('div');
         cur.style.cssText = 'color:#666;margin-top:4px;';
-        cur.textContent = 'Aktuell: ' + (state.currentLabel || '\u2013');
         status.appendChild(cur);
 
-        if (state.stopping) {
-            const note = document.createElement('div');
-            note.dataset.kaStopNote = 'true';
-            note.style.cssText = 'color:#e74c3c;margin-top:4px;font-weight:600;';
-            note.textContent = 'Stop angefordert – der laufende Vorgang wird noch zu Ende geführt.';
-            status.appendChild(note);
-        } else if (state.nextEtaText) {
-            const eta = document.createElement('div');
-            eta.style.cssText = 'color:#666;margin-top:4px;';
-            eta.textContent = 'Nächste in: ' + state.nextEtaText;
-            status.appendChild(eta);
-        }
+        // Beide Hinweiszeilen gehoeren zum Geruest und werden ueber display
+        // ein- und ausgeblendet. Es ist immer hoechstens eine sichtbar, wie
+        // vorher auch.
+        const note = document.createElement('div');
+        note.dataset.kaStopNote = 'true';
+        note.style.cssText = 'color:#e74c3c;margin-top:4px;font-weight:600;';
+        note.style.display = 'none';
+        status.appendChild(note);
+
+        const eta = document.createElement('div');
+        eta.style.cssText = 'color:#666;margin-top:4px;';
+        eta.style.display = 'none';
+        status.appendChild(eta);
 
         const ok = document.createElement('div');
         ok.style.cssText = 'color:#27ae60;margin-top:6px;';
-        ok.textContent = 'OK: ' + state.processed.length;
         status.appendChild(ok);
 
         const fail = document.createElement('div');
         fail.style.cssText = 'color:#e74c3c;';
-        fail.textContent = 'Fehler: ' + state.failed.length;
         status.appendChild(fail);
 
-        overlay.appendChild(status);
+        root.appendChild(status);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
-        const stop = makeButton(state.stopping ? 'Wird beendet \u2026' : 'Stop', false);
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
+        const stop = makeButton('Stop', false);
         stop.style.borderColor = '#e74c3c';
         stop.style.color = '#e74c3c';
         stop.style.background = '#fff';
         stop.style.fontWeight = '600';
+        actions.appendChild(stop);
+        root.appendChild(actions);
+
+        overlay.innerHTML = '';
+        overlay.appendChild(root);
+
+        return {
+            overlay: overlay, root: root,
+            strong: strong, cur: cur, note: note, eta: eta,
+            ok: ok, fail: fail, stop: stop
+        };
+    }
+
+    function renderProgress(state, onStop) {
+        const overlay = ensureOverlay();
+        if (!progressUi || progressUi.overlay !== overlay || !overlay.contains(progressUi.root)) {
+            progressUi = buildProgressUi(overlay);
+        }
+        const ui = progressUi;
+
+        const idx = state.processed.length + state.failed.length;
+        ui.strong.textContent = idx + ' / ' + state.total;
+        ui.cur.textContent = 'Aktuell: ' + (state.currentLabel || '\u2013');
+
+        // Ausgeblendete Zeilen werden auch geleert, nicht nur versteckt:
+        // textContent des Overlays soll denselben Inhalt haben wie vorher, als
+        // die jeweilige Zeile gar nicht existierte.
+        if (state.stopping) {
+            ui.note.textContent = 'Stop angefordert – der laufende Vorgang wird noch zu Ende geführt.';
+            ui.note.style.display = '';
+        } else {
+            ui.note.textContent = '';
+            ui.note.style.display = 'none';
+        }
+
+        if (!state.stopping && state.nextEtaText) {
+            ui.eta.textContent = 'Nächste in: ' + state.nextEtaText;
+            ui.eta.style.display = '';
+        } else {
+            ui.eta.textContent = '';
+            ui.eta.style.display = 'none';
+        }
+
+        ui.ok.textContent = 'OK: ' + state.processed.length;
+        ui.fail.textContent = 'Fehler: ' + state.failed.length;
+
+        ui.stop.textContent = state.stopping ? 'Wird beendet \u2026' : 'Stop';
         // Nach dem ersten Klick ist nichts mehr anzufordern: ein zweiter Klick
         // koennte nichts beschleunigen und wuerde nur so aussehen, als haette
         // der erste nicht gewirkt.
-        stop.disabled = !!state.stopping;
-        if (state.stopping) {
-            stop.style.opacity = '0.6';
-            stop.style.cursor = 'not-allowed';
-        }
-        stop.onclick = onStop;
-        actions.appendChild(stop);
-        overlay.appendChild(actions);
+        ui.stop.disabled = !!state.stopping;
+        ui.stop.style.opacity = state.stopping ? '0.6' : '';
+        ui.stop.style.cursor = state.stopping ? 'not-allowed' : '';
+        ui.stop.onclick = onStop;
     }
 
     async function renderDone(state) {
@@ -1565,7 +2143,7 @@
         overlay.innerHTML = '';
 
         const header = document.createElement('div');
-        header.style.cssText = 'padding:12px 14px;border-bottom:1px solid #eee;font-weight:600;';
+        header.style.cssText = OVERLAY_HEADER_CSS;
         if (state.autoStopped) {
             header.textContent = '\u26A0 Batch automatisch gestoppt';
             header.style.color = '#a06200';
@@ -1635,13 +2213,10 @@
         }
         overlay.appendChild(body);
 
-        try {
-            const meta = await listSnapshotMeta();
-            await appendRecoverySection(overlay, meta);
-        } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+        await appendRecoveryIfPresent(overlay);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;';
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
         const close = makeButton('Schließen', false);
         close.onclick = closeOverlay;
         actions.appendChild(close);
@@ -1666,7 +2241,8 @@
             source: result.source,
             fromCache: !!result.fromCache,
             ageSeconds: result.ageSeconds || 0,
-            onReload: function () { startBatchFlow({ force: true }); }
+            onReload: function () { startBatchFlow({ force: true }); },
+            onBackup: function (matches) { startBackupFlow(matches); }
         });
     }
 
@@ -1702,6 +2278,9 @@
         return new Promise(function (resolve) {
             const adId = item.adId;
             const lsKey = LS_RESULT_PREFIX + adId;
+            // Einmal gebildet statt zweimal -- der Hash steuert laut PROTOCOL.md
+            // das Verhalten des Workers und muss in beiden Zweigen derselbe sein.
+            const url = 'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish';
             try { localStorage.removeItem(lsKey); } catch (e) {}
 
             log('Öffne Tab für adId ' + adId);
@@ -1712,7 +2291,7 @@
             try {
                 if (typeof GM_openInTab === 'function') {
                     tabHandle = GM_openInTab(
-                        'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
+                        url,
                         { active: true, insert: true, setParent: true }
                     );
                 }
@@ -1721,7 +2300,7 @@
             }
             if (!tabHandle) {
                 const w = window.open(
-                    'https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html?adId=' + adId + '#smartRepublish',
+                    url,
                     '_blank'
                 );
                 if (!w) {
@@ -1794,18 +2373,18 @@
                 // Abbruch VOR der Restzeit-Meldung: ein abgebrochener Lauf soll
                 // keine neue ETA mehr in die Oberflaeche schreiben.
                 if (shouldAbort && shouldAbort()) {
-                    clearInterval(tick);
+                    clearInterval(tickId);
                     resolve(false);
                     return;
                 }
                 const remaining = Math.max(0, ms - (Date.now() - start));
                 if (onTick) onTick(remaining);
                 if (remaining <= 0) {
-                    clearInterval(tick);
+                    clearInterval(tickId);
                     resolve(true);
                 }
             };
-            const tick = setInterval(step, 1000);
+            const tickId = setInterval(step, 1000);
             // Einmal sofort: sonst bleibt die Restzeit die erste Sekunde leer,
             // und ein Stop in genau dieser Sekunde wuerde erst danach bemerkt.
             step();
@@ -1827,6 +2406,10 @@
 
         const state = {
             queue: matches.slice(),
+            // Feste Gesamtzahl fuer die Anzeige. Aus queue.length laesst sie
+            // sich nicht ableiten: die laufende Anzeige ist per shift() schon
+            // aus der Queue heraus, steht aber noch in keiner Ergebnisliste.
+            total: matches.length,
             processed: [],
             failed: [],
             warnings: [],
@@ -1966,11 +2549,24 @@
             waitMs,
             formatRemaining,
             renderConfirm,
+            buildConfirmHeader, buildSourceLine, buildAdRow, buildAgeLegend,
+            buildEstimateHint, buildSkippedNote,
+            renderProgress,
+            openDuplicate, processOne, RESULT_WAIT_TIMEOUT_MS, LS_RESULT_PREFIX,
+            appendRecoverySection,
+            openIDB, listSnapshotMeta, getSnapshotsAll, deleteSnapshot, clearAllSnapshots,
+            IDB_NAME, IDB_VERSION, IDB_STORE,
             sanitize,
             crc32,
             utf8,
             dosTime,
             buildZip,
+            snapshotZipFiles,
+            findAdIdInput, getAdFormRoot, readFormFields, collectImageUrls,
+            fetchAdEditDocument, backupOneAd, buildBackupReport, buildBackupZip,
+            runBackup, renderBackupProgress, renderBackupDone, startBackupFlow,
+            requestBackupStop: function () { backupStopRequested = true; },
+            AD_EDIT_PATH, BACKUP_GAP_MIN_MS, BACKUP_GAP_MAX_MS,
             classifyResultValue
         };
         return; // im Test-Kontext keine Initialisierung/Timer

@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.10.1
+// @version       3.11.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @credits       Andi (Zer089) - Selektoren des Werbeblockers, MIT-Lizenz: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -37,12 +37,33 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.10.1'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.11.0'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
         NOTIFICATION_TIMEOUT_MS: 4000,
         DELETE_REQUEST_TIMEOUT_MS: 8000,
+        // Budget je Bild-Download beim Snapshot. Grosszuegiger als die
+        // JSON-Requests, weil hier Bilddaten uebertragen werden; ein haengender
+        // Download darf den Snapshot aber nicht endlos aufhalten -- solange er
+        // laeuft, wird die neue Anzeige nicht gespeichert.
+        IMAGE_FETCH_TIMEOUT_MS: 20000,
+        // Verfallszeit der Vorgangs-Marker in sessionStorage. Ein Vorgang, der
+        // nie bei der Bestaetigungs-Seite angekommen ist, darf spaeter keine
+        // Loeschung mehr ausloesen. Der Watchdog raeumt die Marker nach 45s ab,
+        // greift aber nur, solange der Tab offen und auf der Bearbeiten-Seite
+        // ist -- verlaesst der Nutzer die Seite vorher, bleibt der Marker
+        // liegen. Zehn Minuten sind reichlich fuer einen zusammenhaengenden
+        // Vorgang inklusive Bild-Upload und deutlich mehr als die 180s, nach
+        // denen der Helper aufgibt.
+        MARKER_MAX_AGE_MS: 600000,
+        // Eigenes Budget fuer das Nachladen des CSRF-Tokens. Bewusst getrennt
+        // von DELETE_REQUEST_TIMEOUT_MS: beide Requests laufen nacheinander,
+        // ein gemeinsamer Timer wuerde den Loesch-Request um die Zeit
+        // verkuerzen, die das Nachladen gebraucht hat. Die Summe aus beiden
+        // plus DELETE_WAIT_AFTER_CREATE_MS muss unter dem Result-Timeout des
+        // Helpers bleiben (RESULT_WAIT_TIMEOUT_MS, 180s) -- hier 18s.
+        CSRF_FETCH_TIMEOUT_MS: 8000,
         DELETE_WAIT_AFTER_CREATE_MS: 2000,
         INITIAL_RETRY_WAIT_MS: 500,
         MAX_RETRY_WAIT_MS: 8000,
@@ -59,6 +80,10 @@
         // parallel laedt.
         IMAGE_FETCH_CONCURRENCY: 4
     };
+
+    // Die beiden Buttons der Floating-Toolbar. Muss mit den Klassennamen in
+    // createButtons() und der CSS-Regel in ensureStyles() uebereinstimmen.
+    const ACTION_BUTTON_SELECTOR = '.ka-duplicate-btn, .ka-smart-btn';
 
     // === LOGGING ===
     const logger = {
@@ -224,8 +249,6 @@
         setTimeout(() => {
             clearInterval(interval);
         }, CONFIG.POPUP_POLL_TIMEOUT_MS);
-
-        return interval;
     }
 
     // === HILFSFUNKTIONEN ===
@@ -345,6 +368,80 @@
         document.body.appendChild(spinner);
     }
 
+    // Jeder Netzwerk-Request braucht eine Abbruchkante. Ohne sie haengt ein
+    // nicht antwortender Server den ganzen Ablauf: beim Snapshot bleibt die
+    // Neuanlage aus, und die Bestaetigungs-Seite wird nie erreicht.
+    //
+    // Der Fehlertext nennt die URL absichtlich NICHT -- Bild-URLs tragen
+    // AccessKeyId bzw. jwt im Query-String, die haben in einem Log nichts zu
+    // suchen.
+    async function fetchWithTimeout(url, options, timeoutMs) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('Timeout nach ' + timeoutMs + ' ms');
+            throw e;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    // === VORGANGS-MARKER ===
+    // Die Marker in sessionStorage ueberbruecken die Navigation von der
+    // Bearbeiten- zur Bestaetigungs-Seite. sessionStorage ist tab-gebunden und
+    // ueberlebt Navigationen -- ein Marker aus einem abgebrochenen Vorgang
+    // wuerde von einem spaeteren Vorgang im selben Tab ausgefuehrt. Deshalb
+    // traegt jeder Marker den Zeitpunkt seiner Entstehung; beim Lesen faellt er
+    // durch, wenn er zu alt ist.
+    function writeVorgangMarker(key, value) {
+        try {
+            sessionStorage.setItem(key, JSON.stringify({ v: String(value), ts: Date.now() }));
+        } catch (e) {}
+    }
+
+    // Werte im Alt-Format (reiner String ohne Zeitstempel) gelten weiter, weil
+    // ein Script-Update einen Tab mit altem Marker hinterlassen kann. Sie haben
+    // dann keine Verfallszeit -- wie vor der Umstellung.
+    function readVorgangMarker(key) {
+        let raw = null;
+        try { raw = sessionStorage.getItem(key); } catch (e) { return null; }
+        if (!raw) return null;
+
+        let value = raw;
+        let ts = null;
+        if (raw.charAt(0) === '{') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.v === 'string') {
+                    value = parsed.v;
+                    ts = (typeof parsed.ts === 'number') ? parsed.ts : null;
+                }
+            } catch (e) {
+                // Kaputtes JSON: wie Alt-Format behandeln, statt den Vorgang zu
+                // verlieren.
+            }
+        }
+
+        if (ts !== null && (Date.now() - ts) > CONFIG.MARKER_MAX_AGE_MS) {
+            logger.warn('Vorgangs-Marker abgelaufen, wird verworfen', {
+                key: key, alterMs: Date.now() - ts
+            });
+            return null;
+        }
+        return value;
+    }
+
+    // Spinner weg, Buttons wieder klickbar. Stand an sechs Stellen wortgleich
+    // als Zeilenpaar. Der Selektor muss zu den Klassennamen aus createButtons()
+    // und zur CSS-Regel in ensureStyles() passen -- eine Umbenennung dort ist
+    // jetzt an einer Stelle nachzuziehen statt an sechs.
+    function releaseBusyUi() {
+        showLoadingSpinner(false);
+        document.querySelectorAll(ACTION_BUTTON_SELECTOR).forEach(btn => btn.disabled = false);
+    }
+
     // === API FUNKTIONEN ===
     function getCsrfToken() {
         const metaTag = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]');
@@ -367,9 +464,27 @@
         } catch (e) {
             logger.log('CSRF-Token nicht im Dokument, lade aus "Meine Anzeigen" nach');
         }
-        const res = await fetch('https://www.kleinanzeigen.de/m-meine-anzeigen.html', {
-            credentials: 'same-origin'
-        });
+        // Eigener Abbruch fuer diesen Request. Ohne ihn haengt die Loeschung
+        // unbegrenzt, wenn der Server auf "Meine Anzeigen" nicht antwortet --
+        // und der Aufrufer meldet dann nie ein Ergebnis.
+        const csrfController = new AbortController();
+        const csrfTimeout = setTimeout(() => csrfController.abort(), CONFIG.CSRF_FETCH_TIMEOUT_MS);
+        let res;
+        try {
+            res = await fetch('https://www.kleinanzeigen.de/m-meine-anzeigen.html', {
+                credentials: 'same-origin',
+                signal: csrfController.signal
+            });
+        } catch (e) {
+            // Der eigene Abbruch wird hier in einen sprechenden Fehler
+            // uebersetzt. Sonst liest der Aufrufer einen AbortError und meldet
+            // "Timeout beim Loeschen" -- eine Aussage ueber einen Request, der
+            // nie gesendet wurde.
+            if (e.name === 'AbortError') throw new Error('CSRF-Token nicht ermittelbar (Timeout)');
+            throw e;
+        } finally {
+            clearTimeout(csrfTimeout);
+        }
         if (!res.ok) throw new Error('CSRF-Token nicht ermittelbar (HTTP ' + res.status + ')');
         const html = await res.text();
         const m = html.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/i);
@@ -383,12 +498,18 @@
         }
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
+        // Der Timer startet erst nach der Token-Aufloesung. Lief er wie vorher
+        // schon davor, verbrauchte ein langsames Nachladen des CSRF-Tokens das
+        // Budget des Loesch-Requests: der wurde dann sofort mit AbortError
+        // abgewiesen und als "Timeout beim Loeschen" gemeldet, obwohl er nie
+        // gesendet wurde. resolveCsrfToken bringt sein eigenes Budget mit.
+        let timeout = null;
 
         try {
             logger.log(`Lösche Anzeige mit ID: ${adId}`);
 
             const csrfToken = await resolveCsrfToken();
+            timeout = setTimeout(() => controller.abort(), CONFIG.DELETE_REQUEST_TIMEOUT_MS);
             const response = await fetch(`https://www.kleinanzeigen.de/m-anzeigen-loeschen.json?ids=${adId}`, {
                 method: 'POST',
                 headers: {
@@ -425,10 +546,20 @@
     }
 
     // === HAUPTFUNKTIONEN ===
-    function findSaveButton() {
-        return Array.from(document.querySelectorAll('button')).find(
+    // Die Erkennungsregel des Speichern-Buttons steht hier einmal. Sie stand
+    // vorher zusaetzlich in describeAdIdLookup(), dort als indexOf(...) === 0 --
+    // zwei Formulierungen derselben Regel, und der Button-Text ist genau die
+    // Stelle, die Kleinanzeigen aendern kann.
+    function findSaveButtonIn(doc) {
+        return Array.from(doc.querySelectorAll('button')).find(
             b => b.textContent.trim().startsWith('Anzeige speichern')
         );
+    }
+
+    // Bleibt parameterlos: die Funktion wird als Referenz an waitForElement()
+    // uebergeben und dort ohne Argument aufgerufen.
+    function findSaveButton() {
+        return findSaveButtonIn(document);
     }
 
     // Bekannte Namen/IDs des versteckten Ad-ID-Felds. Kleinanzeigen hat den
@@ -502,7 +633,6 @@
             logger.warn('Bekannte adId-Selektoren greifen nicht mehr, Feld heisst jetzt "' +
                 info.feldName + '" - bitte im Repository melden');
         }
-        return info;
     }
 
     /**
@@ -515,9 +645,7 @@
     function describeAdIdLookup(doc, urlAdId) {
         return {
             urlAdId: urlAdId ? 'vorhanden' : 'fehlt',
-            speichernButton: !!Array.from(doc.querySelectorAll('button')).find(
-                function (b) { return b.textContent.trim().indexOf('Anzeige speichern') === 0; }
-            ),
+            speichernButton: !!findSaveButtonIn(doc),
             inputs: doc.querySelectorAll('input').length,
             hiddenFelder: Array.from(doc.querySelectorAll('input[type="hidden"]'))
                 .map(function (i) { return (i.name || i.id || '(ohne name)') + ':' + (i.value || '').length; })
@@ -577,11 +705,24 @@
     function startSaveWatchdog() {
         setTimeout(function () {
             try {
-                if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
+                if (isEditPage()) {
                     logger.error('Save-Watchdog: Keine Navigation nach Speichern-Klick erkannt, gebe UI frei');
-                    showLoadingSpinner(false);
-                    document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                    releaseBusyUi();
                     showNotification('Speichern scheint fehlgeschlagen - bitte Seite prüfen und ggf. manuell speichern.', 'error');
+                    // Der Tab steht noch hier, war also nie auf der Bestaetigungs-Seite.
+                    // Damit ist dieser Vorgang beendet und seine Marker sind wertlos.
+                    // Bleiben sie stehen, arbeitet ein spaeterer Vorgang im selben Tab
+                    // sie ab: ka-delete-after-create loescht dann eine Anzeige, die in
+                    // diesem Vorgang niemand neu eingestellt hat, und ka-manual-mode
+                    // raeumt zusaetzlich den Snapshot ab -- also die Rettungskopie.
+                    // sessionStorage ist tab-gebunden und ueberlebt Navigationen; sich
+                    // auf das Aufraeumen der Bestaetigungs-Seite zu verlassen genuegt
+                    // deshalb nicht.
+                    try {
+                        sessionStorage.removeItem('ka-batch-original-adid');
+                        sessionStorage.removeItem('ka-manual-mode');
+                        sessionStorage.removeItem('ka-delete-after-create');
+                    } catch (e) {}
                 }
             } catch (e) {}
         }, CONFIG.SAVE_WATCHDOG_TIMEOUT_MS);
@@ -656,8 +797,7 @@
         } catch (error) {
             logger.error('Fehler beim Duplizieren', error);
             showNotification('Fehler: ' + error.message, 'error');
-            showLoadingSpinner(false);
-            document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+            releaseBusyUi();
         }
     }
 
@@ -709,6 +849,10 @@
 
     function isBatchMode() { return window.location.hash === '#smartRepublish'; }
 
+    // Steht der Tab auf der Bearbeiten-Seite? Wird zum Aufrufzeitpunkt gelesen,
+    // nicht beim Definieren -- beide Watchdogs pruefen das 45 Sekunden spaeter.
+    function isEditPage() { return window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0; }
+
     /**
      * Wurzel fuer alle Formular-Lesevorgaenge: das Formular der Anzeige, nicht
      * das ganze Dokument. Sonst landen Felder aus Suchleiste, Newsletter-Box
@@ -724,9 +868,30 @@
         return d.querySelector('form') || d;
     }
 
+    // Namen, die nie in Snapshot oder ZIP gehoeren -- auch nicht als Hidden-Feld.
+    // Muster statt fester Liste: ein umbenanntes Token ("csrf-token", "xsrfToken")
+    // soll ohne Codeaenderung draussen bleiben.
+    const SECRET_FIELD_PATTERN = /csrf|xsrf|token|jwt|session|captcha|secret|password|auth/i;
+
+    // Wert eines Formularfelds nach Namen. Bei Radio-Gruppen zaehlt nur der
+    // gewaehlte Eintrag; Feldart egal (select, input, hidden), weil Kleinanzeigen
+    // z. B. den Preistyp je nach Kategorie unterschiedlich ausspielt.
+    function formValue(root, names) {
+        for (let n = 0; n < names.length; n++) {
+            const els = root.querySelectorAll('[name="' + names[n] + '"]');
+            for (let i = 0; i < els.length; i++) {
+                const el = els[i];
+                if ((el.type === 'radio' || el.type === 'checkbox') && !el.checked) continue;
+                if (el.value !== undefined && el.value !== null && el.value !== '') return el.value;
+            }
+        }
+        return undefined;
+    }
+
     function readFormFields(doc, urlAdId) {
         const fields = {};
         const rawFields = {};
+        const hiddenFields = {};
         const root = getAdFormRoot(doc, urlAdId);
         root.querySelectorAll('input, textarea, select').forEach(function (el) {
             const name = el.getAttribute('name');
@@ -736,44 +901,96 @@
             }
             // Sicherheits-Artefakte gehoeren nicht in den Snapshot: Der Snapshot/ZIP
             // ist fuer die manuelle Wiederherstellung durch Menschen gedacht, nicht
-            // fuer Tokens. Hidden-Felder (u.a. das CSRF-Token in input[name="_csrf"],
-            // siehe getCsrfToken()) sowie Passwort-/Datei-Felder werden ausgeschlossen.
-            // "_csrf" zusaetzlich per Namens-Denylist, falls das Token je in einem
-            // nicht-hidden Feld auftauchen sollte.
-            if (el.type === 'password' || el.type === 'file' || el.type === 'hidden' || name === '_csrf') return;
+            // fuer Tokens. Passwort-/Datei-Felder und alles, dessen Name nach Token
+            // aussieht (u.a. das CSRF-Token in input[name="_csrf"], siehe
+            // getCsrfToken()), bleiben draussen.
+            if (el.type === 'password' || el.type === 'file' || name === '_csrf' || SECRET_FIELD_PATTERN.test(name)) return;
             const v = el.value;
             if (v === undefined || v === null || v === '') return;
+            // Hidden-Felder getrennt: dort steckt u.a. die Kategorie, die fuer eine
+            // Wiederherstellung von Hand noetig ist. rawFields bleibt dadurch, was
+            // es immer war -- die sichtbaren Eingaben.
+            if (el.type === 'hidden') {
+                // adImages[n].url: signierte Vorschau-Adressen mit jwt. Die
+                // Reihenfolge daraus nutzt collectImageUrls, die Bilder selbst
+                // liegen als Datei im Snapshot -- die Adresse braucht niemand.
+                if (name.indexOf('adImages[') === 0) return;
+                hiddenFields[name] = String(v).slice(0, 500);
+                return;
+            }
             rawFields[name] = String(v).slice(0, 5000);
         });
         const titleInput = root.querySelector('input[name="title"], input#title');
         if (titleInput) fields.title = titleInput.value;
         const descTa = root.querySelector('textarea[name="description"], textarea#description');
         if (descTa) fields.description = descTa.value;
-        const priceInput = root.querySelector('input[name="price"], input#price');
-        if (priceInput) fields.price = priceInput.value;
-        const priceTypeSel = root.querySelector('select[name="priceType"], select#priceType');
-        if (priceTypeSel) fields.priceType = priceTypeSel.value;
+        // "priceAmount" ist der aktuelle Name (live gesehen 09/2026), "price" der fruehere.
+        const price = formValue(root, ['priceAmount', 'price']);
+        if (price !== undefined) fields.price = price;
+        const priceType = formValue(root, ['priceType']);
+        if (priceType !== undefined) fields.priceType = priceType;
         const locInput = root.querySelector('input[name="locationStr"], input#locationStr, input[name="zipCode"]');
         if (locInput) fields.location = locInput.value;
-        return { fields: fields, rawFields: rawFields };
+        return { fields: fields, rawFields: rawFields, hiddenFields: hiddenFields };
     }
 
-    function collectImageUrls() {
+    // Bilder werden wie die Felder bevorzugt im Formular der Anzeige gesucht.
+    // Die Begruendung aus getAdFormRoot gilt hier genauso: ein Bild aus einer
+    // Empfehlungsliste oder einem Werbeblock hat im Recovery-Snapshot nichts zu
+    // suchen, und der Filter auf img.kleinanzeigen.de mit /prod-ads/images/
+    // schliesst fremde Anzeigenbilder gerade nicht aus.
+    //
+    // Zurueckgefallen wird bewusst auf das ganze Dokument, wenn im Formular kein
+    // einziges Bild steckt: liegt die Galerie ausserhalb des <form>, waere ein
+    // strikter Scope schlimmer als das Problem -- der Snapshot haette dann gar
+    // keine Bilder mehr. So wird die Erfassung nie schlechter als vorher.
+    // Reihenfolge der Bilder, wie Kleinanzeigen sie fuehrt: Das Formular traegt
+    // je Bild ein Hidden-Feld adImages[n].url, n ist die Position (0 = Titelbild).
+    // Sie wird im ZIP zu image_01, image_02, ... Die Vorschaubilder der Seite
+    // stehen heute in derselben Reihenfolge (live geprueft 09/2026), verbindlich
+    // ist aber nur der Index.
+    const AD_IMAGE_FIELD = /^adImages\[(\d+)\]\.url$/;
+
+    function collectImageUrlsFromFields(root) {
+        const indexed = [];
+        root.querySelectorAll('input[name^="adImages["]').forEach(function (el) {
+            const m = AD_IMAGE_FIELD.exec(el.getAttribute('name') || '');
+            const url = m && normalizeImageUrl(el.value);
+            if (url) indexed.push({ index: Number(m[1]), url: url });
+        });
+        indexed.sort(function (a, b) { return a.index - b.index; });
+        return Array.from(new Set(indexed.map(function (e) { return e.url; })));
+    }
+
+    function collectImageUrls(doc, urlAdId) {
+        const d = doc || document;
+        const root = getAdFormRoot(d, urlAdId);
+        const ordered = collectImageUrlsFromFields(root);
+        if (ordered.length > 0) return ordered;
+        const urls = collectImageUrlsIn(root);
+        if (urls.length > 0 || root === d) return urls;
+        return collectImageUrlsIn(d);
+    }
+
+    // Auf groesste Variante normalisieren (rule=$_57.JPG = full size).
+    // Die gesamte Query wird ersetzt, nicht nur ein vorhandenes
+    // rule=: Die Bearbeiten-Seite liefert Vorschaubilder als
+    // ?AccessKeyId=...&jwt=..., wobei das signierte jwt die Groesse
+    // auf 96x96 festlegt. Ohne rule= griff die alte Ersetzung nicht,
+    // und der Snapshot enthielt nur diese Vorschauen. Die Bild-ID im
+    // Pfad liefert mit rule=$_57.JPG ohne jwt die volle Aufloesung.
+    // Nebenbei faellt damit das jwt weg -- es landet nie im Snapshot.
+    function normalizeImageUrl(src) {
+        if (!src || src.indexOf('img.kleinanzeigen.de') < 0 || src.indexOf('/prod-ads/images/') < 0) return null;
+        const q = src.indexOf('?');
+        return (q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG';
+    }
+
+    function collectImageUrlsIn(root) {
         const urls = new Set();
-        document.querySelectorAll('img').forEach(function (img) {
-            const src = img.src || img.getAttribute('data-src') || '';
-            if (src && src.indexOf('img.kleinanzeigen.de') >= 0 && src.indexOf('/prod-ads/images/') >= 0) {
-                // Auf groesste Variante normalisieren (rule=$_57.JPG = full size).
-                // Die gesamte Query wird ersetzt, nicht nur ein vorhandenes
-                // rule=: Die Bearbeiten-Seite liefert Vorschaubilder als
-                // ?AccessKeyId=...&jwt=..., wobei das signierte jwt die Groesse
-                // auf 96x96 festlegt. Ohne rule= griff die alte Ersetzung nicht,
-                // und der Snapshot enthielt nur diese Vorschauen. Die Bild-ID im
-                // Pfad liefert mit rule=$_57.JPG ohne jwt die volle Aufloesung.
-                const q = src.indexOf('?');
-                const url = (q >= 0 ? src.slice(0, q) : src) + '?rule=$_57.JPG';
-                urls.add(url);
-            }
+        root.querySelectorAll('img').forEach(function (img) {
+            const url = normalizeImageUrl(img.src || img.getAttribute('data-src') || '');
+            if (url) urls.add(url);
         });
         return Array.from(urls);
     }
@@ -784,7 +1001,7 @@
     // (CORS), und jedes Bild landete nur als URL-Platzhalter im Snapshot. Der
     // Zugang steht ohnehin in der URL (AccessKeyId/jwt bzw. oeffentliches Bild).
     async function fetchAsBlob(url) {
-        const res = await fetch(url, { credentials: 'omit' });
+        const res = await fetchWithTimeout(url, { credentials: 'omit' }, CONFIG.IMAGE_FETCH_TIMEOUT_MS);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return await res.blob();
     }
@@ -846,6 +1063,7 @@
             title: ff.fields.title || '',
             fields: ff.fields,
             rawFields: ff.rawFields,
+            hiddenFields: ff.hiddenFields,
             images: images
         };
     }
@@ -881,8 +1099,7 @@
                         describeAdIdLookup(document, originalId));
                 }
                 showNotification('Voraussetzung fehlt (' + missing + ') - Abbruch, Original bleibt erhalten.', 'error');
-                showLoadingSpinner(false);
-                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                releaseBusyUi();
                 if (batchMode) {
                     batchSetResult(originalId, 'error:precondition_failed:' + missing);
                 }
@@ -908,8 +1125,7 @@
             } catch (e) {
                 logger.error('Snapshot fehlgeschlagen, Abbruch vor Loeschung', e);
                 showNotification('Snapshot fehlgeschlagen - Abbruch', 'error');
-                showLoadingSpinner(false);
-                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                releaseBusyUi();
                 if (batchMode) {
                     batchSetResult(originalId, 'error:snapshot_failed:' + (e.message || 'unbekannt'));
                 }
@@ -938,8 +1154,7 @@
             if (!saveBtn || !adIdInput) {
                 logger.error('Referenzen vor dem Speichern nicht mehr aufloesbar');
                 showNotification('Formular nicht auffindbar - Abbruch, das Original bleibt bestehen.', 'error');
-                showLoadingSpinner(false);
-                document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+                releaseBusyUi();
                 if (batchMode) {
                     batchSetResult(originalId, 'error:save_failed:not_deleted');
                 }
@@ -963,14 +1178,14 @@
             // - Manuell: dort wird der eigene Snapshot wieder aus IndexedDB
             //   geloescht (ka-manual-mode markiert diesen Fall), damit keine
             //   Orphan-Snapshots das Recovery-UI des Helpers als Warnung anzeigen.
-            try { sessionStorage.setItem('ka-batch-original-adid', originalId); } catch (e) {}
+            writeVorgangMarker('ka-batch-original-adid', originalId);
             if (!batchMode) {
                 try { sessionStorage.setItem('ka-manual-mode', '1'); } catch (e) {}
             }
             // Auftrag an die Bestaetigungs-Seite: DIESE Anzeige loeschen, sobald
             // die neue nachweislich existiert. Ohne diesen Marker wird nichts
             // geloescht -- ein verlorener Marker kostet ein Duplikat, kein Original.
-            try { sessionStorage.setItem('ka-delete-after-create', originalId); } catch (e) {}
+            writeVorgangMarker('ka-delete-after-create', originalId);
             phase = 'save_clicked';
             saveBtn.click();
             startSaveWatchdog();
@@ -986,7 +1201,7 @@
             if (batchMode) {
                 setTimeout(function () {
                     try {
-                        if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0) {
+                        if (isEditPage()) {
                             logger.error('Watchdog: Save scheint nicht navigiert zu haben');
                             // Nicht navigiert heisst: nie bei der Bestaetigungs-Seite
                             // angekommen, also wurde auch nichts geloescht.
@@ -1000,14 +1215,21 @@
         } catch (error) {
             logger.error('Fehler beim Smart-Republish', error);
             showNotification('Fehler: ' + error.message, 'error');
-            showLoadingSpinner(false);
-            document.querySelectorAll('.ka-duplicate-btn, .ka-smart-btn').forEach(btn => btn.disabled = false);
+            releaseBusyUi();
+            // Kein Datenverlust mehr moeglich: Geloescht wird erst auf der
+            // Bestaetigungs-Seite, und dorthin kommt der Ablauf nur, wenn die
+            // neue Anzeige existiert. Scheitert hier etwas, steht das
+            // Original noch.
+            // Die Marker gehoeren in BEIDEN Modi weg, nicht nur im Batch: im
+            // manuellen Modus wuerde sie sonst ein spaeterer Vorgang im selben Tab
+            // abarbeiten -- Loeschung ohne zugehoerige Neuanlage, dazu die
+            // Loeschung des Snapshots.
+            try {
+                sessionStorage.removeItem('ka-batch-original-adid');
+                sessionStorage.removeItem('ka-manual-mode');
+                sessionStorage.removeItem('ka-delete-after-create');
+            } catch (e) {}
             if (batchMode && originalId) {
-                // Kein Datenverlust mehr moeglich: Geloescht wird erst auf der
-                // Bestaetigungs-Seite, und dorthin kommt der Ablauf nur, wenn die
-                // neue Anzeige existiert. Scheitert hier etwas, steht das
-                // Original noch.
-                try { sessionStorage.removeItem('ka-delete-after-create'); } catch (e) {}
                 if (phase === 'save_clicked') {
                     batchSetResult(originalId, 'error:save_failed:not_deleted');
                 } else {
@@ -1115,9 +1337,12 @@
                 try { localStorage.setItem('ka-duplicate-result-' + dupAdId, 'ok'); } catch (e) {}
             }
 
-            const origAdId = sessionStorage.getItem('ka-batch-original-adid');
+            // Abgelaufene Marker liefern null: dann gehoert diese
+            // Bestaetigungs-Seite zu einem anderen Vorgang als der, der die
+            // Marker gesetzt hat -- es wird nichts geloescht und nichts gemeldet.
+            const origAdId = readVorgangMarker('ka-batch-original-adid');
             const manualMode = sessionStorage.getItem('ka-manual-mode') === '1';
-            const deleteTarget = sessionStorage.getItem('ka-delete-after-create');
+            const deleteTarget = readVorgangMarker('ka-delete-after-create');
 
             // Marker sofort abraeumen: Ein Reload dieser Seite darf nicht ein
             // zweites Mal loeschen.
@@ -1182,7 +1407,7 @@
         // Ab hier nur noch die Bearbeiten-Seite. Auf allen uebrigen Seiten der
         // Domain bleibt es beim Werbeblocker oben -- keine Buttons, keine
         // Observer, kein Zugriff auf Formulare.
-        if (window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') !== 0) {
+        if (!isEditPage()) {
             return;
         }
 
@@ -1218,6 +1443,9 @@
             CONFIG, getExponentialBackoffWait, readFormFields, getAdFormRoot, collectImageUrls, fetchAsBlob,
             injectSiteAdBlockerStyles,
             handleConfirmationPage,
+            deleteAd, resolveCsrfToken,
+            startSaveWatchdog,
+            writeVorgangMarker, readVorgangMarker,
             awaitFormReady,
             waitUntilPageLoaded,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId,

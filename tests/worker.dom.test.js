@@ -129,6 +129,40 @@ describe('collectImageUrls', () => {
             'https://img.kleinanzeigen.de/api/v1/prod-ads/images/xx?rule=$_57.JPG'
         ]);
     });
+
+    // Der Host-Filter schliesst fremde ANZEIGENbilder nicht aus: eine
+    // Empfehlungsliste liefert dieselben /prod-ads/images/-URLs wie die eigene
+    // Anzeige. Deshalb gilt fuer Bilder derselbe Formular-Scope wie fuer Felder.
+    it('nimmt nur Bilder aus dem Anzeigen-Formular, wenn dort welche stehen', () => {
+        document.body.innerHTML = `
+            <form id="anzeige">
+                <input name="adId" value="123">
+                <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/eigen?rule=$_2.JPG">
+            </form>
+            <ul id="empfehlungen">
+                <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/fremd?rule=$_2.JPG">
+            </ul>
+        `;
+        expect(collectImageUrls()).toEqual([
+            'https://img.kleinanzeigen.de/api/v1/prod-ads/images/eigen?rule=$_57.JPG'
+        ]);
+    });
+
+    // Liegt die Galerie ausserhalb des Formulars, waere ein strikter Scope
+    // schlimmer als das Problem: der Snapshot haette gar keine Bilder mehr.
+    it('faellt auf das ganze Dokument zurueck, wenn im Formular kein Bild steckt', () => {
+        document.body.innerHTML = `
+            <form id="anzeige">
+                <input name="adId" value="123">
+            </form>
+            <div id="galerie">
+                <img src="https://img.kleinanzeigen.de/api/v1/prod-ads/images/galerie?rule=$_2.JPG">
+            </div>
+        `;
+        expect(collectImageUrls()).toEqual([
+            'https://img.kleinanzeigen.de/api/v1/prod-ads/images/galerie?rule=$_57.JPG'
+        ]);
+    });
 });
 
 describe('getAdFormRoot / readFormFields - Formular-Scoping', () => {

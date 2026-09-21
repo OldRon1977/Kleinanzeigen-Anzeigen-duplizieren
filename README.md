@@ -12,11 +12,13 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Batch mit Auswahl**: Mehrere Anzeigen in einem Durchgang neu einstellen — ausgewählt per Checkbox, mit Farbcodierung nach Alter
 - **Anzeigenkontingent**: Zeigt über der Anzeigenliste, wie viele Anzeigen in den letzten 30 Tagen neu aufgegeben wurden
 - **Recovery-Snapshot**: Vor jeder Löschung werden Texte, Felder und Bilder lokal gesichert
-- **Fehlerbehandlung**: Timeout-Schutz und Retry-Mechanismen
+- **Auswahl sichern**: Ausgewählte Anzeigen samt Bildern als ZIP sichern, ohne etwas zu verändern
+- **Fehlerbehandlung**: Jeder Netzwerk-Zugriff hat ein eigenes Zeitlimit und bricht danach mit einer sprechenden Meldung ab — ein nicht antwortender Server hält keinen Vorgang mehr unbegrenzt auf. Wiederholversuche mit steigendem Abstand gibt es beim Aufbau der Buttons, nicht bei Netzwerk-Zugriffen
 
 ## Installation
 
 ### Voraussetzungen
+
 - Browser: Chrome, Firefox, Edge, Safari oder Opera
 - [Tampermonkey](https://www.tampermonkey.net/) Browser-Extension
 - Bei einigen Browser (bspw. Chrome) muss noch einmal separat zugelassen werden, ob Skripte ausgeführt werden können. Bei Chrome --> Erweiterungen --> Tampermonkey --> Nutzerskripte zulassen
@@ -35,23 +37,37 @@ Fügt auf der **Meine Anzeigen**-Seite neben jeder Anzeige die Buttons "Duplizie
 
 > **Hinweis**: Beide Scripts müssen in Tampermonkey aktiviert sein, damit der Helper korrekt funktioniert.
 
+### Manuelle Installation (Alternative)
+
+Falls ein Installations-Link nicht als Userscript erkannt wird:
+
+1. Tampermonkey öffnen → Dashboard → "+" (neues Script)
+2. Inhalt der Raw-Datei in den Editor kopieren ([Hauptscript](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/kleinanzeigen-duplizieren.user.js), [Helper](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/raw/main/helper.user.js))
+3. Speichern (Strg+S)
+
 ### Auto-Updates
-Beide Scripts erhalten automatisch Updates über Tampermonkey.
+
+Beide Scripts tragen `@updateURL` und `@downloadURL` im Header und werden von
+Tampermonkey selbst aktualisiert. Von Hand anstoßen: Tampermonkey-Dashboard →
+Zahnrad beim Script → "Nach Updates suchen".
 
 ## Verwendung
 
 ### Direkt auf der Bearbeiten-Seite
+
 1. Navigiere zu einer Anzeige und klicke "Bearbeiten"
 2. Unten rechts erscheint eine Toolbar mit zwei Buttons
 3. **Duplizieren**: Erstellt eine Kopie, Original bleibt bestehen
 4. **Smart neu einstellen**: Löscht Original, erstellt neue Anzeige
 
 ### Über die Meine-Anzeigen-Seite (Helper)
+
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
 2. Neben jedem "Bearbeiten"-Link erscheinen zwei Buttons: **Duplizieren** (ab Helper v1.5.0) und **Smart neu einstellen**
 3. Ein Klick öffnet die Bearbeiten-Seite in einem neuen Tab und führt die Aktion automatisch aus; nach Erfolg schließt sich der Tab von selbst
 
 ### Anzeigenkontingent (Helper ab v1.12.0)
+
 Über der Anzeigenliste auf "Meine Anzeigen" steht eine Zeile wie **"Kostenloses Kontingent (letzte 30 Tage): 14 von 100 verbraucht · 86 verfügbar"**.
 
 - Die Zahl kommt direkt vom Server aus den Kontoeinstellungen (`/m-einstellungen-bearbeiten.json`, Feld `newAdCount`). Sie zählt die in den letzten 30 Tagen neu aufgegebenen Anzeigen, **auch inzwischen gelöschte**. Jedes Neu-Einstellen zählt also mit.
@@ -59,11 +75,12 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 - Liefert der Server keinen gültigen Wert, steht dort "Anzeigenkontingent derzeit nicht verfügbar". Das Script rechnet dann nichts selbst aus.
 
 ### Batch mit Auswahl (Helper ab v1.7.0, Merk-Filter ab v1.8.0)
+
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
 2. Über der Anzeigenliste erscheint der Button **"Anzeigen auswählen & neu einstellen"**
 3. Das Overlay listet **alle** Anzeigen mit Checkbox. Beim Öffnen ist **nichts angehakt** — ein versehentlicher Start kann also nichts löschen. Unter der Zusammenfassung steht, woher die Liste stammt ("frisch geladen" oder "zwischengespeichert (12s alt)") samt **Neu laden**-Link
-4. **Schnellwahl** unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl
-5. **Zusatzfilter "nur nicht gemerkte"**: die Checkbox rechts neben der Schnellwahl **blendet gemerkte Anzeigen aus der Liste aus** und wirkt *zusätzlich* zur Schnellwahl, nicht anstelle. "älter als 7 Tage" plus Häkchen wählt also genau die alten Anzeigen, die niemand auf der Merkliste hat. Der Haken ist umkehrbar: Ausgeblendete Anzeigen werden abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Die Zusammenfassung zählt nur die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten
+4. **Schnellwahl** unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl _ersetzt_ die bestehende Auswahl
+5. **Zusatzfilter "nur nicht gemerkte"**: die Checkbox rechts neben der Schnellwahl **blendet gemerkte Anzeigen aus der Liste aus** und wirkt _zusätzlich_ zur Schnellwahl, nicht anstelle. "älter als 7 Tage" plus Häkchen wählt also genau die alten Anzeigen, die niemand auf der Merkliste hat. Der Haken ist umkehrbar: Ausgeblendete Anzeigen werden abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Die Zusammenfassung zählt nur die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten
 6. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
 7. **Pause zwischen zwei Anzeigen** (ab Helper v1.10.0): zwei Felder "von" und "bis" in Minuten, Standard **3 bis 6**. Vor jeder weiteren Anzeige wartet das Script eine zufällige Dauer aus diesem Bereich, damit die Abstände nicht gleichmäßig aussehen. Die Werte werden lokal gespeichert und beim nächsten Öffnen wieder vorgelegt
 8. **Start** verarbeitet die angehakten Anzeigen nacheinander mit dieser Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
@@ -76,26 +93,46 @@ Beide Scripts erhalten automatisch Updates über Tampermonkey.
 
 > **Zum Zwischenspeicher** (ab Helper v1.11.0): Die geladene Liste wird 90 Sekunden gehalten, damit mehrfaches Öffnen des Fensters nicht jedes Mal alle Seiten neu abruft. Nach einem Batch-Lauf, einem einzelnen Neu-Einstellen und einem Duplizieren wird sie automatisch verworfen, weil sich die Anzeigen dann geändert haben. Wer zwischendurch in einem anderen Tab etwas geändert hat, holt sich den aktuellen Stand über **Neu laden**.
 
-> **Woher die Daten kommen**: Die Anzeigenliste wird primär über die JSON-Schnittstelle von "Meine Anzeigen" geladen (`/m-meine-anzeigen-verwalten.json`). Das bringt drei Vorteile gegenüber dem Auslesen der sichtbaren Seite: das **echte Erstelldatum** statt einer Schätzung, **alle Seiten** statt nur der gerade angezeigten, und den Merk-Zähler als Zahl statt als Text. Ist die Schnittstelle nicht erreichbar oder liefert sie nichts, fällt das Script automatisch auf die Seitenansicht zurück — dann eben nur mit der sichtbaren Seite und geschätztem Alter, wie bis Helper 1.8.0. Welche Quelle benutzt wurde, steht in der Konsole (`Kandidaten: … quelle: json|dom`).
+> **Woher die Daten kommen**: Die Anzeigenliste wird primär über die JSON-Schnittstelle von "Meine Anzeigen" geladen (`/m-meine-anzeigen-verwalten.json`). Das bringt drei Vorteile gegenüber dem Auslesen der sichtbaren Seite: das **echte Erstelldatum** statt einer Schätzung, **alle Seiten** statt nur der gerade angezeigten (höchstens 20, danach bricht der Abruf ab), und den Merk-Zähler als Zahl statt als Text. Ist die Schnittstelle nicht erreichbar oder liefert sie nichts, fällt das Script automatisch auf die Seitenansicht zurück — dann eben nur mit der sichtbaren Seite und geschätztem Alter, wie bis Helper 1.8.0. Welche Quelle benutzt wurde, steht in der Konsole (`Kandidaten: … quelle: json|dom`).
 
-> **Zur Merkliste**: Der Zähler wird aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt"). Lässt er sich nicht lesen — etwa nach einem Layout-Umbau bei Kleinanzeigen —, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter mit ausgeblendet, also **nicht** neu eingestellt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
+> **Zur Merkliste**: Der Zähler kommt bevorzugt als Zahl aus der JSON-Quelle (`watchCount`). Nur auf der Rückfallebene über die Seitenansicht wird er aus der Statistikzeile der Anzeigenkarte gelesen ("N mal gemerkt") — dort kann ein Layout-Umbau bei Kleinanzeigen ihn unlesbar machen. Lässt er sich nicht lesen, gilt die Anzeige als _unbekannt_ und wird bei aktivem Filter mit ausgeblendet, also **nicht** neu eingestellt. Sind bei keiner Anzeige Zähler lesbar, erscheint die Checkbox gar nicht erst.
 
 > **Woher das Alter kommt**: In dieser Reihenfolge — (1) `adLifeTimeInSeconds`, das der Server direkt mitliefert, ganz ohne Datumsrechnung und unabhängig von der Uhr des Browsers; (2) das Erstelldatum `creationDate`; (3) als Notnagel die alte Schätzung aus der Restlaufzeit. Nur im dritten Fall steht "(geschätzt)" am Eintrag. Live gegengeprüft: (1) und (2) liefern dieselben Werte.
 
 > **Zum Alter**: Aus der JSON-Quelle ist das Alter exakt. Nur wenn auf die Seitenansicht zurückgefallen wird, muss es aus der Restlaufzeit abgeleitet werden (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es dann ungenau. Betroffene Einträge sind im Overlay mit "(geschätzt)" markiert, und die Fußnote erscheint nur dann.
 
+### Auswahl sichern (Helper ab v1.13.0)
+
+Im Auswahl-Fenster steht neben **Start** der Button **"Auswahl sichern (ZIP)"**. Er sichert die angehakten Anzeigen, ohne etwas an ihnen zu ändern.
+
+1. Anzeigen anhaken wie für einen Batch. Es gilt dieselbe Auswahl wie bei Start, der Merk-Filter wirkt also auch hier. Eine ungültige Pause sperrt nur Start, nicht die Sicherung
+2. **Auswahl sichern (ZIP)** klicken. Das Script holt je Anzeige die Bearbeiten-Seite im Hintergrund, es öffnet sich kein Tab. Zwischen zwei Anzeigen liegen 1–2 Sekunden. **Stop** beendet nach der laufenden Anzeige, das bis dahin Gesicherte bleibt
+3. Am Ende **ZIP herunterladen** klicken. Der Download startet nur auf Knopfdruck
+
+Die ZIP enthält pro Anzeige einen Ordner `<adId>-<Titel>/` mit `data.json` und `image_01.jpg`, `image_02.jpg`, … in voller Auflösung, dazu `protokoll.txt` mit Feldern, Bildern (geladen/gefunden) und Fehlern je Anzeige. `image_01` ist das Titelbild; die Reihenfolge folgt der Anzeige.
+
+In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle sichtbaren Formularwerte (`rawFields`) und die versteckten Felder mit Kategorie (`categoryId`), Attributen wie Größe, Farbe und Zustand (`attributeMap[…]`) und Versandart (`hiddenFields`). Tokens und signierte Bildadressen werden nie gespeichert. Das Format ist dasselbe wie im Recovery-ZIP. Wiederhergestellt wird von Hand: neue Anzeige aufgeben, Bilder in der Reihenfolge der Dateinamen hochladen, Werte aus `data.json` übernehmen.
+
+> Scheitert eine Anzeige — etwa weil der Login abgelaufen ist —, läuft die Sicherung weiter und die Anzeige steht als FEHLER im Protokoll. Holt das Script statt der Bearbeiten-Seite eine andere Seite, wird die Anzeige nicht als leere Sicherung in die ZIP geschrieben.
+
 ### Reihenfolge beim Neu-Einstellen (geändert in v3.10.0)
+
 Bis v3.9.0 löschte das Script zuerst die alte Anzeige und legte danach die neue an. Scheiterte der zweite Schritt, war die Anzeige weg — dagegen halfen nur der Recovery-Snapshot und der Auto-Stop.
 
 Ab v3.10.0 ist es umgekehrt: **Erst wird die neue Anzeige angelegt, dann die alte gelöscht.** Das Original bleibt bestehen, bis der Server die Neuanlage bestätigt hat; gelöscht wird erst auf der Bestätigungsseite, deren Erreichen der Beweis für die erfolgreiche Anlage ist.
 
 Was das praktisch ändert:
+
 - **Ein Abbruch mitten im Vorgang kann keine Anzeige mehr kosten.** Der schlimmste Fall ist ein Duplikat: beide Anzeigen stehen online.
 - Tritt dieser Fall ein, meldet der Batch ihn im Abschlussbildschirm als Hinweis mit der betroffenen Anzeigen-ID zum manuellen Löschen — er verschweigt ihn nicht.
 - Der Recovery-Snapshot bleibt trotzdem erhalten. Er kostet nichts und deckt Fälle ab, die außerhalb dieses Ablaufs liegen.
 
+**Der Löschauftrag verfällt (ab v3.11.0).** Der Auftrag "diese Anzeige löschen, sobald die neue steht" liegt im Speicher des Tabs. Bricht der Vorgang vor der Bestätigungsseite ab, wird er jetzt in beiden Modi aufgeräumt — und selbst wenn das nicht greift, weil der Tab die Seite vorher verlässt, verfällt er nach zehn Minuten. Vorher konnte ein solcher Auftrag liegen bleiben und beim nächsten Neu-Einstellen **im selben Tab** die Anzeige aus dem abgebrochenen Vorgang mitlöschen.
+
 ### Banner & Popup-Blocker (ab v3.4.0)
+
 Auf der Bearbeiten-Seite blendet das Script automatisch aus:
+
 - **Kostenpflichtige Feature-Optionen** (Highlight, Galerie, Bumpup)
 - **Info-Banner** ("Das Bearbeiten deiner Anzeige schiebt sie nicht wieder hoch")
 - **Upsell-Popups** ("Ohne Hochschieben weiter", "Ohne Highlight weiter") nach dem Speichern
@@ -103,6 +140,7 @@ Auf der Bearbeiten-Seite blendet das Script automatisch aus:
 Kein manuelles Wegklicken mehr nötig.
 
 ### Werbeblocker (ab v3.10.0)
+
 Zusätzlich blendet das Script Werbung auf **allen** Seiten von kleinanzeigen.de aus: Seitenbanner links und rechts, Billboards auf Startseite und Detailansicht, Werbung über den Suchergebnissen, Werbe-Kacheln innerhalb der Trefferliste, gesponserte Blöcke unter Anzeigen sowie die Above-the-fold-Werbung in Merkliste, Nachrichten und Konto.
 
 Dafür ist der `@match` auf `https://www.kleinanzeigen.de/*` erweitert. Wichtig zum Einordnen: Auf allen Seiten außer der Bearbeiten-Seite tut das Script **ausschließlich** dieses eine — es hängt ein `<style>`-Element an und kehrt sofort zurück. Keine Buttons, keine Observer, kein Zugriff auf Formulare, kein JavaScript, das ins Seiten-DOM eingreift. Trifft ein Selektor daneben, verschwindet schlimmstenfalls ein Layout-Element; klicken oder senden kann der Blocker nichts.
@@ -118,32 +156,48 @@ Die Selektoren sind adaptiert aus dem [Userscript von Andi (Zer089)](https://git
 ## Technische Details
 
 ### Berechtigungen
+
 Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant GM_openInTab` für das robuste Schließen von Worker-Tabs im Batch-Modus -- ohne diese Berechtigung kann ein Userscript Tabs nach einer Navigation nicht mehr zuverlässig schließen. Beide Scripts kommunizieren ausschließlich mit kleinanzeigen.de über HTTPS.
 
 ### Unterstützte URLs
-- `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript)
+
+- `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript: Buttons, Duplizieren, Smart neu einstellen)
+- `https://www.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*` (Hauptscript: Löschung des Originals, Signal an den Helper)
+- `https://www.kleinanzeigen.de/*` (Hauptscript: ausschließlich der Werbeblocker, siehe unten — auf allen anderen Seiten hängt es nur ein `<style>`-Element an und kehrt zurück)
 - `https://www.kleinanzeigen.de/m-meine-anzeigen.html*` (Helper)
 
 ### API-Endpunkte
-- **Löschen**: `POST /m-anzeigen-loeschen.json?ids={adId}`
-- **CSRF-Token**: wird in dieser Reihenfolge gesucht: `meta[name="_csrf"]`, `meta[name="csrf-token"]`, dann `input[name="_csrf"]`
+
+- **Löschen** (Hauptscript): `POST /m-anzeigen-loeschen.json?ids={adId}`
+- **CSRF-Token nachladen** (Hauptscript, wenn keines im DOM steht): `GET /m-meine-anzeigen.html`
+- **Anzeigenliste** (Helper): `GET /m-meine-anzeigen-verwalten.json?pageNum={n}&sort=DEFAULT`, höchstens 20 Seiten
+- **Anzeigenkontingent** (Helper): `GET /m-einstellungen-bearbeiten.json`, Feld `newAdCount`
+- **Anzeigenbilder** (Hauptscript für den Snapshot, Helper für die Sicherung): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
+- **Bearbeiten-Seite** (Helper, für "Auswahl sichern"): `GET /p-anzeige-bearbeiten.html?adId={adId}`, nur lesend
+- **CSRF-Token im DOM**: zuerst `meta[name="_csrf"], meta[name="csrf-token"]` als ein Selektorpaar — es gewinnt das Element, das im Dokument zuerst steht, nicht die Reihenfolge im Selektor. Erst danach `input[name="_csrf"]`
 
 ## Fehlerbehebung
 
 ### Buttons erscheinen nicht auf der Bearbeiten-Seite
+
 - Warte 2-3 Sekunden nach dem Laden
 - Prüfe ob das Hauptscript in Tampermonkey aktiviert ist
 - Browser-Cache leeren (Strg+F5)
 
 ### Buttons erscheinen nicht auf Meine Anzeigen
+
 - Prüfe ob das Helper-Script installiert und aktiviert ist
 - Tampermonkey-Icon sollte eine "2" anzeigen (beide Scripts aktiv)
 
-### Loeschung schlägt fehl
+### Löschung schlägt fehl
+
 - Session könnte abgelaufen sein - neu anmelden
 - Rate-Limiting - kurz warten und erneut versuchen
+- "CSRF-Token nicht ermittelbar (Timeout)" bedeutet: die Seite "Meine Anzeigen", aus der das Token nachgeladen wird, hat nicht innerhalb von 8 Sekunden geantwortet. Die Anzeige ist dann **nicht** gelöscht, das Original steht noch. Kurz warten und erneut versuchen.
+- "Timeout beim Löschen" betrifft ab v3.11.0 nur noch den Löschauftrag selbst. Vorher konnte diese Meldung auch erscheinen, wenn lediglich das Nachladen des Tokens zu lange gebraucht hatte.
 
 ### Upsell-Popup blockiert den Vorgang
+
 - Ab v3.4.0 wird das Popup automatisch weggeklickt
 - Falls es trotzdem hängt: Seite neu laden und erneut versuchen
 - In der Konsole (F12) nach `[KA-Script] Popup erkannt` suchen
@@ -153,9 +207,29 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - `npm test` führt die Unit-Tests aus (Vitest + jsdom, siehe Ordner `tests/`). Getestet werden die puren Logik-Anteile beider Userscripts (Protokoll-Klassifikation, Datums-, ZIP- und Formularlogik) über Test-Exports, die nur in Node aktiv sind — im Browser bleiben beide Scripts unverändert.
 - `npm run validate` synchronisiert die `@version`-Header mit `package.json` und prüft die Syntax beider `.user.js`-Dateien.
 - `tests/setup.storage.js` ergänzt `localStorage` in der Testumgebung, falls es fehlt. Node bringt ab v22 ein eigenes, experimentelles `localStorage` mit, das ohne `--localstorage-file` `undefined` ist und die jsdom-Variante überschattet; ohne den Shim scheitert jeder Test, der Storage anfasst.
+- `tests/setup.indexeddb.js` stellt `indexedDB` über `fake-indexeddb` bereit (Version exakt gepinnt). jsdom bringt keines mit, weshalb der Recovery-Pfad — Snapshots schreiben, listen, löschen — vorher nicht prüfbar war. Der Reset zwischen zwei Tests läuft über eine frische `IDBFactory`, nicht über `deleteDatabase`: die Wrapper im Helper schließen ihre Verbindung nie, und `deleteDatabase` wartet auf genau das.
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Version 3.11.0 / Helper 1.13.0 (September 2026)
+
+Vier Fehler, die ein Review beider Scripts gefunden hat, Timeouts für alle
+Netzwerk-Zugriffe und eine neue Sicherung ausgewählter Anzeigen als ZIP.
+
+- **Neu: Auswahl sichern (ZIP).** Im Auswahl-Fenster sichert ein eigener Button die angehakten Anzeigen: Texte, Felder und Bilder in voller Auflösung, dazu ein Protokoll. Das Script holt dafür die Bearbeiten-Seiten im Hintergrund, öffnet keinen Tab und ändert nichts an den Anzeigen. Details unter [Auswahl sichern](#auswahl-sichern-helper-ab-v1130).
+- **Neu: Kategorie, Attribute und Versand in der Sicherungskopie.** Diese Werte stehen bei Kleinanzeigen in versteckten Formularfeldern, die seit 3.5.x komplett ausgeschlossen waren, um das CSRF-Token fernzuhalten. Sie stehen jetzt getrennt unter `hiddenFields`. Draußen bleiben weiterhin alle Felder, deren Name nach Token aussieht (csrf, token, jwt, session …), und die signierten Bildadressen. Gilt für das Recovery-ZIP und die Sicherung.
+- **Fix: Preis in der Sicherungskopie.** Kleinanzeigen nennt das Feld inzwischen `priceAmount`; `fields.price` blieb dadurch leer. Der Preistyp wird jetzt unabhängig von der Feldart gefunden.
+- **Bildreihenfolge nach der Anzeige.** `image_01`, `image_02`, … folgen der Reihenfolge, die Kleinanzeigen für die Anzeige führt (`adImages[n]`), statt der Anordnung der Vorschaubilder auf der Seite.
+
+- **Fix: Kein Löschen mehr aus einem abgebrochenen Vorgang.** Beim "Smart neu einstellen" merkt sich das Script im Tab, welche Anzeige nach der Neuanlage gelöscht werden soll. Brach der Vorgang vor der Bestätigungsseite ab — Serverfehler, Formularfehler, Tab-Wechsel — blieb dieser Auftrag stehen. Stellte man später **im selben Tab** eine andere Anzeige neu ein, wurde die alte Anzeige aus dem abgebrochenen Vorgang mitgelöscht, und bei einem manuellen Lauf zusätzlich deren Sicherungskopie. Der Auftrag wird jetzt in beiden Modi aufgeräumt und verfällt nach zehn Minuten.
+- **Fix: "Timeout beim Löschen" stimmt jetzt.** Fehlt das CSRF-Token auf der Bestätigungsseite — der Normalfall — lädt das Script es nach. Dieses Nachladen verbrauchte die 8 Sekunden, die für den Löschvorgang gedacht waren: der Löschauftrag wurde dann sofort abgewiesen und als Timeout gemeldet, obwohl er nie gesendet wurde. Antwortete der Server gar nicht, hing der Vorgang unbegrenzt und der Batch lief in seine 180 Sekunden. Beide Schritte haben jetzt ihr eigenes Zeitbudget.
+- **Fix: Die eingestellte Pause kann nicht mehr stillschweigend verschwinden.** Stand im Browser-Speicher ein unbrauchbarer Wert (etwa `null` statt einer Zahl), lief der Batch ohne jede Pause zwischen zwei Anzeigen — genau das, wovor das Fenster warnt. Jetzt greifen wieder die Standardwerte 3 bis 6 Minuten.
+- **Fix: Der Fortschritt zählt richtig.** Bei zehn ausgewählten Anzeigen stand während der Arbeit "0 / 9" und beim letzten Eintrag "9 / 9", also 100 Prozent, obwohl noch gearbeitet wurde.
+- **Fix: Der Stop-Button geht nicht mehr verloren.** Das Fortschritts-Fenster wurde im Sekundentakt komplett neu gebaut; ein Klick, der genau dazwischen fiel, kam nicht an. Jetzt bleibt der Button stehen und nur die Texte werden aktualisiert.
+- **Neu: Timeouts für alle Netzwerk-Zugriffe.** Bisher hatte nur der Löschauftrag eine Abbruchkante. Ein nicht antwortender Server konnte den Bild-Download beim Sichern (und damit das Neu-Einstellen) oder den Aufbau der Auswahl-Liste unbegrenzt aufhalten.
+- **Neu: Bilder für die Sicherungskopie kommen aus dem Anzeigen-Formular.** Vorher wurde die ganze Seite durchsucht, also auch Empfehlungslisten mit fremden Anzeigenbildern. Steckt im Formular kein Bild, wird weiterhin die ganze Seite durchsucht — die Sicherung wird dadurch nie schlechter.
+- **Tests**: 334 Tests (vorher 226). Neu ist eine IndexedDB-Umgebung für die Tests, mit der sich die Sicherungskopien erstmals überhaupt prüfen lassen, dazu Verhaltenstests für das Öffnen und Abwarten der Worker-Tabs und ein Abgleich, der die Auslese-Logik in Hauptscript und Helper gleich hält.
 
 ### Helper 1.12.0 (September 2026)
 
@@ -206,11 +280,11 @@ Drei Änderungen, die aus dem Vergleich mit anderen Kleinanzeigen-Tools entstand
 
 Das Batch-Overlay kann jetzt Anzeigen aussparen, die jemand auf die Merkliste gesetzt hat — Wunsch aus Issue #54. Wer eine gemerkte Anzeige neu einstellt, reißt sie aus der Merkliste des Interessenten; eine spätere Preisanpassung erreicht ihn dann nicht mehr.
 
-- **Neu**: Zusatzfilter **"nur nicht gemerkte"** neben der Schnellwahl. Er *ergänzt* die Schnellwahl, statt sie zu ersetzen: "älter als 7 Tage" plus Häkchen wählt genau die alten Anzeigen, die niemand gemerkt hat.
+- **Neu**: Zusatzfilter **"nur nicht gemerkte"** neben der Schnellwahl. Er _ergänzt_ die Schnellwahl, statt sie zu ersetzen: "älter als 7 Tage" plus Häkchen wählt genau die alten Anzeigen, die niemand gemerkt hat.
 - **Neu**: Der Filter blendet die betroffenen Zeilen aus, statt sie nur abzuwählen — und ist umkehrbar. Beim Ausblenden werden sie abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Hinzugefügt wird dabei nie etwas, das nicht vorher schon angehakt war.
 - **Neu**: Der Merk-Status steht im Klartext an jeder Anzeige ("nicht gemerkt" / "2× gemerkt"), damit nachvollziehbar bleibt, warum eine Anzeige aussortiert wurde. Die Zusammenfassung zählt die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten.
 - **Sicherheit**: Verarbeitet wird eine Anzeige nur, wenn **fünf** Bedingungen zugleich gelten — im Auswahl-Set, sichtbarer Haken gesetzt, zweiter (unsichtbarer) Haken des Filters gesetzt, dieselbe Erlaubnis beim Start noch einmal frisch aus dem Merk-Zähler abgeleitet, und Zeile sichtbar in der Liste. Der zweite Haken ist gespeicherter Zustand, die frische Ableitung die Rechnung von jetzt: Ein einzelnes falsches Bit lässt damit keine ausgeblendete Anzeige mehr durch. Weichen Auswahl und Darstellung voneinander ab, wird die Differenz verworfen und protokolliert.
-- **Sicherheit**: Lässt sich der Merk-Zähler nicht lesen, gilt die Anzeige als *unbekannt* und wird bei aktivem Filter mit ausgeblendet — nicht als "nicht gemerkt" behandelt. Findet sich bei keiner Karte ein Zähler, erscheint die Checkbox gar nicht erst.
+- **Sicherheit**: Lässt sich der Merk-Zähler nicht lesen, gilt die Anzeige als _unbekannt_ und wird bei aktivem Filter mit ausgeblendet — nicht als "nicht gemerkt" behandelt. Findet sich bei keiner Karte ein Zähler, erscheint die Checkbox gar nicht erst.
 - **Tests**: 109 Tests. Neu sind `parseFavCount` gegen echtes Karten-Markup, die Integrationssuite `helper.integration.dom.test.js` über die ganze Kette (Markup → `collectCandidates` → Overlay → Übergabe an den Batch) und das Szenario "Alle → filtern → Start" mit allen Prüfschichten einzeln. Die Wirksamkeit ist per Mutationsproben belegt: Wird eine der Schichten entfernt, fallen Tests.
 
 ### Version 3.8.1 (August 2026)
@@ -226,12 +300,13 @@ Das Batch-Overlay ist von "alles Alte, ein Klick" auf eine bewusste Auswahl umge
 
 - **Neu**: Jede Anzeige bekommt eine Checkbox. Gestartet wird ausschließlich, was angehakt ist. Grundlage beigetragen von @karlvonbonin (PR #48).
 - **Neu**: Die Liste zeigt **alle** Anzeigen, nicht mehr nur die älter als 7 Tage. Beim Öffnen ist **nichts** vorangehakt — ein versehentlicher Start kann damit nichts löschen. Der Button heißt entsprechend "Anzeigen auswählen & neu einstellen".
-- **Neu**: Schnellwahl unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl *ersetzt* die bestehende Auswahl.
+- **Neu**: Schnellwahl unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl _ersetzt_ die bestehende Auswahl.
 - **Neu**: Farbcodierung nach Alter — dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag, hängt also nicht allein an der Farbe.
 - **Neu**: Zusammenfassung und Laufzeitschätzung laufen mit ("3 von 8 ausgewählt"); der Start-Button bleibt gesperrt, solange nichts ausgewählt ist.
-- **Fix**: Die Laufzeitschätzung zählt die Pausen *zwischen* den Anzeigen statt einer Pause pro Anzeige — nach der letzten Anzeige wird nicht mehr gewartet (8 Anzeigen: 21 statt 24 Minuten). (@karlvonbonin, PR #48)
+- **Fix**: Die Laufzeitschätzung zählt die Pausen _zwischen_ den Anzeigen statt einer Pause pro Anzeige — nach der letzten Anzeige wird nicht mehr gewartet (8 Anzeigen: 21 statt 24 Minuten). (@karlvonbonin, PR #48)
 - **Hinweis**: Die Kartenliste nennt nur das Enddatum, kein Erstelldatum. Das Alter wird deshalb aus der Restlaufzeit abgeleitet (60 Tage Regellaufzeit) — bei verlängerten Anzeigen ist es ungenau. Die Legende weist darauf hin.
 - **Tests**: `estimateRuntimeMinutes`, `ageFromDaysLeft` und `ageBand` als reine Funktionen getestet; die jsdom-Suite `helper.confirm.dom.test.js` prüft das Overlay gegen den echten Produktivcode (leere Vorauswahl, Schnellwahl, Farbbänder, gesperrter Start).
+
 ### Version 3.7.2 (August 2026)
 
 - **Diagnose**: Das Log weist jetzt aus, ob das Ad-ID-Feld über einen bekannten Selektor oder über den Fallback (Feldwert) gefunden wurde. Greift nur noch der Fallback, hat Kleinanzeigen das Feld umbenannt — das steht dann als Warnung samt neuem Feldnamen in der Konsole, statt erst beim nächsten Bruch aufzufallen.
@@ -269,13 +344,14 @@ Ergebnis eines vollständigen Code-Reviews (14 Findings). Alle Änderungen sind 
 
 ### Version 3.5.1 / Helper 1.3.1 (Mai 2026)
 
-- **Fix**: Popup-Dismisser klickt jetzt nur noch Buttons innerhalb von Modal-Containern (`[role="dialog"]`, `[aria-modal="true"]`) und mit exaktem Text-Match. Verhindert versehentliche Klicks auf gleichnamige Buttons in Form-Bereichen waehrend der save-clicked-Phase.
+- **Fix**: Popup-Dismisser klickt jetzt nur noch Buttons innerhalb von Modal-Containern (`[role="dialog"]`, `[aria-modal="true"]`) und mit exaktem Text-Match. Verhindert versehentliche Klicks auf gleichnamige Buttons in Form-Bereichen während der save-clicked-Phase.
 - **Security**: `@match`-Wildcards entfernt. Hauptscript und Helper laufen nur noch auf `www.kleinanzeigen.de` und `kleinanzeigen.de`, nicht mehr auf beliebigen `*.kleinanzeigen.de`-Subdomains. Veraltete `ebay-kleinanzeigen.de`-Eintraege entfernt.
 - **Doku**: `SECURITY.md` auf 3.5.x / 1.3.x aktualisiert. Helper-Grant `GM_openInTab` und Recovery-Snapshot-Persistenz in IndexedDB dokumentiert.
 - **Cleanup**: Veralteten Userscript-Stub `Kleinanzeigen duplizieren oder smart neu einstellen.js` entfernt (war seit v3.x deprecated).
-- **Cleanup**: Test-Suite und Test-Doku entfernt. Die bisherigen Tests definierten lokale Mocks und pruefen damit ausschliesslich Test-Code gegen Test-Code, ohne den Userscript-Code zu importieren. Sie haben Sicherheit vorgetaeuscht. `npm run lint` validiert weiterhin die Userscript-Syntax fuer beide Files.
+- **Cleanup**: Test-Suite und Test-Doku entfernt. Die bisherigen Tests definierten lokale Mocks und prüfen damit ausschließlich Test-Code gegen Test-Code, ohne den Userscript-Code zu importieren. Sie haben Sicherheit vorgetäuscht. `npm run lint` validiert weiterhin die Userscript-Syntax für beide Files.
 
 ### Version 3.5.0 / Helper 1.3.0 (Mai 2026)
+
 - **Neu**: Batch-Modus auf "Meine Anzeigen". Ein Button stellt alle Anzeigen, die älter als 7 Tage sind, nacheinander mit 3 ± 1 Minuten Pause neu ein.
 - **Neu**: Recovery-Snapshot vor jedem Smart-Republish im Batch. Texte, Felder und Bilder werden lokal in IndexedDB gespeichert, bei erfolgreicher Neu-Anzeige automatisch verworfen.
 - **Neu**: Save-Verifikation. Erfolg wird erst gemeldet, wenn die Bearbeiten-Seite verlassen wurde oder eine neue Anzeigen-ID auftaucht. Kein vorzeitiges OK.
@@ -288,38 +364,47 @@ Ergebnis eines vollständigen Code-Reviews (14 Findings). Alle Änderungen sind 
 - Intern: `package.json`-Version (3.3.11 → 3.5.0) an Userscript-Header angeglichen.
 
 ### Version 3.4.0 (April 2026)
+
 - **Neu**: Banner-Blocker blendet kostenpflichtige Feature-Optionen per CSS aus
 - **Neu**: Info-Banner ("Bearbeiten schiebt nicht hoch") wird ausgeblendet
 - **Neu**: Popup-Dismisser klickt Upsell-Dialoge automatisch weg ("Ohne Hochschieben weiter", etc.)
 
 ### Version 3.3.11 / Helper 1.1.2 (April 2026)
+
 - Hauptscript 3.3.9-3.3.11: Bugfixes (React-Render, adId-Handling, doppeltes if)
 - Hauptscript 3.3.8: `#duplicate` Hash-Erkennung, README überarbeitet
 - Helper: Duplizieren-Button-Versuch (1.2.0) wegen Stabilitätsproblemen auf 1.1.2 zurückgesetzt
 
 ### Version 3.3.8 / Helper 1.2.0 (April 2026)
+
 - Helper: Duplizieren-Button hinzugeFügt
 - Hauptscript: `#duplicate` Hash-Erkennung für Helper
 - README komplett überarbeitet
 
 ### Version 3.3.7 (April 2026)
+
 - CSRF-Token aus Hidden Input lesen (Kleinanzeigen-Umbau)
 
 ### Version 3.3.6 (April 2026)
+
 - Korrekter Ad-ID Selektor `input[name="adId"]`
 
 ### Version 3.3.4-3.3.5 (April 2026)
+
 - Floating-Toolbar statt DOM-Injection (React-kompatibel)
 - `saveBtn.click()` statt `form.submit()`
 
 ### Version 3.3.0-3.3.3 (März 2026)
+
 - Helper-Script integriert
 - Selektoren an neues Kleinanzeigen-Layout angepasst
 
 ### Version 3.2.0 (Februar 2026)
+
 - Security-Härtung nach ISO 27001/27002 Review
 
 ### Version 3.0.0 (2025)
+
 - Komplette Code-überarbeitung
 - Smart Neu-Einstellen Feature
 

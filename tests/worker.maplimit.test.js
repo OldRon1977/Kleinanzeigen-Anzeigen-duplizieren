@@ -125,6 +125,22 @@ describe('buildSnapshot sammelt die Bilder parallel und in Reihenfolge ein', () 
         expect(snap.images.filter(i => i.blob !== null).length).toBe(3);
     });
 
+    it('nimmt Felder, versteckte Felder und Preis ins Recovery mit, nie das Token', async () => {
+        document.body.innerHTML = `<form>
+            <input type="hidden" name="adId" value="12345">
+            <input type="hidden" name="_csrf" value="geheim">
+            <input type="hidden" name="categoryId" value="225">
+            <input name="title" value="Fahrrad">
+            <input name="priceAmount" value="120">
+        </form>`;
+        globalThis.fetch = async () => ({ ok: true, blob: async () => ({ type: 'image/jpeg' }) });
+
+        const snap = await buildSnapshot('12345');
+        expect(snap.fields.price).toBe('120');
+        expect(snap.rawFields).toEqual({ title: 'Fahrrad', priceAmount: '120' });
+        expect(snap.hiddenFields).toEqual({ adId: '12345', categoryId: '225' });
+    });
+
     it('laeuft nebenlaeufig statt nacheinander', async () => {
         setzeBilder(8);
         globalThis.fetch = async () => {

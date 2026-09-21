@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import worker from '../kleinanzeigen-duplizieren.user.js';
 
-const { fetchAsBlob } = worker;
+const { fetchAsBlob, CONFIG } = worker;
 
 // Regressionsschutz: img.kleinanzeigen.de sendet `Access-Control-Allow-Origin: *`
 // ohne `Access-Control-Allow-Credentials`. Mit Cookies verwirft der Browser
@@ -32,5 +32,49 @@ describe('fetchAsBlob', () => {
     it('wirft bei HTTP-Fehler, damit der Aufrufer einen Platzhalter setzt', async () => {
         globalThis.fetch = async () => ({ ok: false, status: 404 });
         await expect(fetchAsBlob('https://img.kleinanzeigen.de/x')).rejects.toThrow('HTTP 404');
+    });
+
+    // Solange ein Bild-Download laeuft, wird die neue Anzeige nicht gespeichert.
+    // Ohne Abbruchkante haelt ein nicht antwortender Bildserver den ganzen
+    // Vorgang auf.
+    it('bricht nach CONFIG.IMAGE_FETCH_TIMEOUT_MS ab', async () => {
+        vi.useFakeTimers();
+        globalThis.fetch = (url, opts) => new Promise((resolve, reject) => {
+            opts.signal.addEventListener('abort', () => {
+                const err = new Error('aborted');
+                err.name = 'AbortError';
+                reject(err);
+            });
+        });
+
+        const p = fetchAsBlob('https://img.kleinanzeigen.de/x');
+        const assertion = expect(p).rejects.toThrow('Timeout nach ' + CONFIG.IMAGE_FETCH_TIMEOUT_MS + ' ms');
+        await vi.advanceTimersByTimeAsync(CONFIG.IMAGE_FETCH_TIMEOUT_MS);
+        await assertion;
+        vi.useRealTimers();
+    });
+
+    it('nennt im Timeout-Fehler keine URL, weil Bild-URLs Tokens tragen', async () => {
+        vi.useFakeTimers();
+        const geheim = 'https://img.kleinanzeigen.de/x?AccessKeyId=AKIA-GEHEIM&jwt=tok';
+        globalThis.fetch = (url, opts) => new Promise((resolve, reject) => {
+            opts.signal.addEventListener('abort', () => {
+                const err = new Error('aborted');
+                err.name = 'AbortError';
+                reject(err);
+            });
+        });
+
+        const p = fetchAsBlob(geheim);
+        const assertion = p.then(
+            () => { throw new Error('haette abbrechen muessen'); },
+            (e) => {
+                expect(e.message).not.toContain('AccessKeyId');
+                expect(e.message).not.toContain('jwt');
+            }
+        );
+        await vi.advanceTimersByTimeAsync(CONFIG.IMAGE_FETCH_TIMEOUT_MS);
+        await assertion;
+        vi.useRealTimers();
     });
 });
