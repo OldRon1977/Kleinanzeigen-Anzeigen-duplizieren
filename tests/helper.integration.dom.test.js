@@ -33,6 +33,14 @@ function overlay() {
     return document.getElementById('ka-batch-overlay');
 }
 
+function pickInput(name) {
+    return overlay().querySelector('input[data-ka-pick="' + name + '"]');
+}
+
+function pickButton(name) {
+    return overlay().querySelector('button[data-ka-pick="' + name + '"]');
+}
+
 function buttonByText(text) {
     return Array.from(overlay().querySelectorAll('button'))
         .find((b) => b.textContent === text);
@@ -98,7 +106,9 @@ describe('Kette Markup -> Auswahl -> Start', () => {
 
         favToggle().checked = true;
         favToggle().onchange();
-        buttonByText('älter als 7 Tage').click();
+        pickInput('older').value = '7';
+        pickInput('older').oninput();
+        pickButton('older').click();
         buttonByText('Start').click();
 
         // 2002 ist gemerkt, 2003 zu frisch, 2004 hat keinen lesbaren Zaehler.
@@ -112,7 +122,9 @@ describe('Kette Markup -> Auswahl -> Start', () => {
         let started = null;
         await renderConfirm(matches, skipped, (chosen) => { started = chosen; });
 
-        buttonByText('älter als 7 Tage').click();
+        pickInput('older').value = '7';
+        pickInput('older').oninput();
+        pickButton('older').click();
         buttonByText('Start').click();
 
         expect(started.map((m) => m.adId)).toEqual(['2001', '2002', '2004']);

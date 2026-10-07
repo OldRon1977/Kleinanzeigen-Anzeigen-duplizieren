@@ -292,8 +292,7 @@ describe('Auswahl-Fenster: Button "Auswahl sichern (ZIP)"', () => {
         const onBackup = vi.fn();
         await renderConfirm(MATCHES, [], () => {}, { onBackup });
         button('Alle').click();
-        const min = overlay().querySelector('input[name="delay-min"]') ||
-            overlay().querySelectorAll('input[type="number"]')[0];
+        const min = overlay().querySelector('input[data-ka-delay="min"]');
         min.value = 'abc';
         min.dispatchEvent(new Event('input'));
         expect(button('Start').disabled).toBe(true);
