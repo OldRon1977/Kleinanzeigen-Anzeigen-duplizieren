@@ -79,11 +79,16 @@ Zahnrad beim Script → "Nach Updates suchen".
 1. Öffne "Meine Anzeigen" auf kleinanzeigen.de
 2. Über der Anzeigenliste erscheint der Button **"Anzeigen auswählen & neu einstellen"**
 3. Das Overlay listet **alle** Anzeigen mit Checkbox. Beim Öffnen ist **nichts angehakt** — ein versehentlicher Start kann also nichts löschen. Unter der Zusammenfassung steht, woher die Liste stammt ("frisch geladen" oder "zwischengespeichert (12s alt)") samt **Neu laden**-Link
-4. **Schnellwahl** unter der Liste: "Alle", "Keine", "älter als 7 Tage", "älter als 14 Tage". Jede Schnellwahl _ersetzt_ die bestehende Auswahl
-5. **Zusatzfilter "nur nicht gemerkte"**: die Checkbox rechts neben der Schnellwahl **blendet gemerkte Anzeigen aus der Liste aus** und wirkt _zusätzlich_ zur Schnellwahl, nicht anstelle. "älter als 7 Tage" plus Häkchen wählt also genau die alten Anzeigen, die niemand auf der Merkliste hat. Der Haken ist umkehrbar: Ausgeblendete Anzeigen werden abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Die Zusammenfassung zählt nur die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten
-6. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
-7. **Pause zwischen zwei Anzeigen** (ab Helper v1.10.0): zwei Felder "von" und "bis" in Minuten, Standard **3 bis 6**. Vor jeder weiteren Anzeige wartet das Script eine zufällige Dauer aus diesem Bereich, damit die Abstände nicht gleichmäßig aussehen. Die Werte werden lokal gespeichert und beim nächsten Öffnen wieder vorgelegt
-8. **Start** verarbeitet die angehakten Anzeigen nacheinander mit dieser Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
+4. **Schnellwahl** unter der Liste: "Alle", "Keine" und zwei Zeilen mit frei wählbarem Wert (ab Helper v1.14.0):
+   - **"älter als X Tage"** wählt alle Anzeigen, die mindestens X Tage alt sind (Standard 14)
+   - **"noch max. Y Tage bis Ablauf"** wählt alle Anzeigen, deren Enddatum höchstens Y Tage entfernt ist (Standard 5). Bereits abgelaufene gehören dazu, Anzeigen ohne bekanntes Enddatum nicht
+
+   Wert eintragen, dann **auswählen** klicken. Jede Schnellwahl _ersetzt_ die bestehende Auswahl. Erlaubt sind ganze Tage von 0 bis 365; bei anderer Eingabe wird das Feld rot und "auswählen" ist gesperrt. Gültige Werte werden lokal gespeichert
+5. **Hinweis gegen zu häufiges Neu-Einstellen** unter der Schnellwahl: grau als Empfehlung, Anzeigen 7 bis 14 Tage stehen zu lassen. Enthält die Auswahl Anzeigen, die jünger als 7 Tage sind, wird er rot und nennt deren Zahl. Verboten wird nichts
+6. **Zusatzfilter "nur nicht gemerkte"**: die Checkbox rechts neben der Schnellwahl **blendet gemerkte Anzeigen aus der Liste aus** und wirkt _zusätzlich_ zur Schnellwahl, nicht anstelle. "älter als 7 Tage" plus Häkchen wählt also genau die alten Anzeigen, die niemand auf der Merkliste hat. Der Haken ist umkehrbar: Ausgeblendete Anzeigen werden abgewählt, beim Einblenden kommt genau der vorherige Auswahlstand zurück. Die Zusammenfassung zählt nur die sichtbaren Anzeigen und nennt die Zahl der ausgeblendeten
+7. **Farbcodierung** nach Alter: dunkelgrün ab 14 Tagen, grün 7–13 Tage, gelb 5–6 Tage, rot bis 4 Tage. Das Alter steht zusätzlich als Text neben jedem Eintrag
+8. **Pause zwischen zwei Anzeigen** (ab Helper v1.10.0): zwei Felder "von" und "bis" in Minuten, Standard **3 bis 6**. Vor jeder weiteren Anzeige wartet das Script eine zufällige Dauer aus diesem Bereich, damit die Abstände nicht gleichmäßig aussehen. Die Werte werden lokal gespeichert und beim nächsten Öffnen wieder vorgelegt
+9. **Start** verarbeitet die angehakten Anzeigen nacheinander mit dieser Pause. Vor jeder Löschung wird ein Recovery-Snapshot in IndexedDB abgelegt
 
 > **Zur Pause**: Erlaubt sind ganze Minuten von 0 bis 180, der erste Wert muss kleiner oder gleich dem zweiten sein. Bei unbrauchbarer Eingabe bleibt der Start gesperrt und der letzte gültige Stand gespeichert. Die Laufzeitschätzung nennt die Spanne, die sich daraus ergibt (4 Anzeigen bei 3–6 Minuten: 3 Pausen, also 9–18 Minuten).
 >
@@ -211,6 +216,12 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Helper 1.14.0 (Oktober 2026)
+
+- **Neu: Schnellwahl mit frei wählbaren Tagen** ([#70](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/issues/70)). Die festen Links "älter als 7 Tage" und "älter als 14 Tage" sind durch zwei Zeilen ersetzt: "älter als X Tage" und "noch max. Y Tage bis Ablauf", jeweils mit eigenem Feld und "auswählen". Damit lassen sich zum Beispiel Anzeigen erst kurz vor dem Ablauf neu einstellen. Die Werte werden lokal gespeichert.
+- **Neu: Hinweis gegen zu häufiges Neu-Einstellen.** Unter der Schnellwahl steht die Empfehlung, Anzeigen 7 bis 14 Tage stehen zu lassen. Sind Anzeigen unter 7 Tagen ausgewählt, wird der Hinweis rot und nennt ihre Zahl.
+- **Tests**: 345 Tests (vorher 334).
 
 ### Version 3.11.0 / Helper 1.13.0 (September 2026)
 

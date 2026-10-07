@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.13.0
+// @version       1.14.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -118,6 +118,19 @@
     const DELAY_LIMIT_MIN_MINUTES = 0;
     const DELAY_LIMIT_MAX_MINUTES = 180;
 
+    // Schnellwahl nach Tagen im Auswahl-Fenster: "aelter als X Tage" und
+    // "noch max. Y Tage bis Ablauf". Die Startwerte greifen nur, solange
+    // nichts Gueltiges gespeichert ist. Nach oben ist bei 365 Schluss -- auch
+    // verlaengerte Anzeigen kommen nicht darueber, und Tippfehler wie "1400"
+    // waehlen so nicht stillschweigend nichts aus.
+    const DEFAULT_PICK_OLDER_DAYS = 14;
+    const DEFAULT_PICK_ENDING_DAYS = 5;
+    const PICK_LIMIT_MAX_DAYS = 365;
+
+    // Empfohlenes Mindestalter vor dem Neu-Einstellen. Juengere Anzeigen sind
+    // weiter waehlbar; der Hinweis unter der Schnellwahl wird dann rot.
+    const RECOMMENDED_MIN_AGE_DAYS = 7;
+
     // Maximaler Wartepuffer auf das Result-Signal aus dem Worker-Tab.
     // Nach Saving kann Bilder-Verarbeitung lange dauern; 180s ist grosszuegig.
     const RESULT_WAIT_TIMEOUT_MS = 180 * 1000;
@@ -128,6 +141,9 @@
 
     // Pausen-Einstellung des Nutzers. Nur lokal, nur dieses Script.
     const LS_DELAY_KEY = 'ka-batch-delay';
+
+    // Tage-Werte der Schnellwahl. Ebenfalls nur lokal, nur dieses Script.
+    const LS_PICK_KEY = 'ka-batch-pick-days';
 
     // IndexedDB
     const IDB_NAME = 'ka-batch';
@@ -1441,6 +1457,55 @@
         return clean;
     }
 
+    // === SCHNELLWAHL NACH TAGEN ===
+    // Ganze Tage von 0 bis PICK_LIMIT_MAX_DAYS, sonst null. Leeres Feld,
+    // Kommazahl oder Text sind kein Wert -- die Schnellwahl waehlt dann nichts
+    // aus, statt zu raten.
+    function parsePickDays(value) {
+        if (typeof value !== 'number' && typeof value !== 'string') return null;
+        const str = String(value).trim();
+        if (!/^\d+$/.test(str)) return null;
+        const n = parseInt(str, 10);
+        return n <= PICK_LIMIT_MAX_DAYS ? n : null;
+    }
+
+    function defaultPickConfig() {
+        return { older: DEFAULT_PICK_OLDER_DAYS, ending: DEFAULT_PICK_ENDING_DAYS };
+    }
+
+    // Jeder unbrauchbare Einzelwert faellt auf seinen Startwert zurueck.
+    function sanitizePickConfig(raw) {
+        const fallback = defaultPickConfig();
+        const src = (raw && typeof raw === 'object') ? raw : {};
+        const older = parsePickDays(src.older);
+        const ending = parsePickDays(src.ending);
+        return {
+            older: older === null ? fallback.older : older,
+            ending: ending === null ? fallback.ending : ending
+        };
+    }
+
+    function loadPickConfig() {
+        try {
+            const raw = localStorage.getItem(LS_PICK_KEY);
+            if (!raw) return defaultPickConfig();
+            return sanitizePickConfig(JSON.parse(raw));
+        } catch (e) {
+            warn('Schnellwahl-Tage nicht lesbar -- nutze Standardwerte', e);
+            return defaultPickConfig();
+        }
+    }
+
+    function savePickConfig(cfg) {
+        const clean = sanitizePickConfig(cfg);
+        try {
+            localStorage.setItem(LS_PICK_KEY, JSON.stringify(clean));
+        } catch (e) {
+            warn('Schnellwahl-Tage konnten nicht gespeichert werden', e);
+        }
+        return clean;
+    }
+
     // Pause vor der naechsten Anzeige, gleichverteilt in [min, max]. Aufloesung
     // ist die Millisekunde, nicht die Minute: gerundete Minutenwerte waeren
     // ueber einen Batch hinweg ein auffallend regelmaessiges Muster.
@@ -1756,13 +1821,14 @@
         // Schnellwahl: setzt die Auswahl auf alles, was das Praedikat erfuellt
         // und den Zusatzfilter passiert. Checkboxen werden programmatisch
         // gesetzt (feuert kein onchange), deshalb wird `selected` mitgefuehrt.
+        function matchAge(m) {
+            return typeof m.ageDays === 'number' ? m.ageDays : ageFromDaysLeft(m.daysLeft);
+        }
+
         function applySelection(predicate) {
             selected.clear();
             entries.forEach(function (e) {
-                const age = typeof e.match.ageDays === 'number'
-                    ? e.match.ageDays
-                    : ageFromDaysLeft(e.match.daysLeft);
-                const hit = predicate(e.match, age) && passesFavFilter(e.match);
+                const hit = predicate(e.match, matchAge(e.match)) && passesFavFilter(e.match);
                 e.cb.checked = hit;
                 if (hit) selected.add(e.match.adId);
             });
@@ -1771,16 +1837,15 @@
 
         const bulk = document.createElement('div');
         bulk.style.cssText = 'padding:0 14px 8px;display:flex;gap:12px;font-size:12px;flex-wrap:wrap;';
+        const linkStyle = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:12px;text-decoration:underline;';
         [
             ['Alle', function () { return true; }],
-            ['Keine', function () { return false; }],
-            ['älter als 7 Tage', function (m, age) { return age >= 7; }],
-            ['älter als 14 Tage', function (m, age) { return age >= 14; }]
+            ['Keine', function () { return false; }]
         ].forEach(function (pair) {
             const b = document.createElement('button');
             b.type = 'button';
             b.textContent = pair[0];
-            b.style.cssText = 'background:none;border:none;padding:0;color:#007bff;cursor:pointer;font-size:12px;text-decoration:underline;';
+            b.style.cssText = linkStyle;
             b.onclick = function () { applySelection(pair[1]); };
             bulk.appendChild(b);
         });
@@ -1825,6 +1890,97 @@
         }
 
         overlay.appendChild(bulk);
+
+        // === SCHNELLWAHL NACH TAGEN ===
+        // Zwei Zeilen mit frei waehlbarem Wert. Wie "Alle"/"Keine" ersetzt
+        // jede die Auswahl; der Merk-Filter wirkt zusaetzlich.
+        let pickCfg = loadPickConfig();
+
+        function makePickRow(name, before, after, value, predicateFor) {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding:0 14px 6px;display:flex;gap:6px;align-items:center;' +
+                'font-size:12px;color:#333;flex-wrap:wrap;';
+            row.appendChild(document.createTextNode(before));
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.max = String(PICK_LIMIT_MAX_DAYS);
+            input.step = '1';
+            input.value = String(value);
+            input.dataset.kaPick = name;
+            input.style.cssText = 'width:56px;padding:2px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
+            row.appendChild(input);
+            row.appendChild(document.createTextNode(after));
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = 'auswählen';
+            b.dataset.kaPick = name;
+            b.style.cssText = linkStyle + 'margin-left:4px;';
+            row.appendChild(b);
+
+            // Ungueltiger Wert: Feld rot, Button gesperrt, nichts gespeichert.
+            // Der letzte gute Wert bleibt im Storage.
+            function refresh() {
+                const days = parsePickDays(input.value);
+                input.style.borderColor = days === null ? '#e74c3c' : '#ccc';
+                b.disabled = days === null;
+                b.style.color = days === null ? '#999' : '#007bff';
+                b.style.cursor = days === null ? 'default' : 'pointer';
+                return days;
+            }
+            input.oninput = function () {
+                const days = refresh();
+                if (days === null) return;
+                pickCfg[name] = days;
+                pickCfg = savePickConfig(pickCfg);
+            };
+            b.onclick = function () {
+                const days = refresh();
+                if (days === null) return;
+                applySelection(predicateFor(days));
+            };
+            refresh();
+            return row;
+        }
+
+        // Gleiche Grenze wie die frueheren festen Links: "aelter als 7"
+        // nimmt Anzeigen ab 7 Tagen, passend zu den Farbbaendern.
+        overlay.appendChild(makePickRow('older', 'älter als', 'Tage', pickCfg.older,
+            function (days) { return function (m, age) { return age >= days; }; }));
+        // Abgelaufene (Restlaufzeit 0 oder negativ) gehoeren dazu. Ohne
+        // bekanntes Enddatum wird nichts gewaehlt.
+        overlay.appendChild(makePickRow('ending', 'noch max.', 'Tage bis Ablauf', pickCfg.ending,
+            function (days) {
+                return function (m) { return typeof m.daysLeft === 'number' && m.daysLeft <= days; };
+            }));
+
+        // Hinweis gegen zu haeufiges Neu-Einstellen. Grau als Empfehlung, rot,
+        // sobald die Auswahl Anzeigen unter RECOMMENDED_MIN_AGE_DAYS enthaelt.
+        // Verboten wird nichts -- wie bei der Pause entscheidet der Nutzer.
+        const pickNote = document.createElement('div');
+        pickNote.dataset.kaPickNote = 'true';
+        pickNote.style.cssText = 'padding:0 14px 8px;font-size:11px;line-height:1.4;';
+        overlay.appendChild(pickNote);
+
+        function updatePickNote(chosen) {
+            const young = chosen.filter(function (m) { return matchAge(m) < RECOMMENDED_MIN_AGE_DAYS; }).length;
+            if (young > 0) {
+                pickNote.dataset.kaLevel = 'warn';
+                pickNote.style.color = '#e74c3c';
+                pickNote.style.fontWeight = '600';
+                pickNote.textContent = 'Achtung: ' + young + ' ausgewählte Anzeige(n) sind jünger als ' +
+                    RECOMMENDED_MIN_AGE_DAYS + ' Tage. Wer Anzeigen zu schnell hintereinander ' +
+                    'neu einstellt, fällt Kleinanzeigen eher auf – das kann zur Sperrung des ' +
+                    'Accounts führen.';
+                return;
+            }
+            pickNote.dataset.kaLevel = 'info';
+            pickNote.style.color = '#666';
+            pickNote.style.fontWeight = 'normal';
+            pickNote.textContent = 'Empfehlung: Anzeigen mindestens ' + RECOMMENDED_MIN_AGE_DAYS +
+                ' bis 14 Tage stehen lassen, bevor sie neu eingestellt werden. Zu häufiges ' +
+                'Neu-Einstellen fällt Kleinanzeigen auf und kann zur Sperrung des Accounts führen.';
+        }
 
         overlay.appendChild(buildAgeLegend());
 
@@ -1974,7 +2130,9 @@
         function updateSummary() {
             // Bewusst dieselbe Quelle wie der Start-Button: die genannte Zahl
             // ist damit exakt die Zahl der Anzeigen, die verarbeitet werden.
-            const count = confirmedSelection().length;
+            const chosen = confirmedSelection();
+            const count = chosen.length;
+            updatePickNote(chosen);
             // Nenner sind die SICHTBAREN Anzeigen -- "3 von 4" waere irritierend,
             // wenn nur drei Zeilen in der Liste stehen.
             const visible = entries.filter(function (e) { return passesFavFilter(e.match); }).length;
@@ -2543,6 +2701,15 @@
             validateDelayInput,
             loadDelayConfig,
             saveDelayConfig,
+            DEFAULT_PICK_OLDER_DAYS,
+            RECOMMENDED_MIN_AGE_DAYS,
+            DEFAULT_PICK_ENDING_DAYS,
+            PICK_LIMIT_MAX_DAYS,
+            LS_PICK_KEY,
+            parsePickDays,
+            sanitizePickConfig,
+            loadPickConfig,
+            savePickConfig,
             randomDelayMs,
             estimateRuntimeRange,
             formatRuntimeRange,

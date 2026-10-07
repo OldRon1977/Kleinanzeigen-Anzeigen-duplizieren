@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import helper from '../helper.user.js';
 
-const { renderConfirm } = helper;
+const { renderConfirm, LS_PICK_KEY, DEFAULT_PICK_OLDER_DAYS, DEFAULT_PICK_ENDING_DAYS } = helper;
 
 // daysLeft -> abgeleitetes Alter (60 - daysLeft):
 //   40 -> 20 Tage (dunkelgruen), 50 -> 10 Tage (gruen),
@@ -38,12 +38,28 @@ function checkedIds() {
     return MATCHES.filter((m, i) => checkboxes()[i].checked).map((m) => m.adId);
 }
 
+function pickInput(name) {
+    return overlay().querySelector('input[data-ka-pick="' + name + '"]');
+}
+
+function pickButton(name) {
+    return overlay().querySelector('button[data-ka-pick="' + name + '"]');
+}
+
+// Wert eintragen wie per Tastatur (oninput) und auf "auswählen" klicken.
+function pick(name, days) {
+    pickInput(name).value = String(days);
+    pickInput(name).oninput();
+    pickButton(name).click();
+}
+
 function summaryText() {
     return overlay().textContent;
 }
 
 beforeEach(() => {
     document.body.innerHTML = '';
+    localStorage.removeItem(LS_PICK_KEY);
 });
 
 describe('renderConfirm – Auswahl startet leer', () => {
@@ -95,25 +111,144 @@ describe('renderConfirm – Schnellwahl', () => {
     it('"älter als 7 Tage" nimmt nur die ab 7 Tagen', async () => {
         await renderConfirm(MATCHES, [], () => {});
 
-        buttonByText('älter als 7 Tage').click();
+        pick('older', 7);
         expect(checkedIds()).toEqual(['1001', '1002']);
     });
 
     it('"älter als 14 Tage" nimmt nur die ab 14 Tagen', async () => {
         await renderConfirm(MATCHES, [], () => {});
 
-        buttonByText('älter als 14 Tage').click();
+        pick('older', 14);
         expect(checkedIds()).toEqual(['1001']);
+    });
+
+    it('"älter als X" schliesst genau X Tage ein', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        pick('older', 10);
+        expect(checkedIds()).toEqual(['1001', '1002']);
+        pick('older', 11);
+        expect(checkedIds()).toEqual(['1001']);
+    });
+
+    it('"älter als 21 Tage" nimmt keine der Beispielanzeigen', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        pick('older', 21);
+        expect(checkedIds()).toEqual([]);
+        expect(buttonByText('Start').disabled).toBe(true);
+    });
+
+    it('"noch max. Y Tage bis Ablauf" nimmt Restlaufzeit bis einschliesslich Y', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        pick('ending', 50);
+        expect(checkedIds()).toEqual(['1001', '1002']);
+        pick('ending', 49);
+        expect(checkedIds()).toEqual(['1001']);
+    });
+
+    it('"noch max. Y Tage" nimmt Abgelaufene mit, Anzeigen ohne Enddatum nicht', async () => {
+        const list = [
+            { adId: '2001', title: 'Abgelaufen', endText: '01.09.2026', daysLeft: -2, ageDays: 62 },
+            { adId: '2002', title: 'Heute', endText: '03.09.2026', daysLeft: 0, ageDays: 60 },
+            { adId: '2003', title: 'Ohne Ende', endText: '', daysLeft: null, ageDays: 30 },
+            { adId: '2004', title: 'Laeuft lang', endText: '30.10.2026', daysLeft: 57, ageDays: 3 }
+        ];
+        await renderConfirm(list, [], () => {});
+
+        pick('ending', 5);
+        const ids = list.filter((m, i) => checkboxes()[i].checked).map((m) => m.adId);
+        expect(ids).toEqual(['2001', '2002']);
     });
 
     it('ersetzt eine bestehende Auswahl, statt sie zu ergaenzen', async () => {
         await renderConfirm(MATCHES, [], () => {});
 
         buttonByText('Alle').click();
-        buttonByText('älter als 14 Tage').click();
+        pick('older', 14);
 
         expect(checkedIds()).toEqual(['1001']);
         expect(summaryText()).toContain('1 von 4');
+    });
+
+    it('sperrt "auswählen" bei ungueltigem Wert und laesst die Auswahl stehen', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        pick('older', 14);
+        for (const bad of ['', '-1', '2.5', 'abc', '366']) {
+            pickInput('older').value = bad;
+            pickInput('older').oninput();
+            expect(pickButton('older').disabled).toBe(true);
+            pickButton('older').click();
+            // Der Handler prueft selbst noch einmal, auch ohne Sperre.
+            pickButton('older').onclick();
+            expect(checkedIds()).toEqual(['1001']);
+        }
+    });
+
+    it('startet mit den Standardwerten, solange nichts gespeichert ist', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        expect(pickInput('older').value).toBe(String(DEFAULT_PICK_OLDER_DAYS));
+        expect(pickInput('ending').value).toBe(String(DEFAULT_PICK_ENDING_DAYS));
+    });
+
+    it('merkt sich gueltige Werte fuer das naechste Oeffnen, ungueltige nicht', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+        pick('older', 21);
+        pick('ending', 3);
+        pickInput('ending').value = 'x';
+        pickInput('ending').oninput();
+
+        document.body.innerHTML = '';
+        await renderConfirm(MATCHES, [], () => {});
+
+        expect(pickInput('older').value).toBe('21');
+        expect(pickInput('ending').value).toBe('3');
+    });
+});
+
+describe('renderConfirm – Hinweis gegen zu schnelles Neu-Einstellen', () => {
+    function pickNote() {
+        return overlay().querySelector('[data-ka-pick-note]');
+    }
+
+    it('steht grau als Empfehlung da, solange nichts Junges gewaehlt ist', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        expect(pickNote().dataset.kaLevel).toBe('info');
+        expect(pickNote().textContent).toContain('7 bis 14 Tage');
+        pick('older', 7);
+        expect(pickNote().dataset.kaLevel).toBe('info');
+    });
+
+    it('wird rot und nennt die Zahl, sobald Anzeigen unter 7 Tagen gewaehlt sind', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        pick('older', 0);
+        expect(pickNote().dataset.kaLevel).toBe('warn');
+        expect(pickNote().textContent).toContain('2 ausgewählte Anzeige(n)');
+        expect(pickNote().textContent).toContain('Sperrung');
+    });
+
+    it('reagiert auch auf einzelnes Anhaken und auf "Keine"', async () => {
+        await renderConfirm(MATCHES, [], () => {});
+
+        checkboxes()[3].checked = true;           // 1004, 2 Tage alt
+        checkboxes()[3].onchange();
+        expect(pickNote().dataset.kaLevel).toBe('warn');
+        expect(pickNote().textContent).toContain('1 ausgewählte Anzeige(n)');
+
+        buttonByText('Keine').click();
+        expect(pickNote().dataset.kaLevel).toBe('info');
+    });
+
+    it('zaehlt genau 7 Tage nicht als zu jung', async () => {
+        await renderConfirm([{ adId: '7', title: 'Sieben', endText: '', daysLeft: 53, ageDays: 7 }], [], () => {});
+
+        buttonByText('Alle').click();
+        expect(pickNote().dataset.kaLevel).toBe('info');
     });
 });
 
@@ -257,7 +392,7 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
 
         favToggle().checked = true;
         favToggle().onchange();
-        buttonByText('älter als 7 Tage').click();
+        pick('older', 7);
 
         // 1001 und 1002 sind alt genug, 1002 ist aber gemerkt.
         expect(checkedIds()).toEqual(['1001']);
@@ -266,7 +401,7 @@ describe('renderConfirm – Zusatzfilter "nur nicht gemerkte"', () => {
     it('waehlt ohne Filter weiterhin auch gemerkte Anzeigen', async () => {
         await renderConfirm(MATCHES_FAV, [], () => {});
 
-        buttonByText('älter als 7 Tage').click();
+        pick('older', 7);
         expect(checkedIds()).toEqual(['1001', '1002']);
     });
 
