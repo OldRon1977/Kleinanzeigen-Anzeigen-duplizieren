@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.14.0
+// @version       1.15.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -101,6 +101,16 @@
     // im rollierenden 30-Tage-Fenster. Anders als eine Rechnung aus der
     // Anzeigenliste umfasst er auch inzwischen geloeschte Anzeigen.
     const AD_QUOTA_JSON_PATH = '/m-einstellungen-bearbeiten.json';
+    // Verlaengern wie der Knopf auf "Meine Anzeigen" (my-ads-frontend-bundle.js,
+    // gelesen 10/2026): POST mit den IDs als Query, CSRF-Token im Header. Das
+    // Token holt die Seite selbst aus dem Profil-JSON.
+    const AD_EXTEND_JSON_PATH = '/m-anzeigen-verlaengern.json';
+    const AD_PROFILE_JSON_PATH = '/m-mein-profil.json';
+    const EXTEND_REQUEST_TIMEOUT_MS = 15000;
+    // Abstand zwischen zwei Verlaengerungen. Die Seite schickt pro Klick eine
+    // ID; ein Schwall Requests in derselben Sekunde saehe nicht danach aus.
+    const EXTEND_GAP_MIN_MS = 2000;
+    const EXTEND_GAP_MAX_MS = 5000;
     const FREE_AD_LIMIT = 100;
     // Obergrenze gegen eine Endlosschleife, falls `paging.last` fehlt oder
     // luegt. 20 Seiten sind weit mehr, als ein privater Account je hat.
@@ -822,6 +832,221 @@
         renderBackupDone(state, zip, 'ka-sicherung-' + zipTimestamp() + '.zip');
     }
 
+    // === VERLAENGERN ===
+    // Kostenloses Verlaengern der Auswahl, ohne Tab und ohne Formular. Es wird
+    // nichts geloescht und nichts neu angelegt.
+    let extendStopRequested = false;
+
+    // Erst das Meta-Tag der Seite, sonst wie die Seite selbst aus dem Profil.
+    async function resolveCsrfToken() {
+        const meta = document.querySelector('meta[name="_csrf"], meta[name="csrf-token"]');
+        const fromMeta = meta && meta.getAttribute('content');
+        if (fromMeta) return fromMeta;
+        const res = await fetchWithTimeout(AD_PROFILE_JSON_PATH, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        }, JSON_FETCH_TIMEOUT_MS);
+        if (!res.ok) throw new Error('CSRF-Token nicht ermittelbar (HTTP ' + res.status + ')');
+        const data = await res.json();
+        if (!data || typeof data.csrfToken !== 'string' || !data.csrfToken) {
+            throw new Error('CSRF-Token nicht ermittelbar');
+        }
+        return data.csrfToken;
+    }
+
+    // Eine Anzeige pro Request, wie beim Klick auf der Seite. Die Antwort wird
+    // gekuerzt zurueckgegeben, damit sie im Log steht: wie eine erfolgreiche
+    // Antwort aussieht, ist noch nicht live gesehen.
+    async function extendOneAd(adId, csrfToken) {
+        if (!/^\d{1,20}$/.test(String(adId))) throw new Error('Ungültige Anzeigen-ID');
+        const res = await fetchWithTimeout(AD_EXTEND_JSON_PATH + '?ids=' + adId, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken
+            },
+            credentials: 'same-origin'
+        }, EXTEND_REQUEST_TIMEOUT_MS);
+        let body = '';
+        try { body = await res.text(); } catch (e) { /* Antwort ohne Body */ }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return String(body || '').slice(0, 300);
+    }
+
+    function randomExtendGapMs() {
+        return EXTEND_GAP_MIN_MS + Math.floor(Math.random() * (EXTEND_GAP_MAX_MS - EXTEND_GAP_MIN_MS + 1));
+    }
+
+    // Vor dem ersten Request wird die Liste frisch geladen und jede Anzeige
+    // gegen den aktuellen Serverstand geprueft. Die Auswahl im Overlay kann aus
+    // dem Cache stammen; verschickt wird nur, was JETZT kostenlos verlaengerbar
+    // ist. Scheitert das Laden, wird gar nichts verschickt.
+    async function runExtend(matches, onProgress, options) {
+        const opts = options || {};
+        const gapMs = opts.gapMs || randomExtendGapMs;
+        const state = {
+            total: matches.length,
+            done: [],
+            failed: [],
+            skipped: [],
+            current: null,
+            aborted: false
+        };
+        extendStopRequested = false;
+        if (onProgress) onProgress(state);
+
+        const fresh = await fetchAdListJson();
+        const byId = new Map();
+        fresh.forEach(function (ad) { if (ad && ad.id !== undefined) byId.set(String(ad.id), ad); });
+        const token = await resolveCsrfToken();
+
+        let sent = 0;
+        for (let i = 0; i < matches.length; i++) {
+            if (extendStopRequested) { state.aborted = true; break; }
+            const m = matches[i];
+            const raw = byId.get(String(m.adId));
+            if (!raw) {
+                state.skipped.push({ adId: m.adId, title: m.title, reason: 'nicht mehr in der Liste' });
+                continue;
+            }
+            if (!isFreeExtendable(raw)) {
+                state.skipped.push({
+                    adId: m.adId,
+                    title: m.title,
+                    reason: (raw.extend === true && raw.extensionFee) ? 'kostenpflichtig' : 'nicht verlängerbar'
+                });
+                continue;
+            }
+            if (sent > 0) {
+                await waitMs(gapMs(), null, function () { return extendStopRequested; });
+                if (extendStopRequested) { state.aborted = true; break; }
+            }
+            state.current = m;
+            if (onProgress) onProgress(state);
+            sent++;
+            try {
+                const answer = await extendOneAd(m.adId, token);
+                state.done.push({ adId: m.adId, title: m.title });
+                log('Verlängert adId ' + m.adId, { antwort: answer });
+            } catch (e) {
+                state.failed.push({ adId: m.adId, title: m.title, error: e.message || String(e) });
+                warn('Verlängern fehlgeschlagen adId ' + m.adId, e);
+            }
+        }
+        state.current = null;
+        // Enddaten haben sich geaendert -- der Cache darf sie nicht mehr liefern.
+        invalidateAdListCache();
+        if (onProgress) onProgress(state);
+        return state;
+    }
+
+    function renderExtendProgress(state) {
+        const overlay = ensureOverlay();
+        overlay.innerHTML = '';
+        const header = document.createElement('div');
+        header.style.cssText = OVERLAY_HEADER_CSS;
+        header.textContent = 'Verlängern läuft';
+        overlay.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px 14px;line-height:1.5;';
+        const count = document.createElement('div');
+        count.setAttribute('data-ka-extend', 'count');
+        count.textContent = (state.done.length + state.failed.length + state.skipped.length) +
+            ' von ' + state.total + ' bearbeitet';
+        body.appendChild(count);
+        if (state.current) {
+            const cur = document.createElement('div');
+            cur.style.cssText = 'color:#555;font-size:12px;';
+            cur.textContent = 'Aktuell: ' + (state.current.title || 'ID ' + state.current.adId);
+            body.appendChild(cur);
+        }
+        overlay.appendChild(body);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
+        const stop = makeButton(extendStopRequested ? 'Wird gestoppt …' : 'Stop', false);
+        stop.disabled = extendStopRequested;
+        stop.onclick = function () {
+            extendStopRequested = true;
+            stop.disabled = true;
+            stop.textContent = 'Wird gestoppt …';
+        };
+        actions.appendChild(stop);
+        overlay.appendChild(actions);
+    }
+
+    function renderExtendDone(state, fatalError) {
+        const overlay = ensureOverlay();
+        overlay.innerHTML = '';
+        const header = document.createElement('div');
+        header.style.cssText = OVERLAY_HEADER_CSS;
+        header.textContent = fatalError ? 'Verlängern nicht gestartet'
+            : (state.aborted ? 'Verlängern abgebrochen' : 'Verlängern abgeschlossen');
+        overlay.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px 14px;line-height:1.5;';
+        if (fatalError) {
+            const err = document.createElement('div');
+            err.setAttribute('data-ka-extend', 'fatal');
+            err.style.cssText = 'color:#e74c3c;';
+            err.textContent = 'Es wurde nichts verlängert: ' + fatalError;
+            body.appendChild(err);
+        } else {
+            const okLine = document.createElement('div');
+            okLine.setAttribute('data-ka-extend', 'ok');
+            okLine.textContent = 'Verlängert: ' + state.done.length + ' von ' + state.total;
+            body.appendChild(okLine);
+            const lists = [
+                [state.skipped, '#a06200', function (s) { return (s.title || s.adId) + ': übersprungen (' + s.reason + ')'; }],
+                [state.failed, '#e74c3c', function (f) { return (f.title || f.adId) + ': ' + f.error; }]
+            ];
+            lists.forEach(function (entry) {
+                if (!entry[0].length) return;
+                const ul = document.createElement('ul');
+                ul.style.cssText = 'margin:6px 0 0 18px;font-size:12px;color:' + entry[1] + ';';
+                entry[0].forEach(function (item) {
+                    const li = document.createElement('li');
+                    li.textContent = entry[2](item);
+                    ul.appendChild(li);
+                });
+                body.appendChild(ul);
+            });
+            const hint = document.createElement('div');
+            hint.style.cssText = 'color:#777;font-size:11px;margin-top:8px;';
+            hint.textContent = 'Die neuen Enddaten zeigt die Seite nach dem Neuladen.';
+            body.appendChild(hint);
+        }
+        overlay.appendChild(body);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = OVERLAY_FOOTER_CSS;
+        const close = makeButton('Schließen', false);
+        close.onclick = closeOverlay;
+        actions.appendChild(close);
+        const reload = makeButton('Seite neu laden', true);
+        reload.onclick = function () { window.location.reload(); };
+        actions.appendChild(reload);
+        overlay.appendChild(actions);
+    }
+
+    async function startExtendFlow(matches) {
+        log('Verlängern gestartet', { anzeigen: matches.length });
+        try {
+            const state = await runExtend(matches, renderExtendProgress);
+            log('Verlängern fertig', {
+                ok: state.done.length, fail: state.failed.length,
+                skip: state.skipped.length, aborted: state.aborted
+            });
+            renderExtendDone(state, null);
+        } catch (e) {
+            warn('Verlängern abgebrochen, nichts verschickt', e);
+            renderExtendDone({ total: matches.length, done: [], failed: [], skipped: [] }, e.message || String(e));
+        }
+    }
+
     // === EINZEL-BUTTONS PRO ANZEIGE ===
     const BTN_STYLE = 'margin-left:8px;padding:4px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;font-size:12px;vertical-align:middle;display:inline-flex;align-items:center;';
 
@@ -1157,8 +1382,17 @@
             ageDays: ageDays,
             ageExact: age.exact,
             favCount: typeof ad.watchCount === 'number' ? ad.watchCount : null,
-            viewCount: typeof ad.viewCount === 'number' ? ad.viewCount : null
+            viewCount: typeof ad.viewCount === 'number' ? ad.viewCount : null,
+            extendable: isFreeExtendable(ad)
         };
+    }
+
+    // Dieselbe Bedingung wie der Verlaengern-Knopf der Seite: aktiv nur bei
+    // `extend`. Mit `extensionFee` kostet die Verlaengerung Geld und fuehrt in
+    // den Warenkorb -- das bleibt dem Nutzer per Hand vorbehalten. Bei nicht
+    // verlaengerbaren Anzeigen fehlt `extend` im JSON ganz.
+    function isFreeExtendable(ad) {
+        return !!ad && ad.extend === true && !ad.extensionFee && ad.unlimitedLifetime !== true;
     }
 
     function formatDate(d) {
@@ -1176,6 +1410,16 @@
             if (mapped) matches.push(mapped);
             else skipped.push({ adId: ad && ad.id ? String(ad.id) : null, title: (ad && ad.title) || '(ohne Titel)', reason: 'kein Datum' });
         });
+
+        // Die Felder zum Verlaengern sind bisher nur aus dem Seiten-JS bekannt,
+        // nicht aus einer echten Antwort. Deshalb roh ins Log, sobald sie
+        // auftauchen -- das ist die Rueckmeldung fuer den ersten Test.
+        const extendInfo = raw.filter(function (ad) {
+            return ad && ('extend' in ad || 'extensionFee' in ad);
+        }).map(function (ad) {
+            return { adId: String(ad.id), extend: ad.extend, extensionFee: ad.extensionFee, endDate: ad.endDate };
+        });
+        if (extendInfo.length) log('Verlängern-Felder in der Anzeigenliste', extendInfo);
 
         return { matches: matches, skipped: skipped, source: 'json' };
     }
@@ -1850,6 +2094,22 @@
             bulk.appendChild(b);
         });
 
+        // Nur mit der JSON-Quelle: die Kartenansicht kennt das Feld nicht, ein
+        // Link ohne Treffer waere dort irrefuehrend.
+        const extendKnown = matches.some(function (m) { return typeof m.extendable === 'boolean'; });
+        if (extendKnown) {
+            const extendCount = matches.filter(function (m) { return m.extendable === true; }).length;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.dataset.kaPick = 'extendable';
+            b.textContent = 'verlängerbar (' + extendCount + ')';
+            b.title = 'Wählt die Anzeigen, die sich jetzt kostenlos verlängern lassen ' +
+                '(innerhalb von 8 Tagen vor Ablauf). Kostenpflichtige Verlängerungen bleiben außen vor.';
+            b.style.cssText = linkStyle;
+            b.onclick = function () { applySelection(function (m) { return m.extendable === true; }); };
+            bulk.appendChild(b);
+        }
+
         // Nur anbieten, wenn ueberhaupt ein Zaehler gelesen werden konnte --
         // eine Checkbox, die nach einem Markup-Umbau nichts mehr auswaehlt,
         // waere schlimmer als keine.
@@ -2121,8 +2381,31 @@
                 meta.onBackup(chosen);
             };
         }
+        // Verlaengern nimmt aus der Auswahl nur die verlaengerbaren Anzeigen.
+        // Die Pause zwischen zwei Anzeigen gilt hier nicht: es entsteht keine
+        // neue Anzeige, und die Seite selbst verlaengert per Klick sofort.
+        let extendBtn = null;
+        function extendableChosen() {
+            return confirmedSelection().filter(function (m) { return m.extendable === true; });
+        }
+        if (extendKnown && meta && typeof meta.onExtend === 'function') {
+            extendBtn = makeButton('Auswahl verlängern', false);
+            extendBtn.dataset.kaAction = 'extend';
+            extendBtn.title = 'Verlängert die ausgewählten Anzeigen kostenlos um die Regellaufzeit. ' +
+                'Nicht verlängerbare in der Auswahl werden übersprungen. Es wird nichts gelöscht.';
+            extendBtn.onclick = function () {
+                const chosen = extendableChosen();
+                if (!chosen.length) return;
+                const rest = confirmedSelection().length - chosen.length;
+                const question = chosen.length + ' Anzeige(n) kostenlos verlängern?' +
+                    (rest > 0 ? '\n' + rest + ' ausgewählte Anzeige(n) sind nicht verlängerbar und werden übersprungen.' : '');
+                if (!window.confirm(question)) return;
+                meta.onExtend(chosen);
+            };
+        }
         actions.appendChild(cancel);
         if (backup) actions.appendChild(backup);
+        if (extendBtn) actions.appendChild(extendBtn);
         actions.appendChild(start);
         overlay.appendChild(actions);
 
@@ -2168,6 +2451,13 @@
                 backup.disabled = count === 0;
                 backup.style.opacity = count === 0 ? '0.5' : '1';
                 backup.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
+            if (extendBtn) {
+                const n = extendableChosen().length;
+                extendBtn.textContent = 'Auswahl verlängern (' + n + ')';
+                extendBtn.disabled = n === 0;
+                extendBtn.style.opacity = n === 0 ? '0.5' : '1';
+                extendBtn.style.cursor = n === 0 ? 'not-allowed' : 'pointer';
             }
         }
         updateDelayNote();
@@ -2400,7 +2690,8 @@
             fromCache: !!result.fromCache,
             ageSeconds: result.ageSeconds || 0,
             onReload: function () { startBatchFlow({ force: true }); },
-            onBackup: function (matches) { startBackupFlow(matches); }
+            onBackup: function (matches) { startBackupFlow(matches); },
+            onExtend: function (matches) { startExtendFlow(matches); }
         });
     }
 
@@ -2734,6 +3025,10 @@
             runBackup, renderBackupProgress, renderBackupDone, startBackupFlow,
             requestBackupStop: function () { backupStopRequested = true; },
             AD_EDIT_PATH, BACKUP_GAP_MIN_MS, BACKUP_GAP_MAX_MS,
+            isFreeExtendable, resolveCsrfToken, extendOneAd, runExtend,
+            renderExtendProgress, renderExtendDone, startExtendFlow,
+            requestExtendStop: function () { extendStopRequested = true; },
+            AD_EXTEND_JSON_PATH, AD_PROFILE_JSON_PATH,
             classifyResultValue
         };
         return; // im Test-Kontext keine Initialisierung/Timer

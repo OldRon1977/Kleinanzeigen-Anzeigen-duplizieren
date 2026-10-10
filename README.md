@@ -120,6 +120,17 @@ In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle s
 
 > Scheitert eine Anzeige — etwa weil der Login abgelaufen ist —, läuft die Sicherung weiter und die Anzeige steht als FEHLER im Protokoll. Holt das Script statt der Bearbeiten-Seite eine andere Seite, wird die Anzeige nicht als leere Sicherung in die ZIP geschrieben.
 
+### Verlängern (Helper ab v1.15.0, Testversion)
+
+Im Auswahl-Fenster gibt es dafür zwei Elemente:
+
+- Der Schnellwahl-Link **"verlängerbar (N)"** neben "Alle" und "Keine" wählt die Anzeigen, die sich jetzt kostenlos verlängern lassen. Kleinanzeigen erlaubt das innerhalb von 8 Tagen vor Ablauf.
+- Der Button **"Auswahl verlängern (N)"** neben "Auswahl sichern" verlängert die ausgewählten Anzeigen nach einer Rückfrage. Nicht verlängerbare Anzeigen in der Auswahl werden übersprungen und in der Rückfrage genannt.
+
+Beim Verlängern öffnet sich kein Tab, und es wird nichts gelöscht oder neu angelegt. Das Script macht dasselbe wie der Verlängern-Knopf auf der Seite, nur für mehrere Anzeigen nacheinander. Zwischen zwei Anzeigen liegen 2–5 Sekunden. **Stop** beendet den Lauf nach der laufenden Anzeige.
+
+> Vor dem ersten Request lädt das Script die Anzeigenliste frisch und prüft jede Anzeige noch einmal. Verschickt wird nur, was in diesem Moment kostenlos verlängerbar ist. **Kostenpflichtige Verlängerungen** (Feld `extensionFee`) lässt das Script immer aus, die bleiben Handarbeit. Lässt sich die Liste nicht laden, wird nichts verlängert. Beides funktioniert nur mit der JSON-Quelle. Auf der Rückfallebene über die Seitenansicht erscheinen Link und Button nicht.
+
 ### Reihenfolge beim Neu-Einstellen (geändert in v3.10.0)
 
 Bis v3.9.0 löschte das Script zuerst die alte Anzeige und legte danach die neue an. Scheiterte der zweite Schritt, war die Anzeige weg — dagegen halfen nur der Recovery-Snapshot und der Auto-Stop.
@@ -177,6 +188,8 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - **CSRF-Token nachladen** (Hauptscript, wenn keines im DOM steht): `GET /m-meine-anzeigen.html`
 - **Anzeigenliste** (Helper): `GET /m-meine-anzeigen-verwalten.json?pageNum={n}&sort=DEFAULT`, höchstens 20 Seiten
 - **Anzeigenkontingent** (Helper): `GET /m-einstellungen-bearbeiten.json`, Feld `newAdCount`
+- **Verlängern** (Helper): `POST /m-anzeigen-verlaengern.json?ids={adId}` mit Header `X-CSRF-TOKEN`. Ob eine Anzeige kostenlos verlängerbar ist, steht in der Anzeigenliste in den Feldern `extend` und `extensionFee`
+- **CSRF-Token** (Helper, wenn kein Meta-Tag im DOM steht): `GET /m-mein-profil.json`, Feld `csrfToken`
 - **Anzeigenbilder** (Hauptscript für den Snapshot, Helper für die Sicherung): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
 - **Bearbeiten-Seite** (Helper, für "Auswahl sichern"): `GET /p-anzeige-bearbeiten.html?adId={adId}`, nur lesend
 - **CSRF-Token im DOM**: zuerst `meta[name="_csrf"], meta[name="csrf-token"]` als ein Selektorpaar — es gewinnt das Element, das im Dokument zuerst steht, nicht die Reihenfolge im Selektor. Erst danach `input[name="_csrf"]`
@@ -216,6 +229,11 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Das Tab-übergreifende Protokoll zwischen Haupt- und Helper-Script (localStorage-Result-Keys, Fehlercodes, IndexedDB-Snapshots) wird durch die Tests in `tests/helper.protocol.test.js` abgesichert; Änderungen daran müssen in beiden Scripts synchron erfolgen.
 
 ## Changelog
+
+### Helper 1.15.0 (Oktober 2026, Testversion)
+
+- **Neu: Anzeigen verlängern** ([#70](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/issues/70)). Im Auswahl-Fenster wählt der Link "verlängerbar (N)" die Anzeigen, die sich kostenlos verlängern lassen. "Auswahl verlängern (N)" verlängert sie nach einer Rückfrage nacheinander. Kostenpflichtige Verlängerungen werden nie automatisch ausgeführt. Endpunkt und Felder stammen aus dem Seiten-JavaScript von "Meine Anzeigen". Eine echte Verlängerung ist mit dieser Version noch nicht gelaufen.
+- **Tests**: 358 Tests (vorher 345).
 
 ### Helper 1.14.0 (Oktober 2026)
 
