@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.14.0
+// @version       1.15.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -212,7 +212,9 @@
                         adId: s.adId,
                         title: s.title || '(ohne Titel)',
                         capturedAt: s.capturedAt,
-                        imageCount: (s.images || []).length
+                        imageCount: (s.images || []).length,
+                        // fehlt in Snapshots von Hauptscript < 3.11.0
+                        categoryId: (s.hiddenFields && s.hiddenFields.categoryId) || null
                     };
                 });
                 resolve(meta);
@@ -419,6 +421,263 @@
             files = files.concat(await snapshotZipFiles(s));
         }
         triggerDownload(await buildZip(files), 'ka-recovery-' + zipTimestamp() + '.zip');
+    }
+
+    // === SICHERUNG IMPORTIEREN UND WIEDERHERSTELLEN ===
+    // Gegenstueck zu buildZip: liest eine ZIP im Format von Recovery und
+    // Sicherung zurueck in Snapshots. Die eigenen ZIPs sind STORE; eine von
+    // Hand neu gepackte ZIP ist meist DEFLATE -- beides wird gelesen, DEFLATE
+    // ueber DecompressionStream des Browsers. Kein Fremdcode, wie beim Schreiben.
+    // Kein ZIP64, keine Verschluesselung: beides kommt bei diesen Archiven
+    // nicht vor und wird mit klarer Meldung abgewiesen.
+    const ZIP_SIG_LOCAL = 0x04034b50;
+    const ZIP_SIG_CENTRAL = 0x02014b50;
+    const ZIP_SIG_EOCD = 0x06054b50;
+
+    async function inflateRaw(bytes) {
+        if (typeof DecompressionStream === 'undefined') {
+            throw new Error('Komprimierte ZIP wird von diesem Browser nicht unterstützt');
+        }
+        // Ohne Blob.stream(): nicht jede Umgebung hat es, ReadableStream schon.
+        const source = new ReadableStream({
+            start: function (controller) { controller.enqueue(bytes); controller.close(); }
+        });
+        const reader = source.pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+        const chunks = [];
+        let total = 0;
+        while (true) {
+            const step = await reader.read();
+            if (step.done) break;
+            chunks.push(step.value);
+            total += step.value.length;
+        }
+        const out = new Uint8Array(total);
+        let pos = 0;
+        chunks.forEach(function (c) { out.set(c, pos); pos += c.length; });
+        return out;
+    }
+
+    /**
+     * Liest alle Dateien einer ZIP. Rueckgabe: [{ name, data: Uint8Array }]
+     * in der Reihenfolge des Zentralverzeichnisses; Verzeichniseintraege
+     * (Name endet auf "/") fehlen. Groessen und Offsets kommen aus dem
+     * Zentralverzeichnis, das ist auch bei Archiven mit Data-Descriptor
+     * verlaesslich.
+     */
+    async function readZip(buffer) {
+        const buf = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+        let eocd = -1;
+        for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 0xFFFF); i--) {
+            if (dv.getUint32(i, true) === ZIP_SIG_EOCD) { eocd = i; break; }
+        }
+        if (eocd < 0) throw new Error('Keine ZIP-Datei (Zentralverzeichnis fehlt)');
+        const count = dv.getUint16(eocd + 10, true);
+        let pos = dv.getUint32(eocd + 16, true);
+        const decoder = new TextDecoder();
+        const files = [];
+        for (let n = 0; n < count; n++) {
+            if (pos + 46 > buf.length || dv.getUint32(pos, true) !== ZIP_SIG_CENTRAL) {
+                throw new Error('ZIP beschädigt (Zentralverzeichnis)');
+            }
+            const flags = dv.getUint16(pos + 8, true);
+            const method = dv.getUint16(pos + 10, true);
+            const compSize = dv.getUint32(pos + 20, true);
+            const nameLen = dv.getUint16(pos + 28, true);
+            const extraLen = dv.getUint16(pos + 30, true);
+            const commentLen = dv.getUint16(pos + 32, true);
+            const localOff = dv.getUint32(pos + 42, true);
+            const name = decoder.decode(buf.subarray(pos + 46, pos + 46 + nameLen));
+            pos += 46 + nameLen + extraLen + commentLen;
+            if (name.slice(-1) === '/') continue;
+            if (flags & 0x1) throw new Error('Verschlüsselte ZIP wird nicht unterstützt: ' + name);
+            if (localOff + 30 > buf.length || dv.getUint32(localOff, true) !== ZIP_SIG_LOCAL) {
+                throw new Error('ZIP beschädigt (Eintrag ' + name + ')');
+            }
+            const start = localOff + 30 + dv.getUint16(localOff + 26, true) + dv.getUint16(localOff + 28, true);
+            if (start + compSize > buf.length) throw new Error('ZIP beschädigt (Eintrag ' + name + ' endet hinter der Datei)');
+            const raw = buf.subarray(start, start + compSize);
+            let data;
+            if (method === 0) data = raw;
+            else if (method === 8) data = await inflateRaw(raw);
+            else throw new Error('Komprimierungsmethode ' + method + ' wird nicht unterstützt: ' + name);
+            files.push({ name: name, data: data });
+        }
+        return files;
+    }
+
+    const ZIP_DATA_JSON = /(^|\/)data\.json$/;
+    const ZIP_IMAGE = /(^|\/)image_(\d+)\.(jpe?g|png)$/i;
+
+    function parseCapturedAt(value) {
+        if (typeof value === 'number') return value;
+        const t = Date.parse(value || '');
+        return isNaN(t) ? Date.now() : t;
+    }
+
+    /**
+     * Baut aus den Dateien einer ZIP Snapshot-Objekte in der Form aus
+     * PROTOCOL.md: je Ordner mit data.json ein Snapshot; image_NN-Dateien im
+     * selben Ordner werden in Nummernreihenfolge zu images[]. Nennt data.json
+     * unter imageUrls mehr Bilder, als Dateien da sind (Recovery-ZIP einer
+     * Version vor 3.10.1), bleiben die uebrigen als URL-Platzhalter mit
+     * blob null -- der Worker laedt sie beim Wiederherstellen nach.
+     *
+     * Rueckgabe: { snapshots: [...], problems: [{ name, error }] }
+     */
+    function snapshotsFromZipFiles(files) {
+        const result = { snapshots: [], problems: [] };
+        const byFolder = {};
+        files.forEach(function (f) {
+            const slash = f.name.lastIndexOf('/');
+            const folder = slash >= 0 ? f.name.slice(0, slash + 1) : '';
+            (byFolder[folder] = byFolder[folder] || []).push(f);
+        });
+        Object.keys(byFolder).sort().forEach(function (folder) {
+            const entries = byFolder[folder];
+            const meta = entries.filter(function (f) { return ZIP_DATA_JSON.test(f.name); })[0];
+            if (!meta) return;
+            let data;
+            try { data = JSON.parse(new TextDecoder().decode(meta.data)); }
+            catch (e) { result.problems.push({ name: meta.name, error: 'data.json nicht lesbar' }); return; }
+            if (!data || typeof data !== 'object') { result.problems.push({ name: meta.name, error: 'data.json ohne Inhalt' }); return; }
+
+            // adId aus data.json, sonst aus dem Ordnernamen "<adId>-<Titel>/".
+            const folderId = (/(^|\/)(\d+)-[^\/]*\/$/.exec(folder) || [])[2];
+            const adId = String(data.adId || folderId || '');
+            if (!/^\d+$/.test(adId)) { result.problems.push({ name: meta.name, error: 'keine Anzeigen-ID' }); return; }
+
+            const urls = Array.isArray(data.imageUrls) ? data.imageUrls : [];
+            const imageFiles = entries.map(function (f) {
+                const m = ZIP_IMAGE.exec(f.name);
+                return m ? { n: Number(m[2]), file: f, ext: m[3].toLowerCase() } : null;
+            }).filter(Boolean).sort(function (a, b) { return a.n - b.n; });
+            const count = Math.max(urls.length, imageFiles.length ? imageFiles[imageFiles.length - 1].n : 0);
+            const images = [];
+            for (let i = 0; i < count; i++) {
+                const hit = imageFiles.filter(function (x) { return x.n === i + 1; })[0];
+                const mime = hit ? (hit.ext === 'png' ? 'image/png' : 'image/jpeg') : null;
+                images.push({
+                    url: typeof urls[i] === 'string' ? urls[i] : '',
+                    blob: hit ? new Blob([hit.file.data], { type: mime }) : null,
+                    mime: mime
+                });
+            }
+
+            result.snapshots.push({
+                adId: adId,
+                capturedAt: parseCapturedAt(data.capturedAt),
+                title: String(data.title || (data.fields && data.fields.title) || ''),
+                fields: (data.fields && typeof data.fields === 'object') ? data.fields : {},
+                rawFields: (data.rawFields && typeof data.rawFields === 'object') ? data.rawFields : {},
+                hiddenFields: (data.hiddenFields && typeof data.hiddenFields === 'object') ? data.hiddenFields : {},
+                images: images
+            });
+        });
+        return result;
+    }
+
+    async function putSnapshot(snap) {
+        const db = await openIDB();
+        return new Promise(function (resolve, reject) {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            const req = tx.objectStore(IDB_STORE).put(snap);
+            req.onsuccess = function () { resolve(); };
+            req.onerror = function () { reject(req.error); };
+        });
+    }
+
+    // Liest eine ZIP (File oder Blob) und legt ihre Anzeigen als Snapshots
+    // ab -- dieselbe Ablage, aus der auch die Recovery-Liste liest. Ein
+    // vorhandener Snapshot mit derselben adId wird ersetzt.
+    async function importBackupZip(file) {
+        const files = await readZip(await file.arrayBuffer());
+        const parsed = snapshotsFromZipFiles(files);
+        for (const snap of parsed.snapshots) await putSnapshot(snap);
+        return parsed;
+    }
+
+    // Wiederherstellen: Der Worker befuellt das Formular "Anzeige aufgeben"
+    // aus dem Snapshot (Hash #kaRestore=<adId>) und ueberlaesst das Absenden
+    // dem Nutzer. Mit bekannter Kategorie geht es direkt zu Schritt 2 --
+    // Kleinanzeigen nimmt categoryId als Query-Parameter (live geprueft
+    // 10/2026); ohne Kategorie (Snapshot von Hauptscript < 3.11.0) zu
+    // Schritt 1, wo der Nutzer sie waehlt und der Worker den Auftrag ueber
+    // einen sessionStorage-Marker mitnimmt.
+    const POST_AD_STEP1_URL = 'https://www.kleinanzeigen.de/p-anzeige-aufgeben.html';
+    const POST_AD_STEP2_URL = 'https://www.kleinanzeigen.de/p-anzeige-aufgeben-schritt2.html';
+    const RESTORE_HASH_PREFIX = '#kaRestore=';
+    const LS_RESTORE_RESULT_PREFIX = 'ka-restore-result-';
+    // Der Nutzer prueft das Formular selbst, womoeglich mit Pausen. Nach
+    // Ablauf wird nur der Knopf wieder freigegeben, kein Tab geschlossen.
+    const RESTORE_WAIT_TIMEOUT_MS = 30 * 60 * 1000;
+
+    function restoreUrl(meta) {
+        const cat = (meta.categoryId !== undefined && meta.categoryId !== null && /^\d+$/.test(String(meta.categoryId)))
+            ? String(meta.categoryId) : null;
+        return (cat ? POST_AD_STEP2_URL + '?categoryId=' + cat : POST_AD_STEP1_URL) + RESTORE_HASH_PREFIX + meta.adId;
+    }
+
+    function openRestore(meta, button, onDone) {
+        const url = restoreUrl(meta);
+        const lsKey = LS_RESTORE_RESULT_PREFIX + meta.adId;
+        const originalText = button.textContent;
+        try { localStorage.removeItem(lsKey); } catch (e) {}
+
+        let opened = false;
+        try {
+            if (typeof GM_openInTab === 'function') {
+                GM_openInTab(url, { active: true, insert: true, setParent: true });
+                opened = true;
+            }
+        } catch (e) {
+            warn('GM_openInTab fehlgeschlagen, fallback auf window.open', e);
+        }
+        if (!opened && !window.open(url, '_blank')) {
+            button.style.color = '#e74c3c';
+            button.textContent = '\u274C Popup blockiert';
+            setTimeout(function () { button.style.color = ''; button.textContent = originalText; }, 3000);
+            return;
+        }
+
+        button.disabled = true;
+        button.style.color = '#888';
+        button.textContent = '\u23F3 Formular offen \u2026';
+        button.title = 'Im neuen Tab prüfen und selbst auf "Anzeige aufgeben" klicken';
+
+        let done = false;
+        const cleanup = function () {
+            window.removeEventListener('storage', onStorage);
+            clearInterval(pollId);
+            clearTimeout(timeoutId);
+            try { localStorage.removeItem(lsKey); } catch (e) {}
+        };
+        const finish = function () {
+            if (done) return;
+            done = true;
+            cleanup();
+            // Es gibt eine Anzeige mehr -- der Zwischenspeicher der Liste
+            // stimmt nicht mehr.
+            invalidateAdListCache();
+            button.style.color = '#27ae60';
+            button.textContent = '\u2705 Wiederhergestellt';
+            if (typeof onDone === 'function') onDone(meta);
+        };
+        const onStorage = function (e) {
+            if (e.key === lsKey && e.newValue === 'ok') finish();
+        };
+        window.addEventListener('storage', onStorage);
+        const pollId = setInterval(function () {
+            try { if (localStorage.getItem(lsKey) === 'ok') finish(); } catch (e) {}
+        }, 1000);
+        const timeoutId = setTimeout(function () {
+            if (done) return;
+            done = true;
+            cleanup();
+            button.disabled = false;
+            button.style.color = '';
+            button.textContent = originalText;
+        }, RESTORE_WAIT_TIMEOUT_MS);
     }
 
     // === SICHERUNG DER AUSWAHL ===
@@ -1315,13 +1574,30 @@
     // Log-Texts. Ein Textwechsel an zwei von drei Stellen waere eine lautlose
     // Inkonsistenz gewesen.
     async function appendRecoveryIfPresent(parent) {
-        try {
-            const snapsMeta = await listSnapshotMeta();
-            await appendRecoverySection(parent, snapsMeta);
-        } catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+        let snapsMeta = [];
+        try { snapsMeta = await listSnapshotMeta(); }
+        catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+
+        // Liste und Import teilen sich einen Rahmen, damit ein Import oder
+        // eine Wiederherstellung die Liste an Ort und Stelle erneuern kann.
+        const wrap = document.createElement('div');
+        wrap.setAttribute('data-ka-recovery', '');
+        parent.appendChild(wrap);
+        const rerender = async function (statusText) {
+            let fresh = [];
+            try { fresh = await listSnapshotMeta(); }
+            catch (e) { warn('Recovery-Listing fehlgeschlagen', e); }
+            wrap.innerHTML = '';
+            await appendRecoverySection(wrap, fresh, rerender);
+            appendImportSection(wrap, rerender, statusText);
+        };
+        await appendRecoverySection(wrap, snapsMeta, rerender);
+        appendImportSection(wrap, rerender);
     }
 
-    async function appendRecoverySection(parent, snapsMeta) {
+    // onChange (optional) wird nach "Alle löschen" und nach einer
+    // Wiederherstellung gerufen, damit der Aufrufer die Liste neu aufbaut.
+    async function appendRecoverySection(parent, snapsMeta, onChange) {
         if (!snapsMeta.length) return;
         const sec = document.createElement('div');
         sec.style.cssText = 'padding:10px 14px;border-top:1px solid #eee;background:#fff7e6;';
@@ -1330,12 +1606,34 @@
         title.textContent = '\u26A0 ' + snapsMeta.length + ' Recovery-Snapshot(s) verfügbar';
         sec.appendChild(title);
 
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:11px;color:#777;margin-bottom:6px;';
+        hint.textContent = 'Wiederherstellen öffnet "Anzeige aufgeben" vorbefüllt mit Texten, Feldern und Bildern. Abgeschickt wird erst durch dich.';
+        sec.appendChild(hint);
+
         const ul = document.createElement('ul');
         ul.style.cssText = 'margin:4px 0 8px 18px;font-size:12px;color:#555;';
         snapsMeta.forEach(function (s) {
             const li = document.createElement('li');
+            li.style.cssText = 'margin-bottom:4px;';
             const dt = new Date(s.capturedAt || Date.now());
-            li.textContent = (s.title || '(ohne Titel)') + ' (ID ' + s.adId + ', ' + s.imageCount + ' Bilder, ' + dt.toLocaleString() + ')';
+            const text = document.createElement('span');
+            text.textContent = (s.title || '(ohne Titel)') + ' (ID ' + s.adId + ', ' + s.imageCount + ' Bilder, ' + dt.toLocaleString() + ') ';
+            li.appendChild(text);
+            const restore = document.createElement('button');
+            restore.type = 'button';
+            restore.textContent = 'Wiederherstellen';
+            restore.setAttribute('data-ka-restore', s.adId);
+            restore.title = s.categoryId
+                ? 'Öffnet "Anzeige aufgeben" in der gespeicherten Kategorie, befüllt aus dieser Sicherung'
+                : 'Öffnet "Anzeige aufgeben" – Kategorie bitte wählen, danach wird das Formular aus dieser Sicherung befüllt';
+            restore.style.cssText = 'padding:2px 8px;border:1px solid #007bff;border-radius:4px;background:#007bff;color:#fff;cursor:pointer;font-size:11px;';
+            restore.onclick = function () {
+                openRestore(s, restore, function () {
+                    if (typeof onChange === 'function') onChange();
+                });
+            };
+            li.appendChild(restore);
             ul.appendChild(li);
         });
         sec.appendChild(ul);
@@ -1358,13 +1656,64 @@
         clr.onclick = async function () {
             if (!confirm('Alle ' + snapsMeta.length + ' Snapshots wirklich löschen?')) return;
             await clearAllSnapshots();
-            sec.remove();
+            if (typeof onChange === 'function') onChange();
+            else sec.remove();
         };
         row.appendChild(dl);
         row.appendChild(clr);
         sec.appendChild(row);
 
         parent.appendChild(sec);
+    }
+
+    // Import einer Recovery- oder Sicherungs-ZIP. Die Anzeigen landen als
+    // Snapshots in derselben Ablage wie die Recovery-Liste und erscheinen
+    // dort mit Wiederherstellen-Knopf. Der Dateidialog oeffnet sich nur auf
+    // Klick; die Datei verlaesst den Browser nicht.
+    function appendImportSection(parent, onChange, statusText) {
+        const sec = document.createElement('div');
+        sec.style.cssText = 'padding:8px 14px;border-top:1px solid #eee;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:#555;';
+
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.zip,application/zip';
+        input.style.display = 'none';
+        input.setAttribute('data-ka-import', '');
+
+        const btn = makeButton('Sicherung importieren (ZIP)', false);
+        btn.title = 'Liest eine Recovery- oder Sicherungs-ZIP dieses Scripts ein. Die Anzeigen erscheinen dann oben zur Wiederherstellung.';
+        btn.onclick = function () { input.click(); };
+
+        const status = document.createElement('span');
+        status.setAttribute('data-ka-import-status', '');
+        if (statusText) status.textContent = statusText;
+
+        input.onchange = async function () {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            btn.disabled = true;
+            status.textContent = 'Lese ZIP \u2026';
+            try {
+                const res = await importBackupZip(file);
+                log('Sicherung importiert', { anzeigen: res.snapshots.length, probleme: res.problems });
+                const text = res.snapshots.length + ' Anzeige(n) importiert' +
+                    (res.problems.length ? ', ' + res.problems.length + ' Eintrag/Einträge übersprungen' : '') +
+                    (res.snapshots.length ? '' : ' – keine data.json in der ZIP gefunden');
+                status.textContent = text;
+                btn.disabled = false;
+                if (res.snapshots.length && typeof onChange === 'function') await onChange(text);
+            } catch (e) {
+                warn('Import fehlgeschlagen', e);
+                status.textContent = 'Import fehlgeschlagen: ' + (e && e.message ? e.message : e);
+                btn.disabled = false;
+            }
+        };
+
+        sec.appendChild(btn);
+        sec.appendChild(status);
+        sec.appendChild(input);
+        parent.appendChild(sec);
+        return { button: btn, input: input, status: status };
     }
 
     // Abgeleitetes Alter in Tagen (siehe AD_RUNTIME_DAYS). Nie negativ: eine
@@ -2721,6 +3070,10 @@
             renderProgress,
             openDuplicate, processOne, RESULT_WAIT_TIMEOUT_MS, LS_RESULT_PREFIX,
             appendRecoverySection,
+            appendRecoveryIfPresent, appendImportSection,
+            readZip, snapshotsFromZipFiles, putSnapshot, importBackupZip,
+            restoreUrl, openRestore, POST_AD_STEP1_URL, POST_AD_STEP2_URL,
+            RESTORE_HASH_PREFIX, LS_RESTORE_RESULT_PREFIX, RESTORE_WAIT_TIMEOUT_MS,
             openIDB, listSnapshotMeta, getSnapshotsAll, deleteSnapshot, clearAllSnapshots,
             IDB_NAME, IDB_VERSION, IDB_STORE,
             sanitize,

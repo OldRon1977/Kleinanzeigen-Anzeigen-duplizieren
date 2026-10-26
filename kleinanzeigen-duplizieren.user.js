@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.11.0
+// @version       3.12.0
 // @author        OldRon1977 (Improvements), J05HI (Original)
 // @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
 // @credits       Andi (Zer089) - Selektoren des Werbeblockers, MIT-Lizenz: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
@@ -37,7 +37,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.11.0'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.12.0'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
@@ -853,6 +853,346 @@
     // nicht beim Definieren -- beide Watchdogs pruefen das 45 Sekunden spaeter.
     function isEditPage() { return window.location.pathname.indexOf('/p-anzeige-bearbeiten.html') === 0; }
 
+
+    // === WIEDERHERSTELLEN: Formular "Anzeige aufgeben" aus einem Snapshot befuellen ===
+    // Ein Snapshot (IndexedDB ka-batch) entsteht beim Neu-Einstellen oder beim
+    // Import einer Sicherungs-ZIP im Helper. Ist eine Anzeige verloren --
+    // gescheiterte Neuanlage, versehentliche Loeschung --, oeffnet der Helper
+    // das Formular "Anzeige aufgeben" mit dem Hash #kaRestore=<adId>. Dieses
+    // Script traegt Texte, Felder und Bilder aus dem Snapshot ein und haelt
+    // dann an: Den Klick auf "Anzeige aufgeben" macht der Nutzer. Kategorie-
+    // Attribute wie Art, Farbe oder Zustand liegen in versteckten Feldern
+    // hinter eigenen Auswahlknoepfen von Kleinanzeigen und lassen sich von
+    // aussen nicht sicher setzen -- vor dem Absenden muss ein Mensch draufschauen.
+    const POST_AD_STEP1_PATH = '/p-anzeige-aufgeben.html';
+    const POST_AD_STEP2_PATH = '/p-anzeige-aufgeben-schritt2.html';
+    const RESTORE_HASH_PREFIX = '#kaRestore=';
+    // sessionStorage: Auftrag "dieses Formular aus Snapshot <adId> befuellen".
+    // Ueberlebt die Kategorie-Wahl: Schritt 1 -> Schritt 2 ist ein POST, der
+    // Hash geht dabei verloren. Verfaellt wie die uebrigen Marker nach
+    // CONFIG.MARKER_MAX_AGE_MS.
+    const RESTORE_MARKER_KEY = 'ka-restore-adid';
+    // sessionStorage: Formular ist befuellt. Erreicht der Tab die
+    // Bestaetigungs-Seite, wird der Snapshot abgeraeumt und dem Helper 'ok'
+    // gemeldet.
+    const RESTORE_PENDING_KEY = 'ka-restore-pending-adid';
+    const LS_RESTORE_RESULT_PREFIX = 'ka-restore-result-';
+    const RESTORE_PANEL_ID = 'ka-restore-panel';
+
+    // Felder, die nie aus dem Snapshot ins Formular wandern: Sitzungs- und
+    // Vorgangswerte des Servers, kostenpflichtige Extras (articles), die
+    // Marketing-Einwilligung und die Kategorie. Die Kategorie bestimmt die URL
+    // bzw. die Wahl des Nutzers -- ein Formular fuer Kategorie A darf nicht
+    // still auf Kategorie B umgebogen werden, die Attributfelder passen dann
+    // nicht mehr zusammen.
+    const RESTORE_SKIP_FIELD = /^(adId|adDraftUuid|posterType|trackingId|postAdWenkseSessionId|locationId|buyNowEligible|articles|marketingOptIn|categoryId|parentCategoryId)$|^adImages\[/;
+
+    function isPostAdStep1Page(loc) { return ((loc || window.location).pathname || '').indexOf(POST_AD_STEP1_PATH) === 0; }
+    function isPostAdStep2Page(loc) { return ((loc || window.location).pathname || '').indexOf(POST_AD_STEP2_PATH) === 0; }
+
+    // adId aus "#kaRestore=<adId>"; nur Ziffern, alles andere ist kein Auftrag.
+    function restoreAdIdFromHash(hash) {
+        const h = String(hash || '');
+        if (h.indexOf(RESTORE_HASH_PREFIX) !== 0) return null;
+        const id = h.slice(RESTORE_HASH_PREFIX.length);
+        return /^\d+$/.test(id) ? id : null;
+    }
+
+    function batchGetSnapshot(adId) {
+        return batchOpenIDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                const tx = db.transaction(BATCH_IDB_STORE, 'readonly');
+                const req = tx.objectStore(BATCH_IDB_STORE).get(String(adId));
+                req.onsuccess = function () { resolve(req.result || null); };
+                req.onerror = function () { reject(req.error); };
+            });
+        });
+    }
+
+    // Das Formular "Anzeige aufgeben" ist das mit dem Titelfeld. Anders als
+    // auf der Bearbeiten-Seite gibt es kein adId-Feld mit Wert, deshalb nicht
+    // getAdFormRoot.
+    function findPostAdForm(doc) {
+        const d = doc || document;
+        const el = d.querySelector('form input[name="title"], form textarea[name="description"]');
+        return el ? el.form : null;
+    }
+
+    // React-Formulare lesen Eingaben ueber ihre eigenen Setter-Hooks. Ein
+    // direktes el.value = x geht an React vorbei und wird beim naechsten
+    // Re-Render ueberschrieben; der native Setter plus input/change-Events
+    // nimmt denselben Weg wie eine Tastatureingabe.
+    function setNativeValue(el, value) {
+        const proto = (el.tagName === 'TEXTAREA') ? HTMLTextAreaElement.prototype :
+            (el.tagName === 'SELECT') ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && typeof desc.set === 'function') desc.set.call(el, value);
+        else el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Feldnamen wie attributeMap[kinderzimmermoebel.versand] enthalten Zeichen
+    // mit Bedeutung im Selektor; in Anfuehrungszeichen sind nur " und \ heikel.
+    function fieldSelector(name) {
+        return '[name="' + String(name).replace(/["\\]/g, '\\$&') + '"]';
+    }
+
+    // Ein Kaestchen oder Radio setzen wie per Klick, damit React den Wechsel
+    // mitbekommt. Faellt der Klick-Handler aus (z. B. preventDefault), wird
+    // der Zustand direkt gesetzt und ein change-Event nachgereicht.
+    function checkLikeUser(el) {
+        el.click();
+        if (!el.checked) {
+            el.checked = true;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    // Einen Snapshot-Wert in das Formular schreiben. Rueckgabe: 'set', 'kept'
+    // (stand schon so), 'missing' (kein solches Feld) oder 'novalue' (Radio
+    // ohne passende Option).
+    function applyFieldValue(root, name, value) {
+        const els = Array.prototype.slice.call(root.querySelectorAll(fieldSelector(name)));
+        if (!els.length) return 'missing';
+        const first = els[0];
+        if (first.type === 'radio') {
+            const hit = els.filter(function (e) { return e.value === value; })[0];
+            if (!hit) return 'novalue';
+            if (hit.checked) return 'kept';
+            checkLikeUser(hit);
+            return 'set';
+        }
+        if (first.type === 'checkbox') {
+            // Im Snapshot stehen nur angehakte Kaestchen (readFormFields); der
+            // Wert ist ihr value-Attribut, meist "on".
+            const hit = els.filter(function (e) { return e.value === value; })[0] || first;
+            if (hit.checked) return 'kept';
+            checkLikeUser(hit);
+            return 'set';
+        }
+        if (first.value === value) return 'kept';
+        setNativeValue(first, value);
+        return 'set';
+    }
+
+    /**
+     * Traegt rawFields und hiddenFields eines Snapshots in das Formular ein.
+     * hiddenFields nur dort, wo das Formular das Feld selbst als Hidden-Feld
+     * fuehrt (Preistyp, Kategorie-Attribute) -- ein sichtbares Feld wird nie
+     * aus einem versteckten Wert ueberschrieben. Snapshots von Hauptscript
+     * < 3.11.0 haben keine hiddenFields; dann bleiben Preistyp und Attribute
+     * auf dem Standard des Formulars.
+     *
+     * Rueckgabe: { set, kept, missing, skipped, attributes } -- jeweils
+     * Feldnamen; attributes sind die gesetzten Kategorie-Attribute, die der
+     * Nutzer vor dem Absenden ansehen soll.
+     */
+    function applySnapshotToForm(root, snap) {
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
+        const raw = (snap && snap.rawFields) || {};
+        const hidden = (snap && snap.hiddenFields) || {};
+        Object.keys(raw).forEach(function (name) {
+            if (RESTORE_SKIP_FIELD.test(name)) { report.skipped.push(name); return; }
+            const r = applyFieldValue(root, name, String(raw[name]));
+            report[r === 'novalue' ? 'missing' : r].push(name);
+        });
+        Object.keys(hidden).forEach(function (name) {
+            if (RESTORE_SKIP_FIELD.test(name) || Object.prototype.hasOwnProperty.call(raw, name)) {
+                report.skipped.push(name);
+                return;
+            }
+            const el = root.querySelector(fieldSelector(name));
+            if (!el || el.type !== 'hidden') { report.missing.push(name); return; }
+            const r = applyFieldValue(root, name, String(hidden[name]));
+            report[r].push(name);
+            if (r === 'set' && /^attributeMap\[/.test(name)) report.attributes.push(name);
+        });
+        return report;
+    }
+
+    function restoreImageFileName(index, mime) {
+        const ext = (mime && mime.indexOf('png') >= 0) ? 'png' : 'jpg';
+        return 'image_' + String(index + 1).padStart(2, '0') + '.' + ext;
+    }
+
+    // Bilder ohne Daten -- Snapshot einer aelteren Version oder ein
+    // fehlgeschlagener Download -- werden ueber ihre URL nachgeladen. Der CDN
+    // liefert Bilder geloeschter Anzeigen noch eine Weile aus; normalizeImageUrl
+    // macht aus einer signierten 96px-Vorschau die volle Aufloesung.
+    async function completeSnapshotImages(images) {
+        return mapLimit(images || [], CONFIG.IMAGE_FETCH_CONCURRENCY, async function (img) {
+            if (!img || img.blob || !img.url) return img;
+            const url = normalizeImageUrl(img.url) || img.url;
+            try {
+                const blob = await fetchAsBlob(url);
+                return { url: img.url, blob: blob, mime: blob.type || 'image/jpeg' };
+            } catch (e) {
+                logger.warn('Bild fuer die Wiederherstellung nicht nachladbar', { error: String(e) });
+                return img;
+            }
+        });
+    }
+
+    // Haengt die Bilder an das Datei-Feld des Formulars, wie eine Dateiauswahl
+    // oder ein Drop. Reihenfolge = Reihenfolge im Snapshot (erstes Bild =
+    // Titelbild). Rueckgabe: { uploaded, total, reason }.
+    function applyImagesToForm(root, images) {
+        const all = images || [];
+        const withData = all.filter(function (i) { return i && i.blob; });
+        if (!withData.length) return { uploaded: 0, total: all.length, reason: all.length ? 'no_image_data' : null };
+        const input = root.querySelector('input[type="file"]') || document.querySelector('form input[type="file"]');
+        if (!input) return { uploaded: 0, total: all.length, reason: 'file_input_missing' };
+        if (typeof DataTransfer === 'undefined' || typeof File === 'undefined') {
+            return { uploaded: 0, total: all.length, reason: 'datatransfer_unsupported' };
+        }
+        try {
+            const dt = new DataTransfer();
+            withData.forEach(function (img, i) {
+                dt.items.add(new File([img.blob], restoreImageFileName(i, img.mime), { type: img.mime || 'image/jpeg' }));
+            });
+            try {
+                input.files = dt.files;
+            } catch (assignError) {
+                // Manche Umgebungen nehmen nur eine echte FileList an; der
+                // Eigenschafts-Override stellt die Liste trotzdem bereit.
+                Object.defineProperty(input, 'files', { value: dt.files, configurable: true });
+            }
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return { uploaded: withData.length, total: all.length, reason: null };
+        } catch (e) {
+            logger.warn('Bilder konnten nicht an das Datei-Feld uebergeben werden', e);
+            return { uploaded: 0, total: all.length, reason: 'file_input_rejected' };
+        }
+    }
+
+    const RESTORE_IMAGE_REASONS = {
+        no_image_data: 'keine Bilddaten in der Sicherung',
+        file_input_missing: 'Datei-Feld nicht gefunden',
+        datatransfer_unsupported: 'Browser unterstützt die Übergabe nicht',
+        file_input_rejected: 'Datei-Feld hat die Bilder abgelehnt'
+    };
+
+    // Lesbarer Name eines Attributfelds: attributeMap[kinderzimmermoebel.art] -> art
+    function attributeLabel(name) {
+        const m = /^attributeMap\[[^.\]]*\.?([^\]]*)\]$/.exec(name);
+        return m && m[1] ? m[1] : name;
+    }
+
+    // Bleibt stehen, bis der Nutzer sie schliesst -- anders als showNotification.
+    // Hier steht, was er vor dem Absenden pruefen soll.
+    function showRestorePanel(snap, report, imgReport) {
+        const old = document.getElementById(RESTORE_PANEL_ID);
+        if (old) old.remove();
+
+        const panel = document.createElement('div');
+        panel.id = RESTORE_PANEL_ID;
+        panel.setAttribute('role', 'status');
+        panel.setAttribute('aria-live', 'polite');
+        panel.style.cssText = [
+            'position:fixed', 'bottom:20px', 'right:20px', 'z-index:99999',
+            'width:360px', 'max-width:calc(100vw - 40px)', 'padding:12px 14px',
+            'background:#fff', 'border:1px solid #d0d0d0', 'border-radius:8px',
+            'box-shadow:0 4px 20px rgba(0,0,0,0.25)',
+            'font-family:system-ui, sans-serif', 'font-size:13px', 'color:#222', 'line-height:1.5'
+        ].join(';');
+
+        const head = document.createElement('div');
+        head.style.cssText = 'font-weight:600;margin-bottom:6px;';
+        head.textContent = 'Aus Sicherung befüllt: ' + (snap.title || ('Anzeige ' + snap.adId));
+        panel.appendChild(head);
+
+        const ul = document.createElement('ul');
+        ul.style.cssText = 'margin:0 0 8px 18px;padding:0;';
+        const lines = [];
+        const taken = report.set.length + report.kept.length;
+        lines.push('Felder: ' + taken + ' übernommen' +
+            (report.missing.length ? ', ' + report.missing.length + ' nicht gefunden (' +
+                report.missing.slice(0, 4).map(attributeLabel).join(', ') + (report.missing.length > 4 ? ', …' : '') + ')' : ''));
+        lines.push('Bilder: ' + imgReport.uploaded + ' von ' + imgReport.total +
+            (imgReport.reason ? ' (' + (RESTORE_IMAGE_REASONS[imgReport.reason] || imgReport.reason) + ')' : ''));
+        if (report.attributes.length) {
+            lines.push('Bitte prüfen, ob die Auswahl stimmt: ' + report.attributes.map(attributeLabel).join(', ') +
+                ' – die Knöpfe zeigen den Wert erst nach einem Klick.');
+        }
+        lines.push('Nichts wurde abgeschickt. Formular prüfen und selbst auf "Anzeige aufgeben" klicken.');
+        lines.forEach(function (t) {
+            const li = document.createElement('li');
+            li.textContent = t;
+            ul.appendChild(li);
+        });
+        panel.appendChild(ul);
+
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = 'Schließen';
+        close.style.cssText = 'padding:4px 10px;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;cursor:pointer;';
+        close.onclick = function () { panel.remove(); };
+        panel.appendChild(close);
+
+        document.body.appendChild(panel);
+    }
+
+    async function restoreFromSnapshot(adId) {
+        showLoadingSpinner();
+        try {
+            const snap = await batchGetSnapshot(adId);
+            if (!snap) {
+                // Kein Auftrag mehr: sonst wuerde jedes weitere "Anzeige aufgeben"
+                // in diesem Tab erneut nach einem Snapshot suchen, den es nicht gibt.
+                try { sessionStorage.removeItem(RESTORE_MARKER_KEY); } catch (e) {}
+                logger.error('Kein Snapshot fuer die Wiederherstellung gefunden', { adId: adId });
+                showNotification('Keine Sicherung mit der ID ' + adId + ' gefunden.', 'error');
+                return null;
+            }
+
+            await awaitFormReady();
+            const root = await waitForElement(findPostAdForm, 10000);
+            if (!root) throw new Error('Formular "Anzeige aufgeben" nicht gefunden');
+
+            const report = applySnapshotToForm(root, snap);
+            const images = await completeSnapshotImages(snap.images || []);
+            const imgReport = applyImagesToForm(root, images);
+
+            // Auftrag erledigt. Ab jetzt wartet nur noch die Bestaetigungs-Seite
+            // auf den Nutzer; ein weiteres "Anzeige aufgeben" im selben Tab darf
+            // nicht noch einmal befuellt werden.
+            try { sessionStorage.removeItem(RESTORE_MARKER_KEY); } catch (e) {}
+            writeVorgangMarker(RESTORE_PENDING_KEY, adId);
+
+            logger.log('Formular aus Snapshot befuellt', {
+                adId: adId, felder: report.set.length + report.kept.length,
+                fehlend: report.missing, bilder: imgReport
+            });
+            showRestorePanel(snap, report, imgReport);
+            return { report: report, images: imgReport };
+        } catch (error) {
+            logger.error('Wiederherstellung fehlgeschlagen', error);
+            showNotification('Wiederherstellung fehlgeschlagen: ' + error.message, 'error');
+            return null;
+        } finally {
+            showLoadingSpinner(false);
+        }
+    }
+
+    // Einstieg auf den Seiten "Anzeige aufgeben" (Schritt 1 und 2). Liefert
+    // true, wenn ein Wiederherstellungs-Auftrag vorliegt. Ohne Auftrag fasst
+    // das Script diese Seiten nicht an.
+    function handleRestorePages() {
+        const fromHash = restoreAdIdFromHash(window.location.hash);
+        if (fromHash) writeVorgangMarker(RESTORE_MARKER_KEY, fromHash);
+        const adId = fromHash || readVorgangMarker(RESTORE_MARKER_KEY);
+        if (!adId) return false;
+        if (isPostAdStep1Page()) {
+            // Kategorie unbekannt (Snapshot ohne hiddenFields) oder vom Nutzer
+            // zur Wahl gestellt. Der Marker traegt den Auftrag zu Schritt 2.
+            showNotification('Wiederherstellung: Kategorie wählen – das Formular wird danach aus der Sicherung befüllt.');
+            return true;
+        }
+        restoreFromSnapshot(adId);
+        return true;
+    }
+
     /**
      * Wurzel fuer alle Formular-Lesevorgaenge: das Formular der Anzeige, nicht
      * das ganze Dokument. Sonst landen Felder aus Suchleiste, Newsletter-Box
@@ -1337,6 +1677,21 @@
                 try { localStorage.setItem('ka-duplicate-result-' + dupAdId, 'ok'); } catch (e) {}
             }
 
+            // Wiederherstellung: Diese Seite beweist, dass die Anzeige aus dem
+            // Snapshot wieder existiert. Erst jetzt darf der Snapshot weg; der
+            // Helper erfaehrt es ueber den Result-Key und raeumt seine Liste auf.
+            const restoredAdId = readVorgangMarker(RESTORE_PENDING_KEY);
+            if (restoredAdId) {
+                try { sessionStorage.removeItem(RESTORE_PENDING_KEY); } catch (e) {}
+                logger.log('Bestaetigungs-Seite (Wiederherstellung) erreicht, loesche Snapshot', { adId: restoredAdId });
+                try {
+                    await batchDeleteSnapshot(restoredAdId);
+                } catch (e) {
+                    logger.warn('Snapshot-Loeschung nach Wiederherstellung fehlgeschlagen', e);
+                }
+                try { localStorage.setItem(LS_RESTORE_RESULT_PREFIX + restoredAdId, 'ok'); } catch (e) {}
+            }
+
             // Abgelaufene Marker liefern null: dann gehoert diese
             // Bestaetigungs-Seite zu einem anderen Vorgang als der, der die
             // Marker gesetzt hat -- es wird nichts geloescht und nichts gemeldet.
@@ -1404,6 +1759,18 @@
             return;
         }
 
+        // "Anzeige aufgeben" (Schritt 1 und 2): nur mit Wiederherstellungs-
+        // Auftrag aktiv -- Hash #kaRestore=<adId> oder Marker aus Schritt 1.
+        // Ohne Auftrag bleibt es auch hier beim Werbeblocker.
+        if (isPostAdStep1Page() || isPostAdStep2Page()) {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', handleRestorePages);
+            } else {
+                handleRestorePages();
+            }
+            return;
+        }
+
         // Ab hier nur noch die Bearbeiten-Seite. Auf allen uebrigen Seiten der
         // Domain bleibt es beim Werbeblocker oben -- keine Buttons, keine
         // Observer, kein Zugriff auf Formulare.
@@ -1449,7 +1816,13 @@
             awaitFormReady,
             waitUntilPageLoaded,
             findAdIdInput, describeAdIdLookup, describeAdIdResolution, getUrlAdId,
-            mapLimit, buildSnapshot
+            mapLimit, buildSnapshot,
+            batchPutSnapshot, batchGetSnapshot, batchDeleteSnapshot,
+            POST_AD_STEP1_PATH, POST_AD_STEP2_PATH, RESTORE_HASH_PREFIX,
+            RESTORE_MARKER_KEY, RESTORE_PENDING_KEY, LS_RESTORE_RESULT_PREFIX, RESTORE_PANEL_ID,
+            RESTORE_SKIP_FIELD, isPostAdStep1Page, isPostAdStep2Page, restoreAdIdFromHash,
+            findPostAdForm, applyFieldValue, applySnapshotToForm, completeSnapshotImages,
+            applyImagesToForm, restoreFromSnapshot, handleRestorePages
         };
         return; // im Test-Kontext keine Initialisierung/Timer
     }
