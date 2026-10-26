@@ -8,6 +8,8 @@ const {
     isPostAdStep2Page,
     findPostAdForm,
     applySnapshotToForm,
+    optionMatchesValue,
+    applyAttributeWidgets,
     applyImagesToForm,
     completeSnapshotImages,
     restoreFromSnapshot,
@@ -237,6 +239,156 @@ describe('applySnapshotToForm', () => {
         form.querySelector('[name="title"]').addEventListener('change', () => seen.push('change'));
         applySnapshotToForm(form, snapshot());
         expect(seen).toEqual(['input', 'change']);
+    });
+});
+
+describe('optionMatchesValue', () => {
+    it('ordnet Listeneintraege ihren Werten zu (live gesehen 10/2026)', () => {
+        expect(optionMatchesValue('Betten & Wiegen', 'betten_wiegen')).toBe(true);
+        expect(optionMatchesValue('Hochstühle & Laufställe', 'hochstuehle_laufstaelle')).toBe(true);
+        expect(optionMatchesValue('Schränke & Kommoden', 'schraenke_kommoden')).toBe(true);
+        expect(optionMatchesValue('Grün', 'grün')).toBe(true);
+        expect(optionMatchesValue('Burgunderrot', 'burgunderrot')).toBe(true);
+        expect(optionMatchesValue('Weitere Kinderzimmermöbel', 'sonstige')).toBe(true);
+    });
+
+    it('greift nicht daneben', () => {
+        expect(optionMatchesValue('Blau', 'braun')).toBe(false);
+        expect(optionMatchesValue('Bitte wählen', '')).toBe(false);
+        expect(optionMatchesValue('Betten & Wiegen', 'wiegen')).toBe(false);
+        expect(optionMatchesValue('Weitere Kinderzimmermöbel', 'betten_wiegen')).toBe(false);
+    });
+});
+
+describe('applyAttributeWidgets', () => {
+    // Nachbau der Kleinanzeigen-Widgets: Listbox mit Eintraegen ohne Wert,
+    // deren Klick (wie React) das versteckte Feld setzt; Dialog mit Radios.
+    function listbox(key, labels) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `
+            <input type="hidden" name="attributeMap[${key}]" value="">
+            <button type="button" id="${key}" role="combobox" aria-expanded="false">Bitte wählen</button>
+            <ul id="${key}-menu" role="listbox" hidden></ul>`;
+        const hidden = wrap.querySelector('input');
+        const btn = wrap.querySelector('button');
+        const menu = wrap.querySelector('ul');
+        btn.addEventListener('click', () => {
+            const open = btn.getAttribute('aria-expanded') === 'true';
+            btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+            menu.hidden = open;
+        });
+        labels.forEach((label, i) => {
+            const li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.id = `${key}-menu-option-${i}`;
+            li.textContent = label;
+            li.addEventListener('click', () => {
+                hidden.value = label.value;
+                btn.textContent = label;
+                btn.setAttribute('aria-expanded', 'false');
+                menu.hidden = true;
+            });
+            menu.appendChild(li);
+        });
+        return wrap;
+    }
+    function opt(label, value) { const s = new String(label); s.value = value; return s; }
+
+    function dialogWidget(key, radios) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `
+            <input type="hidden" name="attributeMap[${key}]" value="">
+            <button type="button" aria-haspopup="dialog">Zustand auswählen</button>`;
+        const hidden = wrap.querySelector('input');
+        wrap.querySelector('button').addEventListener('click', () => {
+            const dlg = document.createElement('div');
+            dlg.setAttribute('role', 'dialog');
+            dlg.innerHTML = radios.map((r) => `<label><input type="radio" name="zustand" value="${r}">${r}</label>`).join('') +
+                '<button type="button" aria-label="Schließen">x</button><button type="button">Abbrechen</button><button type="button">Bestätigen</button>';
+            const buttons = dlg.querySelectorAll('button');
+            buttons[0].addEventListener('click', () => dlg.remove());
+            buttons[1].addEventListener('click', () => dlg.remove());
+            buttons[2].addEventListener('click', () => {
+                const chosen = dlg.querySelector('input:checked');
+                if (chosen) hidden.value = chosen.value;
+                dlg.remove();
+            });
+            document.body.appendChild(dlg);
+        });
+        return wrap;
+    }
+
+    function formWith(...widgets) {
+        document.body.innerHTML = '<form><input name="title"></form>';
+        const form = document.querySelector('form');
+        widgets.forEach((w) => form.appendChild(w));
+        return form;
+    }
+
+    it('waehlt den passenden Listeneintrag und prueft den Wert', async () => {
+        const form = formWith(listbox('kinderzimmermoebel.art', [opt('Bitte wählen', ''), opt('Betten & Wiegen', 'betten_wiegen'), opt('Schränke & Kommoden', 'schraenke_kommoden')]));
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
+        await applyAttributeWidgets(form, { rawFields: {}, hiddenFields: { 'attributeMap[kinderzimmermoebel.art]': 'betten_wiegen' } }, report);
+
+        expect(value('attributeMap[kinderzimmermoebel.art]')).toBe('betten_wiegen');
+        expect(document.getElementById('kinderzimmermoebel.art').textContent).toBe('Betten & Wiegen');
+        expect(report.attributes).toEqual(['attributeMap[kinderzimmermoebel.art]']);
+        expect(report.unmatched).toEqual([]);
+    });
+
+    it('meldet einen Wert ohne passenden Eintrag und schliesst die Liste wieder', async () => {
+        const form = formWith(listbox('kinderzimmermoebel.color', [opt('Bitte wählen', ''), opt('Blau', 'blau')]));
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: ['attributeMap[kinderzimmermoebel.color]'] };
+        await applyAttributeWidgets(form, { rawFields: {}, hiddenFields: { 'attributeMap[kinderzimmermoebel.color]': 'lila' } }, report);
+
+        expect(value('attributeMap[kinderzimmermoebel.color]')).toBe('');
+        expect(report.attributes).toEqual([]);
+        expect(report.unmatched).toEqual([{ name: 'attributeMap[kinderzimmermoebel.color]', value: 'lila', reason: 'no_match' }]);
+        expect(document.getElementById('kinderzimmermoebel.color').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('nimmt einen Fehlgriff zurueck, wenn das Feld danach einen anderen Wert traegt', async () => {
+        // Eintrag "Weitere …" liefert hier nicht "sonstige", sondern etwas anderes
+        const form = formWith(listbox('kinderzimmermoebel.art', [opt('Bitte wählen', ''), opt('Weitere Kinderzimmermöbel', 'rest')]));
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
+        await applyAttributeWidgets(form, { rawFields: {}, hiddenFields: { 'attributeMap[kinderzimmermoebel.art]': 'sonstige' } }, report);
+
+        expect(value('attributeMap[kinderzimmermoebel.art]')).toBe('');
+        expect(report.unmatched[0].reason).toBe('mismatch');
+    });
+
+    it('bedient den Zustand-Dialog: Radio waehlen, bestaetigen', async () => {
+        const form = formWith(dialogWidget('kinderzimmermoebel.condition', ['new', 'like_new', 'ok', 'alright', 'defect']));
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
+        await applyAttributeWidgets(form, { rawFields: {}, hiddenFields: { 'attributeMap[kinderzimmermoebel.condition]': 'ok' } }, report);
+
+        expect(value('attributeMap[kinderzimmermoebel.condition]')).toBe('ok');
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+        expect(report.attributes).toEqual(['attributeMap[kinderzimmermoebel.condition]']);
+    });
+
+    it('bricht den Dialog ab, wenn der Wert dort nicht vorkommt', async () => {
+        const form = formWith(dialogWidget('kinderzimmermoebel.condition', ['new', 'ok']));
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
+        await applyAttributeWidgets(form, { rawFields: {}, hiddenFields: { 'attributeMap[kinderzimmermoebel.condition]': 'defect' } }, report);
+
+        expect(value('attributeMap[kinderzimmermoebel.condition]')).toBe('');
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+        expect(report.unmatched[0].reason).toBe('no_match');
+    });
+
+    it('laesst Felder ohne Knopf und Attribute aus rawFields in Ruhe', async () => {
+        document.body.innerHTML = '<form><input type="hidden" name="attributeMap[x.art]" value="direkt"><input type="radio" name="attributeMap[x.versand]" value="ja"></form>';
+        const form = document.querySelector('form');
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: ['attributeMap[x.art]'] };
+        await applyAttributeWidgets(form, {
+            rawFields: { 'attributeMap[x.versand]': 'ja' },
+            hiddenFields: { 'attributeMap[x.art]': 'direkt', 'attributeMap[x.versand]': 'ja' }
+        }, report);
+
+        expect(value('attributeMap[x.art]')).toBe('direkt');
+        expect(report.attributes).toEqual(['attributeMap[x.art]']);
+        expect(report.unmatched).toEqual([]);
     });
 });
 

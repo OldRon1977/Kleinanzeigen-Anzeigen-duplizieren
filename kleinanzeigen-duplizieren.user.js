@@ -1011,6 +1011,159 @@
         return report;
     }
 
+    // === KATEGORIE-ATTRIBUTE UEBER DIE AUSWAHLKNOEPFE VON KLEINANZEIGEN ===
+    // Art, Farbe, Zustand und andere Attribute haengen an einem versteckten
+    // Feld, das React kontrolliert: ein direkt gesetzter Wert ueberlebt den
+    // naechsten Re-Render nicht (live gesehen 10/2026). Verlaesslich ist nur
+    // der Weg des Nutzers -- Knopf oeffnen, Eintrag waehlen. Zwei Bauarten:
+    //  - Listbox: button#<key>[role=combobox] und ul#<key>-menu mit
+    //    li[role=option]. Die Eintraege tragen keinen Wert, nur ihren Text; der
+    //    Wert ergibt sich aus dem Text (Betten & Wiegen -> betten_wiegen,
+    //    Gruen -> gruen). Nach dem Klick wird gegen das versteckte Feld
+    //    geprueft, ein Fehlgriff wird zurueckgenommen.
+    //  - Dialog (Zustand): button[aria-haspopup=dialog] oeffnet einen Dialog
+    //    mit echten Radios (value=new|like_new|ok|...) und "Bestaetigen".
+    const ATTRIBUTE_FIELD = /^attributeMap\[([^\]]+)\]$/;
+    const ATTRIBUTE_CONFIRM_TEXT = /best[aä]tigen|[uü]bernehmen|speichern|fertig|ausw[aä]hlen/i;
+    const ATTRIBUTE_CANCEL_TEXT = /abbrechen|schlie[sß]en/i;
+    const WIDGET_WAIT_MS = 1500;
+    const WIDGET_SETTLE_MS = 200;
+
+    // Normalisierte Schreibweisen eines Eintrags: einmal mit Umlauten (Farbe:
+    // "Gruen" -> gruen), einmal umschrieben (Art: "Schraenke & Kommoden" ->
+    // schraenke_kommoden). Kleinanzeigen nutzt beides.
+    function labelCandidates(label) {
+        const base = String(label || '').trim().toLowerCase().replace(/&/g, ' ');
+        const keep = base.replace(/[^a-z0-9äöüß]+/g, '_').replace(/^_+|_+$/g, '');
+        const translit = base.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+            .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        return [keep, translit];
+    }
+
+    // Passt ein Eintrag zum gesuchten Wert? Verglichen wird mit und ohne
+    // Unterstriche; "Weitere …"/"Sonstige …" steht fuer den Sammelwert
+    // sonstige/andere/other.
+    function optionMatchesValue(label, value) {
+        const v = String(value === undefined || value === null ? '' : value).toLowerCase();
+        if (!v) return false;
+        const flat = v.replace(/_/g, '');
+        const hit = labelCandidates(label).some(function (c) {
+            return c === v || c.replace(/_/g, '') === flat;
+        });
+        if (hit) return true;
+        return /^(sonstige|sonstiges|andere|other|weitere)$/.test(v) &&
+            /^(weitere|sonstige|andere)\b/.test(String(label || '').trim().toLowerCase());
+    }
+
+    function attributeKey(name) {
+        const m = ATTRIBUTE_FIELD.exec(name);
+        return m ? m[1] : null;
+    }
+
+    function findAttributeButton(hiddenInput, key) {
+        const byId = key ? document.getElementById(key) : null;
+        if (byId && byId.tagName === 'BUTTON') return byId;
+        const box = hiddenInput.parentElement;
+        return box ? box.querySelector('button') : null;
+    }
+
+    function findDialog() {
+        return document.querySelector('dialog[open], [role="dialog"]');
+    }
+
+    function clickButtonByText(container, re) {
+        const btn = Array.prototype.slice.call(container.querySelectorAll('button')).filter(function (b) {
+            return re.test((b.textContent || '') + ' ' + (b.getAttribute('aria-label') || ''));
+        })[0];
+        if (btn) btn.click();
+        return !!btn;
+    }
+
+    async function selectListboxOption(btn, key, hiddenInput, value) {
+        const menuWithOptions = function () {
+            const m = document.getElementById(key + '-menu');
+            return (m && m.querySelector('[role="option"]')) ? m : null;
+        };
+        let menu = menuWithOptions();
+        if (!menu) {
+            btn.click();
+            menu = await waitForElement(menuWithOptions, WIDGET_WAIT_MS);
+        }
+        if (!menu) return 'widget_missing';
+        const options = Array.prototype.slice.call(menu.querySelectorAll('[role="option"]'));
+        const hit = options.filter(function (o) { return optionMatchesValue(o.textContent, value); })[0];
+        if (!hit) {
+            if (btn.getAttribute('aria-expanded') === 'true') btn.click();
+            return 'no_match';
+        }
+        hit.click();
+        await delay(WIDGET_SETTLE_MS);
+        if (hiddenInput.value === value) return 'set';
+        // Fehlgriff: zurueck auf den Platzhalter, der Nutzer waehlt selbst.
+        if (options[0] && options[0] !== hit) {
+            if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+            await delay(WIDGET_SETTLE_MS);
+            options[0].click();
+        }
+        return 'mismatch';
+    }
+
+    async function selectDialogOption(btn, hiddenInput, value) {
+        btn.click();
+        const dlg = await waitForElement(findDialog, WIDGET_WAIT_MS);
+        if (!dlg) return 'widget_missing';
+        const radio = dlg.querySelector('input[type="radio"][value="' + String(value).replace(/["\\]/g, '\\$&') + '"]');
+        if (!radio) {
+            clickButtonByText(dlg, ATTRIBUTE_CANCEL_TEXT);
+            return 'no_match';
+        }
+        checkLikeUser(radio);
+        clickButtonByText(dlg, ATTRIBUTE_CONFIRM_TEXT);
+        await delay(WIDGET_SETTLE_MS);
+        return hiddenInput.value === value ? 'set' : 'mismatch';
+    }
+
+    /**
+     * Traegt die Kategorie-Attribute aus hiddenFields ueber die Auswahlknoepfe
+     * ein. Ergaenzt report.attributes (gesetzt) und report.unmatched
+     * ({ name, value, reason }) -- letzteres nennt das Panel zum Waehlen von
+     * Hand. Ohne Knopf bleibt der direkte Wert aus applySnapshotToForm stehen.
+     */
+    async function applyAttributeWidgets(root, snap, report) {
+        report.unmatched = report.unmatched || [];
+        const hidden = (snap && snap.hiddenFields) || {};
+        const raw = (snap && snap.rawFields) || {};
+        const names = Object.keys(hidden).filter(function (n) {
+            return ATTRIBUTE_FIELD.test(n) && !RESTORE_SKIP_FIELD.test(n) && !Object.prototype.hasOwnProperty.call(raw, n);
+        });
+        for (const name of names) {
+            const value = String(hidden[name]);
+            const input = root.querySelector(fieldSelector(name));
+            if (!input || input.type !== 'hidden') continue; // steht schon als missing im Report
+            const key = attributeKey(name);
+            const btn = findAttributeButton(input, key);
+            if (!btn) continue;
+            let outcome;
+            try {
+                outcome = (btn.getAttribute('aria-haspopup') === 'dialog')
+                    ? await selectDialogOption(btn, input, value)
+                    : await selectListboxOption(btn, key, input, value);
+            } catch (e) {
+                logger.warn('Attribut-Auswahl fehlgeschlagen', { name: name, error: String(e) });
+                outcome = 'error';
+            }
+            const idx = report.attributes.indexOf(name);
+            if (outcome === 'set') {
+                if (idx < 0) report.attributes.push(name);
+            } else {
+                if (idx >= 0) report.attributes.splice(idx, 1);
+                report.unmatched.push({ name: name, value: value, reason: outcome });
+                logger.warn('Attribut nicht zuordenbar', { name: name, value: value, reason: outcome });
+            }
+        }
+        return report;
+    }
+
     function restoreImageFileName(index, mime) {
         const ext = (mime && mime.indexOf('png') >= 0) ? 'png' : 'jpg';
         return 'image_' + String(index + 1).padStart(2, '0') + '.' + ext;
@@ -1112,8 +1265,12 @@
         lines.push('Bilder: ' + imgReport.uploaded + ' von ' + imgReport.total +
             (imgReport.reason ? ' (' + (RESTORE_IMAGE_REASONS[imgReport.reason] || imgReport.reason) + ')' : ''));
         if (report.attributes.length) {
-            lines.push('Bitte prüfen, ob die Auswahl stimmt: ' + report.attributes.map(attributeLabel).join(', ') +
-                ' – die Knöpfe zeigen den Wert erst nach einem Klick.');
+            lines.push('Attribute gewählt: ' + report.attributes.map(attributeLabel).join(', ') + ' – bitte kurz gegenprüfen.');
+        }
+        if (report.unmatched && report.unmatched.length) {
+            lines.push('Von Hand wählen: ' + report.unmatched.map(function (u) {
+                return attributeLabel(u.name) + ' (' + u.value + ')';
+            }).join(', ') + ' – kein passender Eintrag gefunden.');
         }
         lines.push('Nichts wurde abgeschickt. Formular prüfen und selbst auf "Anzeige aufgeben" klicken.');
         lines.forEach(function (t) {
@@ -1151,6 +1308,7 @@
             if (!root) throw new Error('Formular "Anzeige aufgeben" nicht gefunden');
 
             const report = applySnapshotToForm(root, snap);
+            await applyAttributeWidgets(root, snap, report);
             const images = await completeSnapshotImages(snap.images || []);
             const imgReport = applyImagesToForm(root, images);
 
@@ -1822,6 +1980,7 @@
             RESTORE_MARKER_KEY, RESTORE_PENDING_KEY, LS_RESTORE_RESULT_PREFIX, RESTORE_PANEL_ID,
             RESTORE_SKIP_FIELD, isPostAdStep1Page, isPostAdStep2Page, restoreAdIdFromHash,
             findPostAdForm, applyFieldValue, applySnapshotToForm, completeSnapshotImages,
+            labelCandidates, optionMatchesValue, applyAttributeWidgets,
             applyImagesToForm, restoreFromSnapshot, handleRestorePages
         };
         return; // im Test-Kontext keine Initialisierung/Timer
