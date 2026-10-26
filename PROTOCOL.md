@@ -2,7 +2,9 @@
 
 Dieses Dokument ist die **verbindliche Definition** des Protokolls, über das der
 Worker-Tab (`kleinanzeigen-duplizieren.user.js`, läuft auf
-`p-anzeige-bearbeiten.html*` und `p-anzeige-aufgeben-bestaetigung.html*`) und
+`p-anzeige-bearbeiten.html*` und `p-anzeige-aufgeben-bestaetigung.html*`, seit
+3.12.0 mit Wiederherstellungs-Auftrag auch auf `p-anzeige-aufgeben.html*` und
+`p-anzeige-aufgeben-schritt2.html*`) und
 der Orchestrator-Tab (`helper.user.js`, läuft auf `m-meine-anzeigen.html*`)
 im Batch-Modus ("Alle alten neu einstellen") kommunizieren.
 
@@ -21,6 +23,7 @@ mit einer URL, deren Hash das Verhalten des Worker-Scripts steuert:
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `#smartRepublish` | Batch-/Smart-Republish-Flow: Snapshot erstellen, neu einstellen, danach das Original löschen (Reihenfolge seit 3.10.0, siehe unten) | Helper (`processOne`), auch manuell über den "Smart neu einstellen"-Button im Worker                                                                            |
 | `#duplicate`      | Reines Duplizieren ohne Löschung, kein Ergebnis-Signal, kein Snapshot                                                               | Externe Aufrufe per URL-Hash (historisch Helper 1.2.0); der Duplizieren-Button ruft `duplicateAd()` direkt auf, ohne Hash. Vom aktuellen Helper nicht verwendet |
+| `#kaRestore=<adId>` | Wiederherstellen (ab 3.12.0): auf `p-anzeige-aufgeben.html*` oder `p-anzeige-aufgeben-schritt2.html*` das Formular aus dem Snapshot `<adId>` befüllen. Nichts wird abgeschickt, nichts gelöscht; nur Ziffern gelten als adId | Helper (`openRestore`, ab 1.15.0): mit bekannter Kategorie `p-anzeige-aufgeben-schritt2.html?categoryId=<id>`, sonst `p-anzeige-aufgeben.html` |
 
 `isBatchMode()` im Worker prüft exakt `window.location.hash === '#smartRepublish'`.
 Nur in diesem Modus werden Result-Key und Batch-Watchdog aktiv. Der Snapshot
@@ -68,7 +71,11 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
 
 - Geschrieben von: `batchPutSnapshot()` im Worker, **vor** dem Speichern der
   neuen Anzeige, in **beiden Modi** (Batch **und** manuell). Im manuellen
-  Modus dient er nur als Sicherung während des Neu-Einstellens.
+  Modus dient er nur als Sicherung während des Neu-Einstellens. Seit Helper
+  1.15.0 außerdem von `importBackupZip()` im Helper: eine Recovery- oder
+  Sicherungs-ZIP wird in dieselbe Objektform zurückgelesen (`capturedAt` aus
+  dem ISO-String, `hiddenFields` leer, wenn die ZIP keine kennt, Bilder ohne
+  Datei als `{ url, blob: null, mime: null }`). Gleiche `adId` ersetzt.
 - Gelesen von: Helper (`listSnapshotMeta`, `getSnapshotsAll`) für die
   Recovery-Übersicht und den ZIP-Export.
 - Gelöscht von:
@@ -79,6 +86,10 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
     Bestätigungs-Seite, sobald die Neuanlage erfolgreich war (kein Helper
     beteiligt). So bleiben keine Orphan-Snapshots zurück, die das
     Recovery-UI des Helpers sonst als Warnung anzeigen würde.
+  - **Wiederherstellung (ab 3.12.0):** Worker auf der Bestätigungs-Seite,
+    wenn `ka-restore-pending-adid` gesetzt ist — die Anzeige aus dem
+    Snapshot existiert dann wieder. Zusätzlich schreibt er
+    `ka-restore-result-<adId>` = `ok`.
 
 ### sessionStorage-Schlüssel
 
@@ -111,6 +122,8 @@ passiert nichts.
 | `ka-manual-mode`         | `smartRepublish()` (nur ohne Helper) | Bestätigungs-Seite räumt den eigenen Snapshot ab, statt einen Result-Key zu schreiben                                  |
 | `ka-delete-after-create` | `smartRepublish()` (ab 3.10.0)       | Auftrag, dieses Original zu löschen, sobald die Neuanlage bestätigt ist. Fehlt der Schlüssel, wird **nichts** gelöscht |
 | `ka-duplicate-adid`      | `duplicateAd()`                      | Signalisiert dem Helper den Abschluss einer Duplizierung                                                               |
+| `ka-restore-adid`        | `handleRestorePages()` (ab 3.12.0)   | Auftrag, das Formular "Anzeige aufgeben" aus Snapshot `<adId>` zu befüllen. Überlebt die Kategoriewahl (Schritt 1 → 2 ist ein POST ohne Hash); JSON-Format mit Verfall wie oben. Entfernt, sobald befüllt wurde oder kein Snapshot existiert |
+| `ka-restore-pending-adid`| `restoreFromSnapshot()` (ab 3.12.0)  | Formular ist befüllt; die Bestätigungs-Seite löscht den Snapshot und schreibt `ka-restore-result-<adId>`. Fehlt der Marker, bleibt der Snapshot stehen |
 
 ### localStorage: sonstige Schlüssel
 
@@ -118,6 +131,7 @@ passiert nichts.
 | ---------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ka-batch-delay`             | Helper (ab 1.10.0)            | Eingestellte Pausenspanne in Minuten als JSON `{min,max}`. Nur Helper-intern, der Worker liest sie nie. Fehlt der Eintrag oder ist er unbrauchbar, greift der Standard 3 bis 6 |
 | `ka-duplicate-result-<adId>` | Worker schreibt, Helper liest | Abschlusssignal einer Duplizierung (Wert `ok`)                                                                                                                                 |
+| `ka-restore-result-<adId>`   | Worker schreibt, Helper liest | Abschlusssignal einer Wiederherstellung (Wert `ok`, ab 3.12.0 / 1.15.0). Der Helper (`openRestore`) wartet darauf per `storage`-Event und Polling, schließt aber keinen Tab — der Nutzer hat das Formular selbst abgeschickt |
 
 ## localStorage: Result-Keys
 
@@ -309,6 +323,7 @@ Bestätigungs-Seite (kein Zugriff durch den Helper):
 | `CONFIG.DELETE_REQUEST_TIMEOUT_MS` | 8 000 ms (8s)     | `kleinanzeigen-duplizieren.user.js` (`deleteAd()`)                                                       | Budget des Lösch-Requests. Der Timer startet **erst nach** der Auflösung des CSRF-Tokens, damit ein langsames Nachladen dieses Budget nicht verbraucht                                                                                                                         |
 | `CONFIG.CSRF_FETCH_TIMEOUT_MS`     | 8 000 ms (8s)     | `kleinanzeigen-duplizieren.user.js` (`resolveCsrfToken()`)                                               | Eigenes Budget für das Nachladen des CSRF-Tokens aus "Meine Anzeigen". Ein Abbruch meldet `CSRF-Token nicht ermittelbar (Timeout)`. Die Summe beider Budgets plus `DELETE_WAIT_AFTER_CREATE_MS` (18s) bleibt unter `RESULT_WAIT_TIMEOUT_MS`                                    |
 | Polling-Intervall                  | 1 000 ms          | `helper.user.js` (`processOne`)                                                                          | Fallback-Polling auf den Result-Key, redundant zum `storage`-Event                                                                                                                                                                                                             |
+| `RESTORE_WAIT_TIMEOUT_MS`          | 1 800 000 ms (30 min) | `helper.user.js` (`openRestore`)                                                                     | Wartezeit auf `ka-restore-result-<adId>`. Der Nutzer prüft und sendet das Formular selbst; nach Ablauf wird nur der Knopf wieder freigegeben, kein Tab geschlossen                                                                                                              |
 
 ## Kompatibilitätsregeln
 
