@@ -116,7 +116,7 @@ Hauptscript (`kleinanzeigen-duplizieren.user.js`) und Helper (`helper.user.js`) 
 
 ## 3.3.x / Helper 1.1.x–1.2.0 — März/April 2026
 
-- Neu: Helper-Script (Idee: @panzli)
+- Neu: Helper-Script (erste Fassung: @panzli)
 - Behoben: Zeichenkodierung in Kommentaren und Texten, Icon-Link (@farOverNinethousand)
 - Geändert: Floating-Toolbar, Speichern über den Knopf statt `form.submit()`, Selektoren an neues Layout
 

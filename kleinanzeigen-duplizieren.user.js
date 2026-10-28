@@ -6,8 +6,8 @@
 // @copyright     2026
 // @license       MIT
 // @version       3.12.0
-// @author        OldRon1977 (Improvements), J05HI (Original)
-// @credits       Basierend auf dem Original-Script von J05HI (https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
+// @author        OldRon1977
+// @credits       J05HI - Original-Gist, Grundlage des Projekts: https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5
 // @credits       karlvonbonin - Wiederherstellen aus Sicherung: Formular "Anzeige aufgeben" aus dem Snapshot befuellen (PR #74)
 // @credits       Andi (Zer089) - Selektoren des Werbeblockers, MIT-Lizenz: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
 // @match         https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*

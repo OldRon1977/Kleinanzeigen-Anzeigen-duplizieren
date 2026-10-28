@@ -182,9 +182,9 @@ Auf allen Seiten von kleinanzeigen.de blendet es Werbung aus: Seitenbanner, Bill
 
 ## Credits
 
-- **Original-Script**: [J05HI](https://github.com/J05HI) – [Original Gist](https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
-- **Helper-Idee**: [panzli](https://github.com/panzli)
-- **Erweiterte Version**: [OldRon1977](https://github.com/OldRon1977)
+- **Autor und Maintainer**: [OldRon1977](https://github.com/OldRon1977)
+- **Grundlage**: [J05HI](https://github.com/J05HI) – [Original-Gist](https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5)
+- **Erste Fassung des Helpers**: [panzli](https://github.com/panzli)
 
 ### Beiträge und Ideen
 
