@@ -20,8 +20,9 @@ Antwort: so schnell es geht – das ist ein Hobby-Projekt, es kann also auch mal
 
 Beide Userscripts kommunizieren ausschließlich mit Kleinanzeigen über HTTPS:
 `https://www.kleinanzeigen.de` für Formulare, JSON-Schnittstellen und die
-Löschung, dazu `https://img.kleinanzeigen.de` für die Anzeigenbilder des
-Recovery-Snapshots (ohne Cookies, `credentials: 'omit'`).
+Löschung, dazu `https://img.kleinanzeigen.de` für die Anzeigenbilder von
+Recovery-Snapshot, Sicherung und Wiederherstellung (ohne Cookies,
+`credentials: 'omit'`).
 
 | Script                              | `@grant`       | Begründung                                                                                                                                                                                                                                                                                                               |
 | ----------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -66,7 +67,16 @@ lokal gelesen und verlässt den Browser nicht; ihre Anzeigen liegen danach wie
 alle anderen Snapshots in IndexedDB, mit denselben Hinweisen zur Aufbewahrung.
 "Wiederherstellen" befüllt nur das Formular "Anzeige aufgeben" aus dem Snapshot
 (Hauptscript ab 3.12.0); abgeschickt wird ausschließlich durch den Nutzer, und
-erst die Bestätigungs-Seite entfernt den Snapshot wieder.
+erst die Bestätigungs-Seite entfernt den Snapshot wieder. Das Script klickt
+dabei nur Auswahlknöpfe der Attribute (`type="button"`), nie einen Knopf, der
+das Formular absendet.
+
+Fehlen einem Snapshot die Bilddaten, lädt das Hauptscript sie nur von
+`img.kleinanzeigen.de` nach. Bildadressen anderer Hosts – etwa aus einer
+veränderten `data.json` in einer importierten ZIP – werden nicht abgerufen.
+Die angehängten Bilder lädt Kleinanzeigen selbst sofort hoch
+(`p-bild-hochladen.html`), wie bei einer Auswahl von Hand; die Anzeige entsteht
+erst mit dem Absenden.
 
 ## Sicherung der Auswahl (ZIP)
 
