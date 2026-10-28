@@ -188,7 +188,9 @@ Auf allen Seiten von kleinanzeigen.de blendet es Werbung aus: Seitenbanner, Bill
 
 ## Entwicklung
 
-- `npm test` – Unit-Tests (Vitest, jsdom) für beide Scripts über Test-Exporte, die nur in Node aktiv sind
+- `npm test` – Tests (Vitest, jsdom) für beide Scripts über Test-Exporte, die nur in Node aktiv sind
+- `npm run test:coverage` – dasselbe mit Abdeckungsbericht
+- `tests/fixtures/` – echte Seitenteile von kleinanzeigen.de (Bearbeiten-Seite, "Anzeige aufgeben" Schritt 2 mit Auswahlliste und Zustand-Dialog, "Meine Anzeigen" samt JSON), anonymisiert. Die `*.fixture.test.js` prüfen die Abläufe darauf. Gemockt sind Netz, Tabs und das React-Verhalten hinter den Auswahlknöpfen
 - `npm run validate` – synchronisiert die `@version`-Header mit `package.json` und prüft die Syntax beider Scripts
 - `tests/setup.storage.js` – stellt `localStorage` bereit; Node ab v22 bringt ein eigenes, ohne `--localstorage-file` leeres `localStorage` mit, das die jsdom-Variante überdeckt
 - `tests/setup.indexeddb.js` – `indexedDB` über `fake-indexeddb` (Version gepinnt). Reset je Test über eine neue `IDBFactory`; `deleteDatabase` blockiert, weil die Wrapper ihre Verbindungen nie schließen

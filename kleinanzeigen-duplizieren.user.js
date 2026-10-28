@@ -2068,7 +2068,9 @@
             findPostAdForm, applyFieldValue, applySnapshotToForm, completeSnapshotImages,
             labelCandidates, optionMatchesValue, applyAttributeWidgets, findAttributeButton,
             compareShippingOptions,
-            applyImagesToForm, restoreFromSnapshot, handleRestorePages
+            applyImagesToForm, restoreFromSnapshot, handleRestorePages,
+            smartRepublish, duplicateAd, findSaveButton, init, startPopupDismisser,
+            injectBannerBlockerStyles, isBatchMode
         };
         return; // im Test-Kontext keine Initialisierung/Timer
     }

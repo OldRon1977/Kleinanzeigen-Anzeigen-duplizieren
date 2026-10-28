@@ -6,6 +6,11 @@ Hauptscript (`kleinanzeigen-duplizieren.user.js`) und Helper (`helper.user.js`) 
 
 - Neu: "verlängerbar (N)" in der Schnellwahl und "Auswahl verlängern (N)" im Auswahl-Fenster (Idee: @Atom9989, #70)
 
+## Helper 1.16.1 — Oktober 2026
+
+- Behoben: Titel in der Seitenansicht (Rückfallebene ohne Schnittstelle) ohne vorangestelltes "Anzeige"
+- Intern: Tests laufen gegen echte, anonymisierte Seiten von kleinanzeigen.de; Neu-Einstellen, Duplizieren, Batch-Lauf und Seitenstart sind jetzt als ganze Abläufe getestet
+
 ## 3.12.0 / Helper 1.16.0 — Oktober 2026
 
 - Neu: Wiederherstellen aus Sicherung — Recovery-Snapshot oder Sicherungs-ZIP befüllt das Formular "Anzeige aufgeben", abgeschickt wird von Hand (@karlvonbonin, #74, #75)
