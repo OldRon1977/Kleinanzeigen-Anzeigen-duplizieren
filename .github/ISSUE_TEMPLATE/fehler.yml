@@ -1,0 +1,44 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie im README beschrieben
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Keine Zugangsdaten, Token oder Cookies posten. Titel von Anzeigen dürfen geschwärzt sein.
+  - type: input
+    id: versionen
+    attributes:
+      label: Versionen
+      description: Tampermonkey-Dashboard, Spalte "Version"
+      placeholder: Hauptscript 3.12.0, Helper 1.16.0
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      placeholder: Firefox 140
+    validations:
+      required: true
+  - type: dropdown
+    id: konto
+    attributes:
+      label: Konto bei Kleinanzeigen
+      options:
+        - privat
+        - gewerblich
+    validations:
+      required: true
+  - type: textarea
+    id: ablauf
+    attributes:
+      label: Was hast du gemacht, was ist passiert?
+      description: Schritte der Reihe nach, dazu was du erwartet hast
+    validations:
+      required: true
+  - type: textarea
+    id: konsole
+    attributes:
+      label: Konsolenausgabe
+      description: F12 → Konsole, Filter `[KA-`. Die Zeilen rund um den Fehler einfügen oder als .txt anhängen.
+      render: text
