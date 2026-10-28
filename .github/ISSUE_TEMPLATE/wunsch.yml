@@ -1,0 +1,14 @@
+name: Wunsch
+description: Neue Funktion oder Änderung vorschlagen
+labels: [enhancement]
+body:
+  - type: textarea
+    id: was
+    attributes:
+      label: Was soll das Script tun?
+    validations:
+      required: true
+  - type: textarea
+    id: wofuer
+    attributes:
+      label: Wofür brauchst du das?
