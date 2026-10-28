@@ -37,6 +37,8 @@ Genutzte Endpunkte:
 - `GET /m-einstellungen-bearbeiten.json` – Anzeigenkontingent, Feld `newAdCount` (Helper)
 - `GET https://img.kleinanzeigen.de/...` – Anzeigenbilder für Snapshot, Wiederherstellung und Sicherung (Hauptscript, Helper)
 - `GET /p-anzeige-bearbeiten.html?adId={adId}` – Bearbeiten-Seite je Anzeige für "Auswahl sichern (ZIP)", nur lesend (Helper)
+- `POST /m-anzeigen-verlaengern.json?ids={adId}` – kostenloses Verlängern der Auswahl, eine Anzeige pro Request (Helper ab 1.17.0, Testversion). Kostenpflichtige Verlängerungen (`extensionFee`) schickt der Helper nie
+- `GET /m-mein-profil.json` – CSRF-Token für das Verlängern, Feld `csrfToken` (Helper)
 
 ## Recovery-Snapshots in IndexedDB
 
@@ -93,4 +95,6 @@ Die Scripts laufen lokal im Browser. Es werden keine Daten an Dritte übertragen
 CSRF-Token werden zur Laufzeit gelesen – bevorzugt aus dem DOM
 (`meta[name="_csrf"]` oder `meta[name="csrf-token"]`, danach
 `input[name="_csrf"]`), andernfalls aus der nachgeladenen Seite "Meine
-Anzeigen". Gespeichert werden sie nie, auch nicht im Recovery-Snapshot.
+Anzeigen". Der Helper holt das Token für das Verlängern aus
+`/m-mein-profil.json`, wie die Seite selbst. Gespeichert werden Token nie, auch
+nicht im Recovery-Snapshot.

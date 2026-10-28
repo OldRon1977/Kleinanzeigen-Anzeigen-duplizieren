@@ -132,6 +132,8 @@ Beim Verlängern öffnet sich kein Tab, und es wird nichts gelöscht oder neu an
 
 > Vor dem ersten Request lädt das Script die Anzeigenliste frisch und prüft jede Anzeige noch einmal. Verschickt wird nur, was in diesem Moment kostenlos verlängerbar ist. **Kostenpflichtige Verlängerungen** (Feld `extensionFee`) lässt das Script immer aus, die bleiben Handarbeit. Lässt sich die Liste nicht laden, wird nichts verlängert. Beides funktioniert nur mit der JSON-Quelle. Auf der Rückfallebene über die Seitenansicht erscheinen Link und Button nicht.
 
+> **Stand der Testversion** (Seiten-JavaScript zuletzt abgeglichen am 28.10.2026): Endpunkt, CSRF-Token aus `/m-mein-profil.json` und die Bewertung jeder 2xx-Antwort als Erfolg entsprechen dem Verlängern-Knopf der Seite. Eine echte Verlängerung ist noch nicht gelaufen. Eine Abweichung ist bekannt: Hat eine Anzeige ein gebuchtes Paket außer dem Basispaket, zeigt die Seite keinen Verlängern-Knopf. Der Helper prüft das nicht, weil die Paketdaten nur über eine eigene Schnittstelle mit Zugriffstoken abrufbar sind; er würde eine solche Anzeige verlängern, sobald Kleinanzeigen `extend` setzt. Kosten entstehen dabei nicht, denn kostenpflichtige Verlängerungen erkennt er am Feld `extensionFee`.
+
 ### Wiederherstellen aus Sicherung (ab v3.12.0 / Helper ab v1.16.0)
 
 Eine verlorene Anzeige — gescheiterte Neuanlage, versehentlich gelöscht — lässt sich aus einem Recovery-Snapshot oder einer Sicherungs-ZIP zurückholen. Das Script füllt das Formular "Anzeige aufgeben" aus; **abgeschickt wird nichts**, den Klick auf "Anzeige aufgeben" machst du selbst.
@@ -210,7 +212,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - **Anzeigenliste** (Helper): `GET /m-meine-anzeigen-verwalten.json?pageNum={n}&sort=DEFAULT`, höchstens 20 Seiten
 - **Anzeigenkontingent** (Helper): `GET /m-einstellungen-bearbeiten.json`, Feld `newAdCount`
 - **Verlängern** (Helper): `POST /m-anzeigen-verlaengern.json?ids={adId}` mit Header `X-CSRF-TOKEN`. Ob eine Anzeige kostenlos verlängerbar ist, steht in der Anzeigenliste in den Feldern `extend` und `extensionFee`
-- **CSRF-Token** (Helper, wenn kein Meta-Tag im DOM steht): `GET /m-mein-profil.json`, Feld `csrfToken`
+- **CSRF-Token** (Helper, wenn kein Meta-Tag im DOM steht): `GET /m-mein-profil.json`, Feld `csrfToken`. Auf "Meine Anzeigen" steht kein Meta-Tag, der Helper nimmt also immer diesen Weg – wie die Seite selbst
 - **Anzeigenbilder** (Hauptscript für Snapshot und Wiederherstellung, Helper für die Sicherung): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
 - **Bearbeiten-Seite** (Helper, für "Auswahl sichern"): `GET /p-anzeige-bearbeiten.html?adId={adId}`, nur lesend
 - **CSRF-Token im DOM**: zuerst `meta[name="_csrf"], meta[name="csrf-token"]` als ein Selektorpaar — es gewinnt das Element, das im Dokument zuerst steht, nicht die Reihenfolge im Selektor. Erst danach `input[name="_csrf"]`
