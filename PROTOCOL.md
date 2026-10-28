@@ -96,7 +96,8 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
 ### sessionStorage-Schlüssel
 
 **Wertformat ab 3.11.0:** `ka-batch-original-adid` und `ka-delete-after-create`
-tragen ihren Wert nicht mehr als nackten String, sondern als JSON mit
+(seit 3.12.0 auch `ka-restore-adid` und `ka-restore-pending-adid`) tragen
+ihren Wert nicht mehr als nackten String, sondern als JSON mit
 Entstehungszeitpunkt:
 
 ```
@@ -104,7 +105,8 @@ Entstehungszeitpunkt:
 ```
 
 Gelesen wird über `readVorgangMarker()`. Ist der Marker älter als
-`CONFIG.MARKER_MAX_AGE_MS` (10 Minuten), liefert die Funktion `null` — die
+`CONFIG.MARKER_MAX_AGE_MS` (10 Minuten; für `ka-restore-pending-adid`
+`CONFIG.RESTORE_PENDING_MAX_AGE_MS`, 30 Minuten), liefert die Funktion `null` — die
 Bestätigungs-Seite behandelt ihn dann wie nicht vorhanden und löscht nichts.
 Grund: `sessionStorage` ist tab-gebunden und überlebt Navigationen. Ein Marker
 aus einem abgebrochenen Vorgang wurde vorher von einem _späteren_ Vorgang im
@@ -325,6 +327,8 @@ Bestätigungs-Seite (kein Zugriff durch den Helper):
 | `CONFIG.DELETE_REQUEST_TIMEOUT_MS` | 8 000 ms (8s)     | `kleinanzeigen-duplizieren.user.js` (`deleteAd()`)                                                       | Budget des Lösch-Requests. Der Timer startet **erst nach** der Auflösung des CSRF-Tokens, damit ein langsames Nachladen dieses Budget nicht verbraucht                                                                                                                         |
 | `CONFIG.CSRF_FETCH_TIMEOUT_MS`     | 8 000 ms (8s)     | `kleinanzeigen-duplizieren.user.js` (`resolveCsrfToken()`)                                               | Eigenes Budget für das Nachladen des CSRF-Tokens aus "Meine Anzeigen". Ein Abbruch meldet `CSRF-Token nicht ermittelbar (Timeout)`. Die Summe beider Budgets plus `DELETE_WAIT_AFTER_CREATE_MS` (18s) bleibt unter `RESULT_WAIT_TIMEOUT_MS`                                    |
 | Polling-Intervall                  | 1 000 ms          | `helper.user.js` (`processOne`)                                                                          | Fallback-Polling auf den Result-Key, redundant zum `storage`-Event                                                                                                                                                                                                             |
+| `CONFIG.MARKER_MAX_AGE_MS`         | 600 000 ms (10 min) | `kleinanzeigen-duplizieren.user.js` (`readVorgangMarker()`)                                          | Verfall der sessionStorage-Marker `ka-batch-original-adid`, `ka-delete-after-create` und `ka-restore-adid`                                                                                                                                                                    |
+| `CONFIG.RESTORE_PENDING_MAX_AGE_MS`| 1 800 000 ms (30 min) | `kleinanzeigen-duplizieren.user.js` (Bestätigungs-Seite)                                             | Verfall von `ka-restore-pending-adid`. Gleich `RESTORE_WAIT_TIMEOUT_MS`, damit Worker und Helper dieselbe Prüfzeit für das befüllte Formular annehmen; ändert sich eine, muss die andere mit                                                                                     |
 | `RESTORE_WAIT_TIMEOUT_MS`          | 1 800 000 ms (30 min) | `helper.user.js` (`openRestore`)                                                                     | Wartezeit auf `ka-restore-result-<adId>`. Der Nutzer prüft und sendet das Formular selbst; nach Ablauf wird nur der Knopf wieder freigegeben, kein Tab geschlossen                                                                                                              |
 
 ## Kompatibilitätsregeln
@@ -353,8 +357,9 @@ Diese Regeln gelten für jede künftige Änderung an einem der beiden Scripts:
    erfordert einen `IDB_VERSION`-Bump in **beiden** Scripts sowie eine
    Anpassung der `onupgradeneeded`-Handler.
 4. **Konstanten bleiben dupliziert, aber synchron.** Es gibt kein
-   gemeinsames Modul; `ka-batch-result-`, `ka-batch`, `snapshots`, `adId`
-   usw. sind in beiden Dateien hart kodiert. Bei jeder Änderung eines
+   gemeinsames Modul; `ka-batch-result-`, `ka-batch`, `snapshots`, `adId`,
+   `#kaRestore=`, `ka-restore-result-` usw. sind in beiden Dateien hart
+   kodiert. Bei jeder Änderung eines
    dieser Werte müssen beide Scripts und dieses Dokument gemeinsam
    aktualisiert werden.
 5. **Vorgangs-Marker werden lesend abwärtskompatibel behandelt.** Die
