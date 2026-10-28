@@ -57,6 +57,12 @@
         // Vorgang inklusive Bild-Upload und deutlich mehr als die 180s, nach
         // denen der Helper aufgibt.
         MARKER_MAX_AGE_MS: 600000,
+        // Wiederherstellen: Zwischen Befuellen und Absenden prueft der Nutzer
+        // das Formular von Hand, womoeglich mit Pausen. Der Pending-Marker gilt
+        // deshalb so lange, wie der Helper auf das Ergebnis wartet
+        // (RESTORE_WAIT_TIMEOUT_MS dort). Mit zehn Minuten blieb nach einer
+        // laengeren Pruefung der Snapshot stehen und der Helper erfuhr nichts.
+        RESTORE_PENDING_MAX_AGE_MS: 1800000,
         // Eigenes Budget fuer das Nachladen des CSRF-Tokens. Bewusst getrennt
         // von DELETE_REQUEST_TIMEOUT_MS: beide Requests laufen nacheinander,
         // ein gemeinsamer Timer wuerde den Loesch-Request um die Zeit
@@ -403,8 +409,9 @@
 
     // Werte im Alt-Format (reiner String ohne Zeitstempel) gelten weiter, weil
     // ein Script-Update einen Tab mit altem Marker hinterlassen kann. Sie haben
-    // dann keine Verfallszeit -- wie vor der Umstellung.
-    function readVorgangMarker(key) {
+    // dann keine Verfallszeit -- wie vor der Umstellung. maxAgeMs (optional)
+    // ersetzt CONFIG.MARKER_MAX_AGE_MS fuer Marker mit eigener Laufzeit.
+    function readVorgangMarker(key, maxAgeMs) {
         let raw = null;
         try { raw = sessionStorage.getItem(key); } catch (e) { return null; }
         if (!raw) return null;
@@ -424,7 +431,7 @@
             }
         }
 
-        if (ts !== null && (Date.now() - ts) > CONFIG.MARKER_MAX_AGE_MS) {
+        if (ts !== null && (Date.now() - ts) > (maxAgeMs || CONFIG.MARKER_MAX_AGE_MS)) {
             logger.warn('Vorgangs-Marker abgelaufen, wird verworfen', {
                 key: key, alterMs: Date.now() - ts
             });
@@ -885,7 +892,12 @@
     // bzw. die Wahl des Nutzers -- ein Formular fuer Kategorie A darf nicht
     // still auf Kategorie B umgebogen werden, die Attributfelder passen dann
     // nicht mehr zusammen.
-    const RESTORE_SKIP_FIELD = /^(adId|adDraftUuid|posterType|trackingId|postAdWenkseSessionId|locationId|buyNowEligible|articles|marketingOptIn|categoryId|parentCategoryId)$|^adImages\[/;
+    // Die Versandmethoden (shippingOptions[n].id) fuehrt das Formular aus
+    // seiner eigenen Auswahl und der Paketgroessen-Empfehlung; ein direkt
+    // gesetzter Wert hielt live nicht (10/2026: gesichert DHL_001, danach
+    // standen drei Methoden im Formular). Sie werden nur verglichen, siehe
+    // compareShippingOptions.
+    const RESTORE_SKIP_FIELD = /^(adId|adDraftUuid|posterType|trackingId|postAdWenkseSessionId|locationId|buyNowEligible|articles|marketingOptIn|categoryId|parentCategoryId)$|^adImages\[|^shippingOptions\[/;
 
     function isPostAdStep1Page(loc) { return ((loc || window.location).pathname || '').indexOf(POST_AD_STEP1_PATH) === 0; }
     function isPostAdStep2Page(loc) { return ((loc || window.location).pathname || '').indexOf(POST_AD_STEP2_PATH) === 0; }
@@ -979,14 +991,17 @@
     /**
      * Traegt rawFields und hiddenFields eines Snapshots in das Formular ein.
      * hiddenFields nur dort, wo das Formular das Feld selbst als Hidden-Feld
-     * fuehrt (Preistyp, Kategorie-Attribute) -- ein sichtbares Feld wird nie
-     * aus einem versteckten Wert ueberschrieben. Snapshots von Hauptscript
-     * < 3.11.0 haben keine hiddenFields; dann bleiben Preistyp und Attribute
-     * auf dem Standard des Formulars.
+     * fuehrt (Preistyp) -- ein sichtbares Feld wird nie aus einem versteckten
+     * Wert ueberschrieben. Versteckte Kategorie-Attribute (attributeMap[...])
+     * bleiben hier unberuehrt: sie setzt applyAttributeWidgets ueber die
+     * Auswahlknoepfe. Ein vorab direkt gesetzter Wert wuerde dort die Pruefung
+     * nach dem Klick aushebeln -- das Feld truege den Sollwert dann schon,
+     * egal ob der Klick gewirkt hat. Snapshots von Hauptscript < 3.11.0 haben
+     * keine hiddenFields; dann bleiben Preistyp und Attribute auf dem Standard
+     * des Formulars.
      *
      * Rueckgabe: { set, kept, missing, skipped, attributes } -- jeweils
-     * Feldnamen; attributes sind die gesetzten Kategorie-Attribute, die der
-     * Nutzer vor dem Absenden ansehen soll.
+     * Feldnamen; attributes fuellt erst applyAttributeWidgets.
      */
     function applySnapshotToForm(root, snap) {
         const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
@@ -1004,9 +1019,9 @@
             }
             const el = root.querySelector(fieldSelector(name));
             if (!el || el.type !== 'hidden') { report.missing.push(name); return; }
+            if (ATTRIBUTE_FIELD.test(name)) return; // applyAttributeWidgets
             const r = applyFieldValue(root, name, String(hidden[name]));
             report[r].push(name);
-            if (r === 'set' && /^attributeMap\[/.test(name)) report.attributes.push(name);
         });
         return report;
     }
@@ -1060,11 +1075,22 @@
         return m ? m[1] : null;
     }
 
+    // Nur ein echter Auswahlknopf (type=button), nie irgendein Knopf: Liegt
+    // das versteckte Feld direkt im Formular, waere der erste Knopf dort
+    // womoeglich "Anzeige aufgeben" -- ein Klick schickte die Anzeige ab.
+    // Gesucht wird deshalb nur im eigenen Rahmen des Feldes und nur nach
+    // Knoepfen, die eine Auswahl oeffnen (Zustand: aria-haspopup=dialog).
+    function isSelectButton(el) {
+        return !!el && el.tagName === 'BUTTON' && el.type === 'button';
+    }
+
     function findAttributeButton(hiddenInput, key) {
         const byId = key ? document.getElementById(key) : null;
-        if (byId && byId.tagName === 'BUTTON') return byId;
+        if (isSelectButton(byId)) return byId;
         const box = hiddenInput.parentElement;
-        return box ? box.querySelector('button') : null;
+        if (!box || box.tagName === 'FORM') return null;
+        return Array.prototype.slice.call(box.querySelectorAll('button[aria-haspopup], button[role="combobox"]'))
+            .filter(isSelectButton)[0] || null;
     }
 
     function findDialog() {
@@ -1125,9 +1151,16 @@
 
     /**
      * Traegt die Kategorie-Attribute aus hiddenFields ueber die Auswahlknoepfe
-     * ein. Ergaenzt report.attributes (gesetzt) und report.unmatched
-     * ({ name, value, reason }) -- letzteres nennt das Panel zum Waehlen von
-     * Hand. Ohne Knopf bleibt der direkte Wert aus applySnapshotToForm stehen.
+     * ein. Ergaenzt report.set/kept, report.attributes (gesetzt) und
+     * report.unmatched ({ name, value, reason }) -- letzteres nennt das Panel
+     * zum Waehlen von Hand.
+     *
+     * Ohne Auswahlknopf:
+     *  - Gibt es zum Attribut ein anderes Bedienelement (live 10/2026: die
+     *    Marke ist ein Eingabefeld mit Vorschlagsliste, input#<key>), wird
+     *    nichts gesetzt ('widget_unsupported'). Ein direkt gesetzter Wert
+     *    hielt dort nicht; das Panel nennt das Feld zum Eintragen von Hand.
+     *  - Gibt es gar kein Bedienelement, ist der direkte Wert der einzige Weg.
      */
     async function applyAttributeWidgets(root, snap, report) {
         report.unmatched = report.unmatched || [];
@@ -1140,23 +1173,28 @@
             const value = String(hidden[name]);
             const input = root.querySelector(fieldSelector(name));
             if (!input || input.type !== 'hidden') continue; // steht schon als missing im Report
+            if (input.value === value) { report.kept.push(name); continue; }
             const key = attributeKey(name);
             const btn = findAttributeButton(input, key);
-            if (!btn) continue;
             let outcome;
-            try {
-                outcome = (btn.getAttribute('aria-haspopup') === 'dialog')
-                    ? await selectDialogOption(btn, input, value)
-                    : await selectListboxOption(btn, key, input, value);
-            } catch (e) {
-                logger.warn('Attribut-Auswahl fehlgeschlagen', { name: name, error: String(e) });
-                outcome = 'error';
-            }
-            const idx = report.attributes.indexOf(name);
-            if (outcome === 'set') {
-                if (idx < 0) report.attributes.push(name);
+            if (btn) {
+                try {
+                    outcome = (btn.getAttribute('aria-haspopup') === 'dialog')
+                        ? await selectDialogOption(btn, input, value)
+                        : await selectListboxOption(btn, key, input, value);
+                } catch (e) {
+                    logger.warn('Attribut-Auswahl fehlgeschlagen', { name: name, error: String(e) });
+                    outcome = 'error';
+                }
+            } else if (key && document.getElementById(key)) {
+                outcome = 'widget_unsupported';
             } else {
-                if (idx >= 0) report.attributes.splice(idx, 1);
+                outcome = applyFieldValue(root, name, value);
+            }
+            if (outcome === 'set') {
+                report.set.push(name);
+                report.attributes.push(name);
+            } else {
                 report.unmatched.push({ name: name, value: value, reason: outcome });
                 logger.warn('Attribut nicht zuordenbar', { name: name, value: value, reason: outcome });
             }
@@ -1172,11 +1210,15 @@
     // Bilder ohne Daten -- Snapshot einer aelteren Version oder ein
     // fehlgeschlagener Download -- werden ueber ihre URL nachgeladen. Der CDN
     // liefert Bilder geloeschter Anzeigen noch eine Weile aus; normalizeImageUrl
-    // macht aus einer signierten 96px-Vorschau die volle Aufloesung.
+    // macht aus einer signierten 96px-Vorschau die volle Aufloesung. Geladen
+    // wird nur von img.kleinanzeigen.de: Die Adressen koennen aus einer
+    // importierten ZIP stammen, und was dort steht, landet sonst als Bild in
+    // der Anzeige.
     async function completeSnapshotImages(images) {
         return mapLimit(images || [], CONFIG.IMAGE_FETCH_CONCURRENCY, async function (img) {
             if (!img || img.blob || !img.url) return img;
-            const url = normalizeImageUrl(img.url) || img.url;
+            const url = normalizeImageUrl(img.url);
+            if (!url) return img;
             try {
                 const blob = await fetchAsBlob(url);
                 return { url: img.url, blob: blob, mime: blob.type || 'image/jpeg' };
@@ -1226,6 +1268,32 @@
         file_input_rejected: 'Datei-Feld hat die Bilder abgelehnt'
     };
 
+    // Versandmethoden (shippingOptions[n].id) aus Snapshot und Formular
+    // vergleichen. Gesetzt werden sie nicht (siehe RESTORE_SKIP_FIELD); weichen
+    // sie ab, nennt das Panel beide Listen. Rueckgabe: null (nichts gesichert
+    // oder gleich) oder { saved, form }.
+    const SHIPPING_FIELD = /^shippingOptions\[\d+\]\.id$/;
+
+    function compareShippingOptions(root, snap) {
+        const hidden = (snap && snap.hiddenFields) || {};
+        const saved = Object.keys(hidden).filter(function (n) { return SHIPPING_FIELD.test(n); })
+            .map(function (n) { return String(hidden[n]); }).sort();
+        if (!saved.length) return null;
+        const form = Array.prototype.slice.call(root.querySelectorAll('input[name^="shippingOptions["]'))
+            .filter(function (el) { return SHIPPING_FIELD.test(el.name) && el.value; })
+            .map(function (el) { return el.value; }).sort();
+        if (saved.join('|') === form.join('|')) return null;
+        return { saved: saved, form: form };
+    }
+
+    const RESTORE_UNMATCHED_REASONS = {
+        no_match: 'kein passender Eintrag',
+        widget_unsupported: 'Eingabefeld, bitte selbst eintragen',
+        widget_missing: 'Auswahl ließ sich nicht öffnen',
+        mismatch: 'Auswahl hat nicht gegriffen',
+        error: 'Auswahl hat nicht gegriffen'
+    };
+
     // Lesbarer Name eines Attributfelds: attributeMap[kinderzimmermoebel.art] -> art
     function attributeLabel(name) {
         const m = /^attributeMap\[[^.\]]*\.?([^\]]*)\]$/.exec(name);
@@ -1234,7 +1302,7 @@
 
     // Bleibt stehen, bis der Nutzer sie schliesst -- anders als showNotification.
     // Hier steht, was er vor dem Absenden pruefen soll.
-    function showRestorePanel(snap, report, imgReport) {
+    function showRestorePanel(snap, report, imgReport, shipping) {
         const old = document.getElementById(RESTORE_PANEL_ID);
         if (old) old.remove();
 
@@ -1269,8 +1337,13 @@
         }
         if (report.unmatched && report.unmatched.length) {
             lines.push('Von Hand wählen: ' + report.unmatched.map(function (u) {
-                return attributeLabel(u.name) + ' (' + u.value + ')';
-            }).join(', ') + ' – kein passender Eintrag gefunden.');
+                return attributeLabel(u.name) + ' (' + u.value + ', ' +
+                    (RESTORE_UNMATCHED_REASONS[u.reason] || 'nicht gesetzt') + ')';
+            }).join('; ') + '.');
+        }
+        if (shipping) {
+            lines.push('Versandmethoden prüfen: gesichert ' + shipping.saved.join(', ') +
+                ', im Formular ' + (shipping.form.length ? shipping.form.join(', ') : 'keine') + '.');
         }
         lines.push('Nichts wurde abgeschickt. Formular prüfen und selbst auf "Anzeige aufgeben" klicken.');
         lines.forEach(function (t) {
@@ -1311,6 +1384,7 @@
             await applyAttributeWidgets(root, snap, report);
             const images = await completeSnapshotImages(snap.images || []);
             const imgReport = applyImagesToForm(root, images);
+            const shipping = compareShippingOptions(root, snap);
 
             // Auftrag erledigt. Ab jetzt wartet nur noch die Bestaetigungs-Seite
             // auf den Nutzer; ein weiteres "Anzeige aufgeben" im selben Tab darf
@@ -1320,10 +1394,10 @@
 
             logger.log('Formular aus Snapshot befuellt', {
                 adId: adId, felder: report.set.length + report.kept.length,
-                fehlend: report.missing, bilder: imgReport
+                fehlend: report.missing, bilder: imgReport, versand: shipping
             });
-            showRestorePanel(snap, report, imgReport);
-            return { report: report, images: imgReport };
+            showRestorePanel(snap, report, imgReport, shipping);
+            return { report: report, images: imgReport, shipping: shipping };
         } catch (error) {
             logger.error('Wiederherstellung fehlgeschlagen', error);
             showNotification('Wiederherstellung fehlgeschlagen: ' + error.message, 'error');
@@ -1340,7 +1414,18 @@
         const fromHash = restoreAdIdFromHash(window.location.hash);
         if (fromHash) writeVorgangMarker(RESTORE_MARKER_KEY, fromHash);
         const adId = fromHash || readVorgangMarker(RESTORE_MARKER_KEY);
-        if (!adId) return false;
+        if (!adId) {
+            // Schritt 1 ohne Auftrag: Hier beginnt eine andere Anzeige. Ein
+            // Pending-Marker einer frueheren Wiederherstellung in diesem Tab
+            // gehoert nicht zu ihr -- bliebe er stehen, loeschte die
+            // Bestaetigungs-Seite den Snapshot einer Anzeige, die nie
+            // abgeschickt wurde. Schritt 2 laesst ihn stehen: dorthin fuehrt
+            // auch ein Neuladen des befuellten Formulars.
+            if (isPostAdStep1Page()) {
+                try { sessionStorage.removeItem(RESTORE_PENDING_KEY); } catch (e) {}
+            }
+            return false;
+        }
         if (isPostAdStep1Page()) {
             // Kategorie unbekannt (Snapshot ohne hiddenFields) oder vom Nutzer
             // zur Wahl gestellt. Der Marker traegt den Auftrag zu Schritt 2.
@@ -1838,7 +1923,7 @@
             // Wiederherstellung: Diese Seite beweist, dass die Anzeige aus dem
             // Snapshot wieder existiert. Erst jetzt darf der Snapshot weg; der
             // Helper erfaehrt es ueber den Result-Key und raeumt seine Liste auf.
-            const restoredAdId = readVorgangMarker(RESTORE_PENDING_KEY);
+            const restoredAdId = readVorgangMarker(RESTORE_PENDING_KEY, CONFIG.RESTORE_PENDING_MAX_AGE_MS);
             if (restoredAdId) {
                 try { sessionStorage.removeItem(RESTORE_PENDING_KEY); } catch (e) {}
                 logger.log('Bestaetigungs-Seite (Wiederherstellung) erreicht, loesche Snapshot', { adId: restoredAdId });
@@ -1980,7 +2065,8 @@
             RESTORE_MARKER_KEY, RESTORE_PENDING_KEY, LS_RESTORE_RESULT_PREFIX, RESTORE_PANEL_ID,
             RESTORE_SKIP_FIELD, isPostAdStep1Page, isPostAdStep2Page, restoreAdIdFromHash,
             findPostAdForm, applyFieldValue, applySnapshotToForm, completeSnapshotImages,
-            labelCandidates, optionMatchesValue, applyAttributeWidgets,
+            labelCandidates, optionMatchesValue, applyAttributeWidgets, findAttributeButton,
+            compareShippingOptions,
             applyImagesToForm, restoreFromSnapshot, handleRestorePages
         };
         return; // im Test-Kontext keine Initialisierung/Timer

@@ -75,7 +75,9 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
   1.15.0 außerdem von `importBackupZip()` im Helper: eine Recovery- oder
   Sicherungs-ZIP wird in dieselbe Objektform zurückgelesen (`capturedAt` aus
   dem ISO-String, `hiddenFields` leer, wenn die ZIP keine kennt, Bilder ohne
-  Datei als `{ url, blob: null, mime: null }`). Gleiche `adId` ersetzt.
+  Datei als `{ url, blob: null, mime: null }`). Existiert zur `adId` schon ein
+  Snapshot, bleibt er unverändert (`add` statt `put`); der Import meldet ihn
+  als vorhanden.
 - Gelesen von: Helper (`listSnapshotMeta`, `getSnapshotsAll`) für die
   Recovery-Übersicht und den ZIP-Export.
 - Gelöscht von:
@@ -123,7 +125,7 @@ passiert nichts.
 | `ka-delete-after-create` | `smartRepublish()` (ab 3.10.0)       | Auftrag, dieses Original zu löschen, sobald die Neuanlage bestätigt ist. Fehlt der Schlüssel, wird **nichts** gelöscht |
 | `ka-duplicate-adid`      | `duplicateAd()`                      | Signalisiert dem Helper den Abschluss einer Duplizierung                                                               |
 | `ka-restore-adid`        | `handleRestorePages()` (ab 3.12.0)   | Auftrag, das Formular "Anzeige aufgeben" aus Snapshot `<adId>` zu befüllen. Überlebt die Kategoriewahl (Schritt 1 → 2 ist ein POST ohne Hash); JSON-Format mit Verfall wie oben. Entfernt, sobald befüllt wurde oder kein Snapshot existiert |
-| `ka-restore-pending-adid`| `restoreFromSnapshot()` (ab 3.12.0)  | Formular ist befüllt; die Bestätigungs-Seite löscht den Snapshot und schreibt `ka-restore-result-<adId>`. Fehlt der Marker, bleibt der Snapshot stehen |
+| `ka-restore-pending-adid`| `restoreFromSnapshot()` (ab 3.12.0)  | Formular ist befüllt; die Bestätigungs-Seite löscht den Snapshot und schreibt `ka-restore-result-<adId>`. Fehlt der Marker, bleibt der Snapshot stehen. Verfall nach `CONFIG.RESTORE_PENDING_MAX_AGE_MS` (30 min, gleich `RESTORE_WAIT_TIMEOUT_MS` im Helper) statt 10 min. Schritt 1 ohne Auftrag entfernt ihn (dort beginnt eine andere Anzeige) |
 
 ### localStorage: sonstige Schlüssel
 

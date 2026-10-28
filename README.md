@@ -126,18 +126,19 @@ In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle s
 Eine verlorene Anzeige — gescheiterte Neuanlage, versehentlich gelöscht — lässt sich aus einem Recovery-Snapshot oder einer Sicherungs-ZIP zurückholen. Das Script füllt das Formular "Anzeige aufgeben" aus; **abgeschickt wird nichts**, den Klick auf "Anzeige aufgeben" machst du selbst.
 
 1. Auf "Meine Anzeigen" den Batch-Button klicken. Unten im Auswahl-Fenster steht **"Sicherung importieren (ZIP)"**. Liegt die Anzeige noch als Recovery-Snapshot vor (gelber Kasten), entfällt der Import
-2. Die ZIP wählen — eine Recovery-ZIP oder eine aus "Auswahl sichern". Die enthaltenen Anzeigen erscheinen im gelben Kasten, jede mit dem Knopf **Wiederherstellen**. Die Datei bleibt im Browser, es wird nichts hochgeladen
+2. Die ZIP wählen — eine Recovery-ZIP oder eine aus "Auswahl sichern". Die enthaltenen Anzeigen erscheinen im gelben Kasten, jede mit dem Knopf **Wiederherstellen**. Die Datei bleibt im Browser, es wird nichts hochgeladen. Liegt eine Anzeige schon als Snapshot vor, bleibt dieser stehen und wird nicht durch die ZIP ersetzt
 3. **Wiederherstellen** klicken. Ein neuer Tab öffnet "Anzeige aufgeben": mit bekannter Kategorie direkt das Formular, sonst zuerst die Kategoriewahl; nach der Wahl geht es von allein weiter
-4. Das Script trägt Titel, Beschreibung, Preis, Preistyp, Versand, PLZ, Kontaktname und die Kategorie-Attribute ein und hängt die Bilder in der gespeicherten Reihenfolge an. Ein Panel unten rechts nennt, was übernommen wurde und was fehlt
+4. Das Script trägt Titel, Beschreibung, Preis, Preistyp, "Versand möglich", PLZ, Kontaktname und die Kategorie-Attribute ein und hängt die Bilder in der gespeicherten Reihenfolge an. Ein Panel unten rechts nennt, was übernommen wurde und was von Hand zu wählen ist
 5. Formular prüfen und auf **Anzeige aufgeben** klicken. Erst auf der Bestätigungsseite löscht das Script den Snapshot und meldet dem Helper den Abschluss; der Knopf im Auswahl-Fenster zeigt dann "Wiederhergestellt"
 
 Was zu prüfen ist:
 
-- **Art, Farbe, Zustand** und andere Attribute: Kleinanzeigen zeigt sie über eigene Auswahlknöpfe (Listen, beim Zustand ein Dialog). Das Script bedient diese Knöpfe wie ein Nutzer und prüft danach den gesetzten Wert; die Listeneinträge tragen keinen Wert, der Treffer kommt über den Text ("Betten & Wiegen" → `betten_wiegen`). Was sich nicht zuordnen lässt, nennt das Panel zum Wählen von Hand
-- **Bilder**: Eine Recovery-ZIP aus einer Version vor 3.10.1 enthält nur `data.json`. Das Script lädt die Bilder dann über ihre Adresse in voller Auflösung nach — das klappt, solange Kleinanzeigen die Bilder der gelöschten Anzeige noch ausliefert. Was fehlt, steht im Panel
+- **Art, Farbe, Zustand** und andere Attribute: Kleinanzeigen zeigt sie über eigene Auswahlknöpfe (Listen, beim Zustand ein Dialog). Das Script bedient diese Knöpfe wie ein Nutzer und prüft danach den gesetzten Wert; die Listeneinträge tragen keinen Wert, der Treffer kommt über den Text ("Betten & Wiegen" → `betten_wiegen`). Was sich nicht zuordnen lässt, nennt das Panel zum Wählen von Hand. Die **Marke** ist bei vielen Kategorien ein Eingabefeld mit Vorschlagsliste; sie trägt das Script nicht ein, das Panel nennt den gesicherten Wert
+- **Versandmethoden** (Hermes, DHL, …) setzt das Script nicht: Kleinanzeigen wählt sie selbst vor, ein von außen gesetzter Wert hält dort nicht. Weicht die Vorauswahl von der Sicherung ab, nennt das Panel beide
+- **Bilder**: Eine Recovery-ZIP aus einer Version vor 3.10.1 enthält nur `data.json`. Das Script lädt die Bilder dann über ihre Adresse in voller Auflösung nach — das klappt, solange Kleinanzeigen die Bilder der gelöschten Anzeige noch ausliefert. Was fehlt, steht im Panel. Wie bei einer Auswahl von Hand lädt Kleinanzeigen die angehängten Bilder sofort hoch; die Anzeige selbst entsteht erst mit dem Klick auf "Anzeige aufgeben"
 - **Kategorie**: Snapshots von Hauptscript < 3.11.0 kennen sie nicht; die Wiederherstellung beginnt dann in der Kategoriewahl
 
-> Nicht übernommen werden kostenpflichtige Extras, die Marketing-Einwilligung und interne Sitzungswerte. Die Kategorie wird nie gegen die im Formular gewählte getauscht. Der Auftrag "Formular befüllen" liegt im Speicher des Tabs und verfällt nach zehn Minuten — wie der Löschauftrag beim Neu-Einstellen.
+> Nicht übernommen werden kostenpflichtige Extras, die Marketing-Einwilligung und interne Sitzungswerte. Die Kategorie wird nie gegen die im Formular gewählte getauscht. Der Auftrag "Formular befüllen" liegt im Speicher des Tabs und verfällt nach zehn Minuten — wie der Löschauftrag beim Neu-Einstellen. Für das Prüfen des befüllten Formulars bleiben 30 Minuten; wird danach abgeschickt, bleibt der Snapshot stehen und lässt sich von Hand löschen.
 
 ### Reihenfolge beim Neu-Einstellen (geändert in v3.10.0)
 
@@ -242,7 +243,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - **Neu: Wiederherstellen aus Sicherung.** Recovery-Snapshots bekommen im Auswahl-Fenster den Knopf "Wiederherstellen", und eine Recovery- oder Sicherungs-ZIP lässt sich über "Sicherung importieren (ZIP)" zurücklesen. Das Hauptscript füllt dann das Formular "Anzeige aufgeben" aus Texten, Feldern und Bildern des Snapshots und bedient für Art, Farbe und Zustand die Auswahlknöpfe von Kleinanzeigen; abgeschickt wird erst durch den Nutzer. Fehlende Bilder (Recovery-ZIP vor 3.10.1) werden in voller Auflösung nachgeladen. Details unter [Wiederherstellen aus Sicherung](#wiederherstellen-aus-sicherung-ab-v3120--helper-ab-v1150).
 - **ZIP-Leser ohne Fremdcode.** Gegenstück zum Schreiber: STORE und DEFLATE (über `DecompressionStream`), kein ZIP64, keine Verschlüsselung.
 - **Protokoll:** neuer Hash `#kaRestore=<adId>`, sessionStorage-Marker `ka-restore-adid` und `ka-restore-pending-adid`, localStorage-Key `ka-restore-result-<adId>` (siehe PROTOCOL.md). Das Hauptscript wird auf "Anzeige aufgeben" nur mit diesem Auftrag aktiv.
-- **Tests**: 398 Tests (vorher 345).
+- **Tests**: 415 Tests (vorher 345).
 
 ### Helper 1.14.0 (Oktober 2026)
 

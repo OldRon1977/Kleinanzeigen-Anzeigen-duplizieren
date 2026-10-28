@@ -10,6 +10,8 @@ const {
     applySnapshotToForm,
     optionMatchesValue,
     applyAttributeWidgets,
+    findAttributeButton,
+    compareShippingOptions,
     applyImagesToForm,
     completeSnapshotImages,
     restoreFromSnapshot,
@@ -175,13 +177,23 @@ describe('applySnapshotToForm', () => {
         expect(checkedValue('adType')).toBe('OFFER');
     });
 
-    it('setzt versteckte Attribute und den Preistyp aus hiddenFields', () => {
+    it('setzt den Preistyp aus hiddenFields, versteckte Attribute aber nicht direkt', () => {
+        // Attribute setzt applyAttributeWidgets ueber die Knoepfe; ein vorab
+        // gesetzter Wert hebelte dort die Pruefung nach dem Klick aus.
         const form = postAdForm();
         const report = applySnapshotToForm(form, snapshot());
 
-        expect(value('attributeMap[kinderzimmermoebel.art]')).toBe('betten_wiegen');
         expect(value('priceType')).toBe('NEGOTIABLE');
-        expect(report.attributes).toEqual(['attributeMap[kinderzimmermoebel.art]']);
+        expect(value('attributeMap[kinderzimmermoebel.art]')).toBe('');
+        expect(report.set).not.toContain('attributeMap[kinderzimmermoebel.art]');
+        expect(report.attributes).toEqual([]);
+    });
+
+    it('setzt keine Versandmethoden', () => {
+        document.body.innerHTML = '<form><input name="title"><input type="hidden" name="shippingOptions[0].id" value="HERMES_001"></form>';
+        const report = applySnapshotToForm(document.querySelector('form'), snapshot({ hiddenFields: { 'shippingOptions[0].id': 'DHL_001' } }));
+        expect(value('shippingOptions[0].id')).toBe('HERMES_001');
+        expect(report.skipped).toContain('shippingOptions[0].id');
     });
 
     it('fasst Kategorie, Sitzungswerte und kostenpflichtige Extras nicht an', () => {
@@ -338,7 +350,7 @@ describe('applyAttributeWidgets', () => {
 
     it('meldet einen Wert ohne passenden Eintrag und schliesst die Liste wieder', async () => {
         const form = formWith(listbox('kinderzimmermoebel.color', [opt('Bitte wählen', ''), opt('Blau', 'blau')]));
-        const report = { set: [], kept: [], missing: [], skipped: [], attributes: ['attributeMap[kinderzimmermoebel.color]'] };
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
         await applyAttributeWidgets(form, { rawFields: {}, hiddenFields: { 'attributeMap[kinderzimmermoebel.color]': 'lila' } }, report);
 
         expect(value('attributeMap[kinderzimmermoebel.color]')).toBe('');
@@ -377,18 +389,84 @@ describe('applyAttributeWidgets', () => {
         expect(report.unmatched[0].reason).toBe('no_match');
     });
 
-    it('laesst Felder ohne Knopf und Attribute aus rawFields in Ruhe', async () => {
+    it('laesst Felder, die schon stimmen, und Attribute aus rawFields in Ruhe', async () => {
         document.body.innerHTML = '<form><input type="hidden" name="attributeMap[x.art]" value="direkt"><input type="radio" name="attributeMap[x.versand]" value="ja"></form>';
         const form = document.querySelector('form');
-        const report = { set: [], kept: [], missing: [], skipped: [], attributes: ['attributeMap[x.art]'] };
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
         await applyAttributeWidgets(form, {
             rawFields: { 'attributeMap[x.versand]': 'ja' },
             hiddenFields: { 'attributeMap[x.art]': 'direkt', 'attributeMap[x.versand]': 'ja' }
         }, report);
 
         expect(value('attributeMap[x.art]')).toBe('direkt');
-        expect(report.attributes).toEqual(['attributeMap[x.art]']);
+        expect(report.kept).toEqual(['attributeMap[x.art]']);
+        expect(report.attributes).toEqual([]);
         expect(report.unmatched).toEqual([]);
+        expect(document.querySelector('[name="attributeMap[x.versand]"]').checked).toBe(false);
+    });
+
+    it('setzt ein Attribut ganz ohne Bedienelement direkt', async () => {
+        const form = formWith((() => { const d = document.createElement('div'); d.innerHTML = '<input type="hidden" name="attributeMap[x.intern]" value="">'; return d; })());
+        const report = { set: [], kept: [], missing: [], skipped: [], attributes: [] };
+        await applyAttributeWidgets(form, { rawFields: {}, hiddenFields: { 'attributeMap[x.intern]': 'a' } }, report);
+
+        expect(value('attributeMap[x.intern]')).toBe('a');
+        expect(report.attributes).toEqual(['attributeMap[x.intern]']);
+    });
+
+    it('der volle Ablauf meldet eine Liste, deren Klick nichts bewirkt, nicht als gesetzt', async () => {
+        // Bis zum Fix setzte applySnapshotToForm den Wert vorab direkt; die
+        // Pruefung nach dem Klick sah dann den eigenen Wert und meldete 'set'.
+        const inert = document.createElement('div');
+        inert.innerHTML = `
+            <input type="hidden" name="attributeMap[k.art]" value="">
+            <button type="button" id="k.art" role="combobox">Bitte wählen</button>
+            <ul id="k.art-menu" role="listbox"><li role="option">Bitte wählen</li><li role="option">Betten &amp; Wiegen</li></ul>`;
+        const form = formWith(inert);
+        const snap = { rawFields: {}, hiddenFields: { 'attributeMap[k.art]': 'betten_wiegen' } };
+        const report = applySnapshotToForm(form, snap);
+        await applyAttributeWidgets(form, snap, report);
+
+        expect(report.attributes).toEqual([]);
+        expect(report.unmatched).toEqual([{ name: 'attributeMap[k.art]', value: 'betten_wiegen', reason: 'mismatch' }]);
+        expect(value('attributeMap[k.art]')).toBe('');
+    });
+
+    it('fasst ein Eingabefeld mit Vorschlagsliste nicht an und nennt es zum Eintragen (live: Marke)', async () => {
+        const brand = document.createElement('div');
+        brand.innerHTML = `
+            <input type="hidden" name="attributeMap[kleidung_herren.brand]" value="">
+            <input type="text" id="kleidung_herren.brand" role="combobox" aria-haspopup="listbox">`;
+        const form = formWith(brand);
+        const snap = { rawFields: {}, hiddenFields: { 'attributeMap[kleidung_herren.brand]': 'sonstige' } };
+        const report = applySnapshotToForm(form, snap);
+        await applyAttributeWidgets(form, snap, report);
+
+        expect(value('attributeMap[kleidung_herren.brand]')).toBe('');
+        expect(report.attributes).toEqual([]);
+        expect(report.unmatched).toEqual([{ name: 'attributeMap[kleidung_herren.brand]', value: 'sonstige', reason: 'widget_unsupported' }]);
+    });
+
+    it('klickt nie einen Absende-Knopf, auch wenn das Feld direkt im Formular liegt', async () => {
+        document.body.innerHTML = `<form><input name="title">
+            <input type="hidden" name="attributeMap[k.groesse]" value="">
+            <div><input type="hidden" name="attributeMap[k.farbe]" value=""><button aria-haspopup="dialog">Farbe</button></div>
+            <button type="button" aria-haspopup="dialog">Versandmethoden auswählen</button>
+            <button type="submit">Anzeige aufgeben</button></form>`;
+        const form = document.querySelector('form');
+        let submits = 0;
+        form.addEventListener('submit', (e) => { e.preventDefault(); submits++; });
+        const clicks = vi.fn();
+        form.querySelectorAll('button').forEach((b) => b.addEventListener('click', clicks));
+        const snap = { rawFields: {}, hiddenFields: { 'attributeMap[k.groesse]': '140', 'attributeMap[k.farbe]': 'blau' } };
+        const report = applySnapshotToForm(form, snap);
+        await applyAttributeWidgets(form, snap, report);
+
+        expect(submits).toBe(0);
+        expect(clicks).not.toHaveBeenCalled();
+        // ohne Bedienelement direkt gesetzt; der Farb-Knopf ohne type=button gilt nicht als Auswahlknopf
+        expect(value('attributeMap[k.groesse]')).toBe('140');
+        expect(findAttributeButton(document.querySelector('[name="attributeMap[k.farbe]"]'), 'k.farbe')).toBeNull();
     });
 });
 
@@ -460,6 +538,13 @@ describe('completeSnapshotImages', () => {
         expect(calls).toEqual(['https://img.kleinanzeigen.de/api/v1/prod-ads/images/bb/2?rule=$_57.JPG']);
     });
 
+    it('laedt nichts von fremden Adressen (z. B. aus einer importierten ZIP)', async () => {
+        global.fetch = vi.fn();
+        const out = await completeSnapshotImages([{ url: 'https://example.org/bild.jpg', blob: null, mime: null }]);
+        expect(global.fetch).not.toHaveBeenCalled();
+        expect(out[0].blob).toBeNull();
+    });
+
     it('laesst ein nicht ladbares Bild als Platzhalter stehen', async () => {
         global.fetch = vi.fn(async () => ({ ok: false, status: 404 }));
         const out = await completeSnapshotImages([{ url: 'https://img.kleinanzeigen.de/api/v1/prod-ads/images/cc/3', blob: null, mime: null }]);
@@ -467,11 +552,36 @@ describe('completeSnapshotImages', () => {
     });
 });
 
+describe('compareShippingOptions', () => {
+    function shippingForm(values) {
+        document.body.innerHTML = '<form>' + values.map((v, i) => `<input type="hidden" name="shippingOptions[${i}].id" value="${v}">`).join('') + '</form>';
+        return document.querySelector('form');
+    }
+
+    it('nennt gesicherte und vorgefundene Methoden, wenn sie abweichen (live 10/2026)', () => {
+        const form = shippingForm(['HERMES_001', 'HERMES_002', 'DHL_001']);
+        expect(compareShippingOptions(form, { hiddenFields: { 'shippingOptions[0].id': 'DHL_001' } }))
+            .toEqual({ saved: ['DHL_001'], form: ['DHL_001', 'HERMES_001', 'HERMES_002'] });
+    });
+
+    it('schweigt bei gleicher Auswahl, auch in anderer Reihenfolge, und ohne gesicherte Methoden', () => {
+        const form = shippingForm(['HERMES_001', 'DHL_001']);
+        expect(compareShippingOptions(form, { hiddenFields: { 'shippingOptions[0].id': 'DHL_001', 'shippingOptions[1].id': 'HERMES_001' } })).toBeNull();
+        expect(compareShippingOptions(form, { hiddenFields: {} })).toBeNull();
+    });
+
+    it('meldet ein leeres Formular als Abweichung', () => {
+        const form = shippingForm([]);
+        expect(compareShippingOptions(form, { hiddenFields: { 'shippingOptions[0].id': 'DHL_001' } }))
+            .toEqual({ saved: ['DHL_001'], form: [] });
+    });
+});
+
 describe('restoreFromSnapshot (Schritt 2)', () => {
     it('befuellt das Formular, setzt den Pending-Marker und schickt nichts ab', async () => {
         setPage('/p-anzeige-aufgeben-schritt2.html?categoryId=20#kaRestore=3505764979');
         postAdForm();
-        await batchPutSnapshot(snapshot());
+        await batchPutSnapshot(snapshot({ hiddenFields: Object.assign({}, snapshot().hiddenFields, { 'shippingOptions[0].id': 'DHL_001' }) }));
         sessionStorage.setItem(RESTORE_MARKER_KEY, JSON.stringify({ v: '3505764979', ts: Date.now() }));
 
         const res = await restoreFromSnapshot('3505764979');
@@ -482,6 +592,9 @@ describe('restoreFromSnapshot (Schritt 2)', () => {
         expect(JSON.parse(sessionStorage.getItem(RESTORE_PENDING_KEY)).v).toBe('3505764979');
         const panel = document.getElementById(RESTORE_PANEL_ID);
         expect(panel.textContent).toContain('Nichts wurde abgeschickt');
+        // Versand stand nur im Snapshot -> Panel nennt die Abweichung
+        expect(res.shipping).toEqual({ saved: ['DHL_001'], form: [] });
+        expect(panel.textContent).toContain('Versandmethoden prüfen: gesichert DHL_001, im Formular keine');
         // Der Snapshot bleibt bis zur Bestaetigungs-Seite erhalten
         expect(await batchGetSnapshot('3505764979')).not.toBeNull();
     });
@@ -518,6 +631,23 @@ describe('handleRestorePages', () => {
         expect(document.querySelector('.ka-notification')).not.toBeNull();
     });
 
+    it('raeumt auf Schritt 1 ohne Auftrag einen alten Pending-Marker ab', () => {
+        // Im selben Tab beginnt eine andere Anzeige; ihre Bestaetigungs-Seite
+        // darf den Snapshot der nie abgeschickten Wiederherstellung nicht loeschen.
+        setPage('/p-anzeige-aufgeben.html');
+        sessionStorage.setItem(RESTORE_PENDING_KEY, JSON.stringify({ v: '3505764979', ts: Date.now() }));
+        expect(handleRestorePages()).toBe(false);
+        expect(sessionStorage.getItem(RESTORE_PENDING_KEY)).toBeNull();
+    });
+
+    it('laesst den Pending-Marker auf Schritt 2 stehen (Neuladen des befuellten Formulars)', () => {
+        setPage('/p-anzeige-aufgeben-schritt2.html');
+        postAdForm();
+        sessionStorage.setItem(RESTORE_PENDING_KEY, JSON.stringify({ v: '3505764979', ts: Date.now() }));
+        expect(handleRestorePages()).toBe(false);
+        expect(sessionStorage.getItem(RESTORE_PENDING_KEY)).not.toBeNull();
+    });
+
     it('verwirft einen abgelaufenen Marker', () => {
         setPage('/p-anzeige-aufgeben-schritt2.html');
         postAdForm();
@@ -537,6 +667,22 @@ describe('Bestaetigungs-Seite nach einer Wiederherstellung', () => {
         expect(await batchGetSnapshot('3505764979')).toBeNull();
         expect(localStorage.getItem(LS_RESTORE_RESULT_PREFIX + '3505764979')).toBe('ok');
         expect(sessionStorage.getItem(RESTORE_PENDING_KEY)).toBeNull();
+    });
+
+    it('gilt nach 20 Minuten Pruefen noch, nach Ablauf der Helper-Wartezeit nicht mehr', async () => {
+        setPage('/p-anzeige-aufgeben-bestaetigung.html');
+        await batchPutSnapshot(snapshot());
+        sessionStorage.setItem(RESTORE_PENDING_KEY, JSON.stringify({ v: '3505764979', ts: Date.now() - 20 * 60 * 1000 }));
+        await handleConfirmationPage();
+        expect(await batchGetSnapshot('3505764979')).toBeNull();
+        expect(localStorage.getItem(LS_RESTORE_RESULT_PREFIX + '3505764979')).toBe('ok');
+
+        localStorage.clear();
+        await batchPutSnapshot(snapshot());
+        sessionStorage.setItem(RESTORE_PENDING_KEY, JSON.stringify({ v: '3505764979', ts: Date.now() - CONFIG.RESTORE_PENDING_MAX_AGE_MS - 1000 }));
+        await handleConfirmationPage();
+        expect(await batchGetSnapshot('3505764979')).not.toBeNull();
+        expect(localStorage.getItem(LS_RESTORE_RESULT_PREFIX + '3505764979')).toBeNull();
     });
 
     it('laesst fremde Snapshots in Ruhe, wenn kein Pending-Marker steht', async () => {

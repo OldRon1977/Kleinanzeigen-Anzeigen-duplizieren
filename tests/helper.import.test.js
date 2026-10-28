@@ -13,6 +13,7 @@ const {
     putSnapshot,
     listSnapshotMeta,
     getSnapshotsAll,
+    clearAllSnapshots,
     restoreUrl,
     openRestore,
     appendRecoverySection,
@@ -129,6 +130,15 @@ describe('readZip', () => {
         expect(out.map((f) => f.name)).toEqual(['123-Titel/data.json']);
     });
 
+    it('weist verschluesselte Eintraege ab', async () => {
+        const buf = new Uint8Array(await (await buildZip([{ name: '1-a/data.json', data: utf8('{}') }])).arrayBuffer());
+        const dv = new DataView(buf.buffer);
+        for (let i = 0; i < buf.length - 4; i++) {
+            if (dv.getUint32(i, true) === 0x02014b50) dv.setUint16(i + 8, dv.getUint16(i + 8, true) | 0x1, true);
+        }
+        await expect(readZip(buf)).rejects.toThrow(/Verschlüsselte ZIP/);
+    });
+
     it('weist Nicht-ZIPs mit klarer Meldung ab', async () => {
         await expect(readZip(new Uint8Array(40))).rejects.toThrow(/Keine ZIP-Datei/);
         await expect(readZip(utf8('{"adId":"123"}'))).rejects.toThrow(/Keine ZIP-Datei/);
@@ -192,6 +202,25 @@ describe('snapshotsFromZipFiles', () => {
         expect(snapshots[0].images).toHaveLength(1);
     });
 
+    it('ordnet Bilder nach ihrer Nummer, nicht nach der Reihenfolge in der ZIP', () => {
+        const out = snapshotsFromZipFiles([
+            { name: '5-a/image_03.jpg', data: new Uint8Array([3]) },
+            { name: '5-a/image_01.jpg', data: new Uint8Array([1]) },
+            { name: '5-a/data.json', data: utf8('{"adId":"5"}') },
+            { name: '5-a/image_02.png', data: new Uint8Array([2]) }
+        ]);
+        const imgs = out.snapshots[0].images;
+        expect(imgs).toHaveLength(3);
+        expect(imgs.map((i) => i.mime)).toEqual(['image/jpeg', 'image/png', 'image/jpeg']);
+        expect(imgs.map((i) => i.blob.size)).toEqual([1, 1, 1]);
+    });
+
+    it('verwirft eine adId, die nicht nur aus Ziffern besteht', () => {
+        const out = snapshotsFromZipFiles([{ name: 'x/data.json', data: utf8('{"adId":"12#kaRestore=3"}') }]);
+        expect(out.snapshots).toEqual([]);
+        expect(out.problems).toEqual([{ name: 'x/data.json', error: 'keine Anzeigen-ID' }]);
+    });
+
     it('meldet unlesbare oder ID-lose Eintraege, statt den Import zu kippen', () => {
         const { snapshots, problems } = snapshotsFromZipFiles([
             { name: 'kaputt/data.json', data: utf8('{nicht json') },
@@ -220,13 +249,33 @@ describe('importBackupZip', () => {
         expect(meta.find((m) => m.adId === '111').imageCount).toBe(2);
     });
 
-    it('ersetzt einen vorhandenen Snapshot derselben adId', async () => {
-        await putSnapshot(snapshot('111', { title: 'Alt' }));
-        const zip = await buildZip(await snapshotZipFiles(snapshot('111', { title: 'Neu' })));
-        await importBackupZip(zip);
+    it('behaelt einen vorhandenen Snapshot derselben adId und meldet ihn', async () => {
+        // Der vorhandene traegt die Bilder als Daten; eine alte Recovery-ZIP
+        // (nur data.json) haette sie durch Adressen ersetzt.
+        await clearAllSnapshots();
+        await putSnapshot(snapshot('111', { title: 'Vorhanden' }));
+        const oldZip = await buildZip(await snapshotZipFiles(snapshot('111', {
+            title: 'Aus ZIP',
+            images: [{ url: IMG + 'aa/1?rule=$_57.JPG', blob: null, mime: null }]
+        })));
+        const res = await importBackupZip(oldZip);
+
+        expect(res.snapshots).toEqual([]);
+        expect(res.kept).toEqual(['111']);
         const all = await getSnapshotsAll();
         expect(all).toHaveLength(1);
-        expect(all[0].title).toBe('Neu');
+        expect(all[0].title).toBe('Vorhanden');
+        expect(all[0].images[0].blob).not.toBeNull();
+    });
+
+    it('nennt vorhandene Snapshots im Status statt "keine data.json"', async () => {
+        await clearAllSnapshots();
+        await putSnapshot(snapshot('111'));
+        const parent = document.createElement('div');
+        const ui = appendImportSection(parent, null);
+        Object.defineProperty(ui.input, 'files', { value: [await buildZip(await snapshotZipFiles(snapshot('111')))], configurable: true });
+        await ui.input.onchange();
+        expect(ui.status.textContent).toBe('0 Anzeige(n) importiert, 1 schon als Snapshot vorhanden (nicht ersetzt)');
     });
 });
 
@@ -262,6 +311,17 @@ describe('openRestore', () => {
         expect(done).toHaveBeenCalledWith({ adId: '42', categoryId: '20' });
         expect(btn.textContent).toContain('Wiederhergestellt');
         expect(localStorage.getItem(LS_RESTORE_RESULT_PREFIX + '42')).toBeNull();
+    });
+
+    it('reagiert auf das storage-Event, ohne auf das Polling zu warten', async () => {
+        vi.useFakeTimers();
+        vi.spyOn(window, 'open').mockReturnValue({});
+        const btn = document.createElement('button');
+        const done = vi.fn();
+        openRestore({ adId: '45' }, btn, done);
+
+        window.dispatchEvent(new StorageEvent('storage', { key: LS_RESTORE_RESULT_PREFIX + '45', newValue: 'ok' }));
+        expect(done).toHaveBeenCalledTimes(1);
     });
 
     it('gibt den Knopf nach Ablauf wieder frei, ohne etwas zu schliessen', async () => {

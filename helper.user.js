@@ -577,23 +577,41 @@
         return result;
     }
 
+    // Legt einen Snapshot nur an, wenn es zu seiner adId noch keinen gibt.
+    // Rueckgabe: true (angelegt) oder false (vorhanden, unveraendert).
     async function putSnapshot(snap) {
         const db = await openIDB();
         return new Promise(function (resolve, reject) {
             const tx = db.transaction(IDB_STORE, 'readwrite');
-            const req = tx.objectStore(IDB_STORE).put(snap);
-            req.onsuccess = function () { resolve(); };
-            req.onerror = function () { reject(req.error); };
+            const req = tx.objectStore(IDB_STORE).add(snap);
+            req.onsuccess = function () { resolve(true); };
+            req.onerror = function (e) {
+                if (req.error && req.error.name === 'ConstraintError') {
+                    // Kein Fehler des Imports: die Transaktion nicht abbrechen.
+                    e.preventDefault();
+                    resolve(false);
+                    return;
+                }
+                reject(req.error);
+            };
         });
     }
 
     // Liest eine ZIP (File oder Blob) und legt ihre Anzeigen als Snapshots
     // ab -- dieselbe Ablage, aus der auch die Recovery-Liste liest. Ein
-    // vorhandener Snapshot mit derselben adId wird ersetzt.
+    // vorhandener Snapshot mit derselben adId bleibt stehen: Er kann neuer
+    // sein als die ZIP oder Bilder als Daten tragen, wo eine alte Recovery-ZIP
+    // nur Adressen hat. Solche Anzeigen stehen in kept.
     async function importBackupZip(file) {
         const files = await readZip(await file.arrayBuffer());
         const parsed = snapshotsFromZipFiles(files);
-        for (const snap of parsed.snapshots) await putSnapshot(snap);
+        const imported = [];
+        parsed.kept = [];
+        for (const snap of parsed.snapshots) {
+            if (await putSnapshot(snap)) imported.push(snap);
+            else parsed.kept.push(snap.adId);
+        }
+        parsed.snapshots = imported;
         return parsed;
     }
 
@@ -1695,10 +1713,12 @@
             status.textContent = 'Lese ZIP \u2026';
             try {
                 const res = await importBackupZip(file);
-                log('Sicherung importiert', { anzeigen: res.snapshots.length, probleme: res.problems });
+                log('Sicherung importiert', { anzeigen: res.snapshots.length, vorhanden: res.kept, probleme: res.problems });
+                const found = res.snapshots.length + res.kept.length;
                 const text = res.snapshots.length + ' Anzeige(n) importiert' +
+                    (res.kept.length ? ', ' + res.kept.length + ' schon als Snapshot vorhanden (nicht ersetzt)' : '') +
                     (res.problems.length ? ', ' + res.problems.length + ' Eintrag/Einträge übersprungen' : '') +
-                    (res.snapshots.length ? '' : ' – keine data.json in der ZIP gefunden');
+                    (found ? '' : ' – keine data.json in der ZIP gefunden');
                 status.textContent = text;
                 btn.disabled = false;
                 if (res.snapshots.length && typeof onChange === 'function') await onChange(text);
