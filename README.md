@@ -13,6 +13,7 @@ Ein UserScript für Tampermonkey, das praktische Buttons zum Duplizieren und int
 - **Anzeigenkontingent**: Zeigt über der Anzeigenliste, wie viele Anzeigen in den letzten 30 Tagen neu aufgegeben wurden
 - **Recovery-Snapshot**: Vor jeder Löschung werden Texte, Felder und Bilder lokal gesichert
 - **Auswahl sichern**: Ausgewählte Anzeigen samt Bildern als ZIP sichern, ohne etwas zu verändern
+- **Wiederherstellen**: Verlorene Anzeigen aus einem Recovery-Snapshot oder einer Sicherungs-ZIP zurückholen — das Formular "Anzeige aufgeben" wird vorbefüllt, abgeschickt wird erst von Hand
 - **Fehlerbehandlung**: Jeder Netzwerk-Zugriff hat ein eigenes Zeitlimit und bricht danach mit einer sprechenden Meldung ab — ein nicht antwortender Server hält keinen Vorgang mehr unbegrenzt auf. Wiederholversuche mit steigendem Abstand gibt es beim Aufbau der Buttons, nicht bei Netzwerk-Zugriffen
 
 ## Installation
@@ -116,11 +117,11 @@ Im Auswahl-Fenster steht neben **Start** der Button **"Auswahl sichern (ZIP)"**.
 
 Die ZIP enthält pro Anzeige einen Ordner `<adId>-<Titel>/` mit `data.json` und `image_01.jpg`, `image_02.jpg`, … in voller Auflösung, dazu `protokoll.txt` mit Feldern, Bildern (geladen/gefunden) und Fehlern je Anzeige. `image_01` ist das Titelbild; die Reihenfolge folgt der Anzeige.
 
-In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle sichtbaren Formularwerte (`rawFields`) und die versteckten Felder mit Kategorie (`categoryId`), Attributen wie Größe, Farbe und Zustand (`attributeMap[…]`) und Versandart (`hiddenFields`). Tokens und signierte Bildadressen werden nie gespeichert. Das Format ist dasselbe wie im Recovery-ZIP. Wiederhergestellt wird von Hand: neue Anzeige aufgeben, Bilder in der Reihenfolge der Dateinamen hochladen, Werte aus `data.json` übernehmen.
+In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle sichtbaren Formularwerte (`rawFields`) und die versteckten Felder mit Kategorie (`categoryId`), Attributen wie Größe, Farbe und Zustand (`attributeMap[…]`) und Versandart (`hiddenFields`). Tokens und signierte Bildadressen werden nie gespeichert. Das Format ist dasselbe wie im Recovery-ZIP. Zurückgeholt wird eine Anzeige über [Wiederherstellen aus Sicherung](#wiederherstellen-aus-sicherung-ab-v3120--helper-ab-v1160); von Hand geht es weiterhin: neue Anzeige aufgeben, Bilder in der Reihenfolge der Dateinamen hochladen, Werte aus `data.json` übernehmen.
 
 > Scheitert eine Anzeige — etwa weil der Login abgelaufen ist —, läuft die Sicherung weiter und die Anzeige steht als FEHLER im Protokoll. Holt das Script statt der Bearbeiten-Seite eine andere Seite, wird die Anzeige nicht als leere Sicherung in die ZIP geschrieben.
 
-### Verlängern (Helper ab v1.15.0, Testversion)
+### Verlängern (Helper ab v1.17.0, Testversion)
 
 Im Auswahl-Fenster gibt es dafür zwei Elemente:
 
@@ -130,6 +131,25 @@ Im Auswahl-Fenster gibt es dafür zwei Elemente:
 Beim Verlängern öffnet sich kein Tab, und es wird nichts gelöscht oder neu angelegt. Das Script macht dasselbe wie der Verlängern-Knopf auf der Seite, nur für mehrere Anzeigen nacheinander. Zwischen zwei Anzeigen liegen 2–5 Sekunden. **Stop** beendet den Lauf nach der laufenden Anzeige.
 
 > Vor dem ersten Request lädt das Script die Anzeigenliste frisch und prüft jede Anzeige noch einmal. Verschickt wird nur, was in diesem Moment kostenlos verlängerbar ist. **Kostenpflichtige Verlängerungen** (Feld `extensionFee`) lässt das Script immer aus, die bleiben Handarbeit. Lässt sich die Liste nicht laden, wird nichts verlängert. Beides funktioniert nur mit der JSON-Quelle. Auf der Rückfallebene über die Seitenansicht erscheinen Link und Button nicht.
+
+### Wiederherstellen aus Sicherung (ab v3.12.0 / Helper ab v1.16.0)
+
+Eine verlorene Anzeige — gescheiterte Neuanlage, versehentlich gelöscht — lässt sich aus einem Recovery-Snapshot oder einer Sicherungs-ZIP zurückholen. Das Script füllt das Formular "Anzeige aufgeben" aus; **abgeschickt wird nichts**, den Klick auf "Anzeige aufgeben" machst du selbst.
+
+1. Auf "Meine Anzeigen" den Batch-Button klicken. Unten im Auswahl-Fenster steht **"Sicherung importieren (ZIP)"**. Liegt die Anzeige noch als Recovery-Snapshot vor (gelber Kasten), entfällt der Import
+2. Die ZIP wählen — eine Recovery-ZIP oder eine aus "Auswahl sichern". Die enthaltenen Anzeigen erscheinen im gelben Kasten, jede mit dem Knopf **Wiederherstellen**. Die Datei bleibt im Browser, es wird nichts hochgeladen. Liegt eine Anzeige schon als Snapshot vor, bleibt dieser stehen und wird nicht durch die ZIP ersetzt
+3. **Wiederherstellen** klicken. Ein neuer Tab öffnet "Anzeige aufgeben": mit bekannter Kategorie direkt das Formular, sonst zuerst die Kategoriewahl; nach der Wahl geht es von allein weiter
+4. Das Script trägt Titel, Beschreibung, Preis, Preistyp, "Versand möglich", PLZ, Kontaktname und die Kategorie-Attribute ein und hängt die Bilder in der gespeicherten Reihenfolge an. Ein Panel unten rechts nennt, was übernommen wurde und was von Hand zu wählen ist
+5. Formular prüfen und auf **Anzeige aufgeben** klicken. Erst auf der Bestätigungsseite löscht das Script den Snapshot und meldet dem Helper den Abschluss; der Knopf im Auswahl-Fenster zeigt dann "Wiederhergestellt"
+
+Was zu prüfen ist:
+
+- **Art, Farbe, Zustand** und andere Attribute: Kleinanzeigen zeigt sie über eigene Auswahlknöpfe (Listen, beim Zustand ein Dialog). Das Script bedient diese Knöpfe wie ein Nutzer und prüft danach den gesetzten Wert; die Listeneinträge tragen keinen Wert, der Treffer kommt über den Text ("Betten & Wiegen" → `betten_wiegen`). Was sich nicht zuordnen lässt, nennt das Panel zum Wählen von Hand. Die **Marke** ist bei vielen Kategorien ein Eingabefeld mit Vorschlagsliste; sie trägt das Script nicht ein, das Panel nennt den gesicherten Wert
+- **Versandmethoden** (Hermes, DHL, …) setzt das Script nicht: Kleinanzeigen wählt sie selbst vor, ein von außen gesetzter Wert hält dort nicht. Weicht die Vorauswahl von der Sicherung ab, nennt das Panel beide
+- **Bilder**: Eine Recovery-ZIP aus einer Version vor 3.10.1 enthält nur `data.json`. Das Script lädt die Bilder dann über ihre Adresse in voller Auflösung nach — das klappt, solange Kleinanzeigen die Bilder der gelöschten Anzeige noch ausliefert. Was fehlt, steht im Panel. Wie bei einer Auswahl von Hand lädt Kleinanzeigen die angehängten Bilder sofort hoch; die Anzeige selbst entsteht erst mit dem Klick auf "Anzeige aufgeben"
+- **Kategorie**: Snapshots von Hauptscript < 3.11.0 kennen sie nicht; die Wiederherstellung beginnt dann in der Kategoriewahl
+
+> Nicht übernommen werden kostenpflichtige Extras, die Marketing-Einwilligung und interne Sitzungswerte. Die Kategorie wird nie gegen die im Formular gewählte getauscht. Der Auftrag "Formular befüllen" liegt im Speicher des Tabs und verfällt nach zehn Minuten — wie der Löschauftrag beim Neu-Einstellen. Für das Prüfen des befüllten Formulars bleiben 30 Minuten; wird danach abgeschickt, bleibt der Snapshot stehen und lässt sich von Hand löschen.
 
 ### Reihenfolge beim Neu-Einstellen (geändert in v3.10.0)
 
@@ -179,6 +199,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 - `https://www.kleinanzeigen.de/p-anzeige-bearbeiten.html*` (Hauptscript: Buttons, Duplizieren, Smart neu einstellen)
 - `https://www.kleinanzeigen.de/p-anzeige-aufgeben-bestaetigung.html*` (Hauptscript: Löschung des Originals, Signal an den Helper)
+- `https://www.kleinanzeigen.de/p-anzeige-aufgeben.html*` und `…/p-anzeige-aufgeben-schritt2.html*` (Hauptscript, ab 3.12.0: nur mit Wiederherstellungs-Auftrag `#kaRestore=<adId>` bzw. Marker aus Schritt 1 — befüllt das Formular aus dem Snapshot und sendet nichts ab; ohne Auftrag nur der Werbeblocker)
 - `https://www.kleinanzeigen.de/*` (Hauptscript: ausschließlich der Werbeblocker, siehe unten — auf allen anderen Seiten hängt es nur ein `<style>`-Element an und kehrt zurück)
 - `https://www.kleinanzeigen.de/m-meine-anzeigen.html*` (Helper)
 
@@ -190,7 +211,7 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - **Anzeigenkontingent** (Helper): `GET /m-einstellungen-bearbeiten.json`, Feld `newAdCount`
 - **Verlängern** (Helper): `POST /m-anzeigen-verlaengern.json?ids={adId}` mit Header `X-CSRF-TOKEN`. Ob eine Anzeige kostenlos verlängerbar ist, steht in der Anzeigenliste in den Feldern `extend` und `extensionFee`
 - **CSRF-Token** (Helper, wenn kein Meta-Tag im DOM steht): `GET /m-mein-profil.json`, Feld `csrfToken`
-- **Anzeigenbilder** (Hauptscript für den Snapshot, Helper für die Sicherung): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
+- **Anzeigenbilder** (Hauptscript für Snapshot und Wiederherstellung, Helper für die Sicherung): `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG`, ohne Cookies
 - **Bearbeiten-Seite** (Helper, für "Auswahl sichern"): `GET /p-anzeige-bearbeiten.html?adId={adId}`, nur lesend
 - **CSRF-Token im DOM**: zuerst `meta[name="_csrf"], meta[name="csrf-token"]` als ein Selektorpaar — es gewinnt das Element, das im Dokument zuerst steht, nicht die Reihenfolge im Selektor. Erst danach `input[name="_csrf"]`
 
@@ -230,10 +251,19 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
-### Helper 1.15.0 (Oktober 2026, Testversion)
+### Helper 1.17.0 (Testversion)
 
-- **Neu: Anzeigen verlängern** ([#70](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/issues/70)). Im Auswahl-Fenster wählt der Link "verlängerbar (N)" die Anzeigen, die sich kostenlos verlängern lassen. "Auswahl verlängern (N)" verlängert sie nach einer Rückfrage nacheinander. Kostenpflichtige Verlängerungen werden nie automatisch ausgeführt. Endpunkt und Felder stammen aus dem Seiten-JavaScript von "Meine Anzeigen". Eine echte Verlängerung ist mit dieser Version noch nicht gelaufen.
-- **Tests**: 358 Tests (vorher 345).
+- **Neu: Anzeigen verlängern** ([#70](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/issues/70)). Im Auswahl-Fenster wählt der Link "verlängerbar (N)" die Anzeigen, die sich kostenlos verlängern lassen. "Auswahl verlängern (N)" verlängert sie nach einer Rückfrage nacheinander. Kostenpflichtige Verlängerungen werden nie automatisch ausgeführt. Endpunkt und Felder stammen aus dem Seiten-JavaScript von "Meine Anzeigen". Eine echte Verlängerung ist mit dieser Version noch nicht gelaufen. Die erste Testversion hieß 1.15.0; die Nummer 1.16.0 ging an das Wiederherstellen aus Sicherung.
+- **Tests**: 428 Tests (vorher 415).
+
+### Version 3.12.0 / Helper 1.16.0 (Oktober 2026)
+
+- **Neu: Wiederherstellen aus Sicherung** (Idee und Umsetzung: [@karlvonbonin](https://github.com/karlvonbonin), [#74](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/pull/74)). Recovery-Snapshots bekommen im Auswahl-Fenster den Knopf "Wiederherstellen", und eine Recovery- oder Sicherungs-ZIP lässt sich über "Sicherung importieren (ZIP)" zurücklesen. Das Hauptscript füllt dann das Formular "Anzeige aufgeben" aus Texten, Feldern und Bildern des Snapshots und bedient für Art, Farbe und Zustand die Auswahlknöpfe von Kleinanzeigen; abgeschickt wird erst durch den Nutzer. Fehlende Bilder (Recovery-ZIP vor 3.10.1) werden in voller Auflösung nachgeladen. Details unter [Wiederherstellen aus Sicherung](#wiederherstellen-aus-sicherung-ab-v3120--helper-ab-v1160).
+- **ZIP-Leser ohne Fremdcode.** Gegenstück zum Schreiber: STORE und DEFLATE (über `DecompressionStream`), kein ZIP64, keine Verschlüsselung.
+- **Protokoll:** neuer Hash `#kaRestore=<adId>`, sessionStorage-Marker `ka-restore-adid` und `ka-restore-pending-adid`, localStorage-Key `ka-restore-result-<adId>` (siehe PROTOCOL.md). Das Hauptscript wird auf "Anzeige aufgeben" nur mit diesem Auftrag aktiv.
+- **Nachbesserungen vor der Aufnahme:** Attribute nur über echte Auswahlknöpfe (nie ein beliebiger Knopf des Formulars), Prüfung nach dem Klick ohne vorab gesetzten Wert, Marke und Versandmethoden als Hinweis im Panel statt still gesetzt, Wartezeit bis zur Bestätigung 30 Minuten, Import ersetzt keinen vorhandenen Snapshot, Bilder nur von `img.kleinanzeigen.de`.
+- **Versionsnummer:** Helper 1.15.0 war die Testversion von "Auswahl verlängern" ([#70](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/issues/70)); die Funktion folgt nach ihrem Test als 1.17.0.
+- **Tests**: 415 Tests (vorher 345).
 
 ### Helper 1.14.0 (Oktober 2026)
 

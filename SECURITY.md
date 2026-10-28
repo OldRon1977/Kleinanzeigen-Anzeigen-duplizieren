@@ -25,7 +25,7 @@ Recovery-Snapshots (ohne Cookies, `credentials: 'omit'`).
 
 | Script                              | `@grant`       | Begründung                                                                                                                                                                                                                                                                                                               |
 | ----------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `kleinanzeigen-duplizieren.user.js` | `none`         | Reines DOM-Skript, keine erweiterten Tampermonkey-Berechtigungen nötig. Auf der Bearbeiten- und der Bestätigungs-Seite arbeitet es mit dem Anzeigen-Formular. Auf allen übrigen Seiten von `www.kleinanzeigen.de` hängt es ausschließlich ein `<style>`-Element an (Werbeblocker, siehe README) und kehrt danach zurück. |
+| `kleinanzeigen-duplizieren.user.js` | `none`         | Reines DOM-Skript, keine erweiterten Tampermonkey-Berechtigungen nötig. Auf der Bearbeiten- und der Bestätigungs-Seite arbeitet es mit dem Anzeigen-Formular; auf "Anzeige aufgeben" (Schritt 1 und 2) nur mit Wiederherstellungs-Auftrag (`#kaRestore=<adId>`), dann befüllt es das Formular aus einem Snapshot und sendet nichts ab. Auf allen übrigen Seiten von `www.kleinanzeigen.de` hängt es ausschließlich ein `<style>`-Element an (Werbeblocker, siehe README) und kehrt danach zurück. |
 | `helper.user.js`                    | `GM_openInTab` | Öffnet Worker-Tabs im Batch-Modus und schließt sie nach Erfolg. Laut Tampermonkey-Doku gehört das Schließen und Fokussieren von Tabs zu den Fähigkeiten, die im `@grant` stehen müssen; das Handle von `GM_openInTab` bietet `close()`. Als Rückfallebene nutzt der Helper `window.open`.                                |
 
 Genutzte Endpunkte:
@@ -34,7 +34,7 @@ Genutzte Endpunkte:
 - `GET /m-meine-anzeigen.html` – Nachladen des CSRF-Tokens, wenn keines im DOM steht (Hauptscript)
 - `GET /m-meine-anzeigen-verwalten.json` – Anzeigenliste, höchstens 20 Seiten (Helper)
 - `GET /m-einstellungen-bearbeiten.json` – Anzeigenkontingent, Feld `newAdCount` (Helper)
-- `GET https://img.kleinanzeigen.de/...` – Anzeigenbilder für Snapshot und Sicherung (Hauptscript, Helper)
+- `GET https://img.kleinanzeigen.de/...` – Anzeigenbilder für Snapshot, Wiederherstellung und Sicherung (Hauptscript, Helper)
 - `GET /p-anzeige-bearbeiten.html?adId={adId}` – Bearbeiten-Seite je Anzeige für "Auswahl sichern (ZIP)", nur lesend (Helper)
 
 ## Recovery-Snapshots in IndexedDB
@@ -59,6 +59,14 @@ des Helpers als ZIP exportierbar oder löschbar.
 Ein Verfallsdatum haben Snapshots nicht. Auf geteilten Geräten empfiehlt sich
 deshalb nach einem Batch ein Blick ins Recovery-UI und bei Bedarf "Alle
 löschen", um Anzeigen-Daten nicht länger als nötig lokal vorzuhalten.
+
+Seit Helper 1.16.0 lassen sich Snapshots auch aus einer Recovery- oder
+Sicherungs-ZIP importieren ("Sicherung importieren (ZIP)"). Die Datei wird
+lokal gelesen und verlässt den Browser nicht; ihre Anzeigen liegen danach wie
+alle anderen Snapshots in IndexedDB, mit denselben Hinweisen zur Aufbewahrung.
+"Wiederherstellen" befüllt nur das Formular "Anzeige aufgeben" aus dem Snapshot
+(Hauptscript ab 3.12.0); abgeschickt wird ausschließlich durch den Nutzer, und
+erst die Bestätigungs-Seite entfernt den Snapshot wieder.
 
 ## Sicherung der Auswahl (ZIP)
 

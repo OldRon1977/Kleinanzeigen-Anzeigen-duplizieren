@@ -71,7 +71,9 @@ describe('listSnapshotMeta', () => {
             adId: '111',
             title: 'Anzeige 111',
             capturedAt: 1770000000000,
-            imageCount: 2
+            imageCount: 2,
+            // ohne hiddenFields (Hauptscript < 3.11.0) ist die Kategorie unbekannt
+            categoryId: null
         });
     });
 
