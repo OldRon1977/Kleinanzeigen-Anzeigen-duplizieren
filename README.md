@@ -179,7 +179,7 @@ Kein manuelles Wegklicken mehr nötig.
 
 Zusätzlich blendet das Script Werbung auf **allen** Seiten von kleinanzeigen.de aus: Seitenbanner links und rechts, Billboards auf Startseite und Detailansicht, Werbung über den Suchergebnissen, Werbe-Kacheln innerhalb der Trefferliste, gesponserte Blöcke unter Anzeigen sowie die Above-the-fold-Werbung in Merkliste, Nachrichten und Konto.
 
-Dafür ist der `@match` auf `https://www.kleinanzeigen.de/*` erweitert. Wichtig zum Einordnen: Auf allen Seiten außer der Bearbeiten-Seite tut das Script **ausschließlich** dieses eine — es hängt ein `<style>`-Element an und kehrt sofort zurück. Keine Buttons, keine Observer, kein Zugriff auf Formulare, kein JavaScript, das ins Seiten-DOM eingreift. Trifft ein Selektor daneben, verschwindet schlimmstenfalls ein Layout-Element; klicken oder senden kann der Blocker nichts.
+Dafür ist der `@match` auf `https://www.kleinanzeigen.de/*` erweitert. Auf allen Seiten außer der Bearbeiten-Seite, der Bestätigungsseite und – nur mit Wiederherstellungs-Auftrag – "Anzeige aufgeben" tut das Script **ausschließlich** dieses eine — es hängt ein `<style>`-Element an und kehrt sofort zurück. Keine Buttons, keine Observer, kein Zugriff auf Formulare, kein JavaScript, das ins Seiten-DOM eingreift. Trifft ein Selektor daneben, verschwindet schlimmstenfalls ein Layout-Element; klicken oder senden kann der Blocker nichts.
 
 Der Cookie-Banner ist ausdrücklich von der Ausblendung ausgenommen — ohne Zustimmung lädt die Seite sonst nicht weiter.
 
@@ -234,6 +234,14 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 - Rate-Limiting - kurz warten und erneut versuchen
 - "CSRF-Token nicht ermittelbar (Timeout)" bedeutet: die Seite "Meine Anzeigen", aus der das Token nachgeladen wird, hat nicht innerhalb von 8 Sekunden geantwortet. Die Anzeige ist dann **nicht** gelöscht, das Original steht noch. Kurz warten und erneut versuchen.
 - "Timeout beim Löschen" betrifft ab v3.11.0 nur noch den Löschauftrag selbst. Vorher konnte diese Meldung auch erscheinen, wenn lediglich das Nachladen des Tokens zu lange gebraucht hatte.
+
+### Wiederherstellen befüllt das Formular nicht
+
+- Hauptscript ab 3.12.0 und Helper ab 1.16.0 müssen beide installiert und aktiv sein
+- Öffnet sich kein neuer Tab, steht am Knopf "Popup blockiert": Popups für kleinanzeigen.de zulassen
+- Startet die Wiederherstellung in der Kategoriewahl, muss die Kategorie innerhalb von zehn Minuten gewählt werden; danach verfällt der Auftrag. Erneut auf **Wiederherstellen** klicken
+- Steht "Keine Sicherung mit der ID … gefunden", fehlt der Snapshot in diesem Browser – etwa nach "Alle löschen" oder in einem anderen Browserprofil. Die ZIP dann über "Sicherung importieren (ZIP)" erneut einlesen
+- In der Konsole (F12) nach `[KA-Script]` filtern: "Formular aus Snapshot befuellt" nennt übernommene und fehlende Felder, "Attribut nicht zuordenbar" jedes Attribut, das von Hand zu wählen ist
 
 ### Upsell-Popup blockiert den Vorgang
 
@@ -475,11 +483,11 @@ Ergebnis eines vollständigen Code-Reviews (14 Findings). Alle Änderungen sind 
 
 ### Ideengeber
 
-Mehrere Funktionen dieses Scripts stammen aus dem Vergleich mit anderen Kleinanzeigen-Tools und aus der Diskussion in diesem Repository. Übernommen wurden Ideen, kein Code — mit Ausnahme der Werbeblocker-Selektoren, die als MIT-lizenzierte Vorlage gekennzeichnet sind.
+Mehrere Funktionen dieses Scripts stammen aus dem Vergleich mit anderen Kleinanzeigen-Tools und aus der Diskussion in diesem Repository. Übernommen wurden meist Ideen, kein Code. Ausnahmen sind die Werbeblocker-Selektoren, die als MIT-lizenzierte Vorlage gekennzeichnet sind, und das Wiederherstellen aus Sicherung, das als Pull Request ins Projekt kam.
 
 - **[Userscript von Andi (Zer089)](https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen)** — Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, "Meine Anzeigen" als Dashboard-Ansicht, sowie die Selektoren des Werbeblockers (MIT-lizenziert, im Code als Quelle vermerkt).
 - **[AnzeigenChef](https://anzeigenchef-online.de/handhabung/)** — deutlich längere Wartezeiten zwischen zwei Vorgängen statt Sekunden-Delays, und der Hinweis, Anzeigen besser 7 bis 14 Tage stehen zu lassen, statt häufig neu zu inserieren.
-- **[karlvonbonin](https://github.com/karlvonbonin)** — Idee und Grundlage der Auswahl im Batch-Overlay.
+- **[karlvonbonin](https://github.com/karlvonbonin)** — Idee und Grundlage der Auswahl im Batch-Overlay ([#48](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/pull/48)), dazu Idee und Code für das Wiederherstellen aus Sicherung ([#74](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/pull/74), aufgenommen über #75).
 - **[halejok](https://github.com/halejok)** — Untergrenze für die Pause im Batch: mindestens 3 bis 5 Minuten, damit die Abstände menschlich aussehen. Grundlage für den Standardwert 3 bis 6 Minuten und für die Warnung bei abgeschalteter Pause.
 - **[Atom9989](https://github.com/Atom9989)** — Wunsch nach einem Batch über alle Anzeigen, Farbcodierung nach Alter und eine Warnung bei zu jungen Anzeigen.
 
