@@ -60,7 +60,7 @@ Ein Verfallsdatum haben Snapshots nicht. Auf geteilten Geräten empfiehlt sich
 deshalb nach einem Batch ein Blick ins Recovery-UI und bei Bedarf "Alle
 löschen", um Anzeigen-Daten nicht länger als nötig lokal vorzuhalten.
 
-Seit Helper 1.15.0 lassen sich Snapshots auch aus einer Recovery- oder
+Seit Helper 1.16.0 lassen sich Snapshots auch aus einer Recovery- oder
 Sicherungs-ZIP importieren ("Sicherung importieren (ZIP)"). Die Datei wird
 lokal gelesen und verlässt den Browser nicht; ihre Anzeigen liegen danach wie
 alle anderen Snapshots in IndexedDB, mit denselben Hinweisen zur Aufbewahrung.

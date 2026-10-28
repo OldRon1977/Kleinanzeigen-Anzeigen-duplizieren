@@ -117,11 +117,11 @@ Im Auswahl-Fenster steht neben **Start** der Button **"Auswahl sichern (ZIP)"**.
 
 Die ZIP enthält pro Anzeige einen Ordner `<adId>-<Titel>/` mit `data.json` und `image_01.jpg`, `image_02.jpg`, … in voller Auflösung, dazu `protokoll.txt` mit Feldern, Bildern (geladen/gefunden) und Fehlern je Anzeige. `image_01` ist das Titelbild; die Reihenfolge folgt der Anzeige.
 
-In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle sichtbaren Formularwerte (`rawFields`) und die versteckten Felder mit Kategorie (`categoryId`), Attributen wie Größe, Farbe und Zustand (`attributeMap[…]`) und Versandart (`hiddenFields`). Tokens und signierte Bildadressen werden nie gespeichert. Das Format ist dasselbe wie im Recovery-ZIP. Zurückgeholt wird eine Anzeige über [Wiederherstellen aus Sicherung](#wiederherstellen-aus-sicherung-ab-v3120--helper-ab-v1150); von Hand geht es weiterhin: neue Anzeige aufgeben, Bilder in der Reihenfolge der Dateinamen hochladen, Werte aus `data.json` übernehmen.
+In `data.json` stehen Titel, Beschreibung, Preis und Preistyp (`fields`), alle sichtbaren Formularwerte (`rawFields`) und die versteckten Felder mit Kategorie (`categoryId`), Attributen wie Größe, Farbe und Zustand (`attributeMap[…]`) und Versandart (`hiddenFields`). Tokens und signierte Bildadressen werden nie gespeichert. Das Format ist dasselbe wie im Recovery-ZIP. Zurückgeholt wird eine Anzeige über [Wiederherstellen aus Sicherung](#wiederherstellen-aus-sicherung-ab-v3120--helper-ab-v1160); von Hand geht es weiterhin: neue Anzeige aufgeben, Bilder in der Reihenfolge der Dateinamen hochladen, Werte aus `data.json` übernehmen.
 
 > Scheitert eine Anzeige — etwa weil der Login abgelaufen ist —, läuft die Sicherung weiter und die Anzeige steht als FEHLER im Protokoll. Holt das Script statt der Bearbeiten-Seite eine andere Seite, wird die Anzeige nicht als leere Sicherung in die ZIP geschrieben.
 
-### Wiederherstellen aus Sicherung (ab v3.12.0 / Helper ab v1.15.0)
+### Wiederherstellen aus Sicherung (ab v3.12.0 / Helper ab v1.16.0)
 
 Eine verlorene Anzeige — gescheiterte Neuanlage, versehentlich gelöscht — lässt sich aus einem Recovery-Snapshot oder einer Sicherungs-ZIP zurückholen. Das Script füllt das Formular "Anzeige aufgeben" aus; **abgeschickt wird nichts**, den Klick auf "Anzeige aufgeben" machst du selbst.
 
@@ -238,11 +238,13 @@ Hauptscript verwendet `@grant none`. Helper-Script verwendet ab v1.3.0 `@grant G
 
 ## Changelog
 
-### Version 3.12.0 / Helper 1.15.0 (Oktober 2026)
+### Version 3.12.0 / Helper 1.16.0 (Oktober 2026)
 
-- **Neu: Wiederherstellen aus Sicherung.** Recovery-Snapshots bekommen im Auswahl-Fenster den Knopf "Wiederherstellen", und eine Recovery- oder Sicherungs-ZIP lässt sich über "Sicherung importieren (ZIP)" zurücklesen. Das Hauptscript füllt dann das Formular "Anzeige aufgeben" aus Texten, Feldern und Bildern des Snapshots und bedient für Art, Farbe und Zustand die Auswahlknöpfe von Kleinanzeigen; abgeschickt wird erst durch den Nutzer. Fehlende Bilder (Recovery-ZIP vor 3.10.1) werden in voller Auflösung nachgeladen. Details unter [Wiederherstellen aus Sicherung](#wiederherstellen-aus-sicherung-ab-v3120--helper-ab-v1150).
+- **Neu: Wiederherstellen aus Sicherung** (Idee und Umsetzung: [@karlvonbonin](https://github.com/karlvonbonin), [#74](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/pull/74)). Recovery-Snapshots bekommen im Auswahl-Fenster den Knopf "Wiederherstellen", und eine Recovery- oder Sicherungs-ZIP lässt sich über "Sicherung importieren (ZIP)" zurücklesen. Das Hauptscript füllt dann das Formular "Anzeige aufgeben" aus Texten, Feldern und Bildern des Snapshots und bedient für Art, Farbe und Zustand die Auswahlknöpfe von Kleinanzeigen; abgeschickt wird erst durch den Nutzer. Fehlende Bilder (Recovery-ZIP vor 3.10.1) werden in voller Auflösung nachgeladen. Details unter [Wiederherstellen aus Sicherung](#wiederherstellen-aus-sicherung-ab-v3120--helper-ab-v1160).
 - **ZIP-Leser ohne Fremdcode.** Gegenstück zum Schreiber: STORE und DEFLATE (über `DecompressionStream`), kein ZIP64, keine Verschlüsselung.
 - **Protokoll:** neuer Hash `#kaRestore=<adId>`, sessionStorage-Marker `ka-restore-adid` und `ka-restore-pending-adid`, localStorage-Key `ka-restore-result-<adId>` (siehe PROTOCOL.md). Das Hauptscript wird auf "Anzeige aufgeben" nur mit diesem Auftrag aktiv.
+- **Nachbesserungen vor der Aufnahme:** Attribute nur über echte Auswahlknöpfe (nie ein beliebiger Knopf des Formulars), Prüfung nach dem Klick ohne vorab gesetzten Wert, Marke und Versandmethoden als Hinweis im Panel statt still gesetzt, Wartezeit bis zur Bestätigung 30 Minuten, Import ersetzt keinen vorhandenen Snapshot, Bilder nur von `img.kleinanzeigen.de`.
+- **Versionsnummer:** Helper 1.15.0 war die Testversion von "Auswahl verlängern" ([#70](https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren/issues/70)); die Funktion folgt nach ihrem Test als 1.17.0.
 - **Tests**: 415 Tests (vorher 345).
 
 ### Helper 1.14.0 (Oktober 2026)

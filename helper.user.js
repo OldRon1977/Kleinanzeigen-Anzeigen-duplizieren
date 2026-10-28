@@ -5,9 +5,9 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.15.0
+// @version       1.16.0
 // @author        panzli (Original), OldRon1977 (Anpassungen)
-// @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48)
+// @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48), Wiederherstellen aus Sicherung (PR #74)
 // @credits       Andi (Zer089) - Alter der Anzeige in Tagen mit Farbcode als Auswahlhilfe, Dashboard-Ansicht: https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
 // @credits       AnzeigenChef - laengere Wartezeiten zwischen zwei Vorgaengen statt Sekunden-Delays: https://anzeigenchef-online.de
 // @credits       halejok - Pause im Batch mindestens 3 bis 5 Minuten, damit die Abstaende menschlich aussehen

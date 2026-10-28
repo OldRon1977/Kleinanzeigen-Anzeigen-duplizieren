@@ -23,7 +23,7 @@ mit einer URL, deren Hash das Verhalten des Worker-Scripts steuert:
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `#smartRepublish` | Batch-/Smart-Republish-Flow: Snapshot erstellen, neu einstellen, danach das Original löschen (Reihenfolge seit 3.10.0, siehe unten) | Helper (`processOne`), auch manuell über den "Smart neu einstellen"-Button im Worker                                                                            |
 | `#duplicate`      | Reines Duplizieren ohne Löschung, kein Ergebnis-Signal, kein Snapshot                                                               | Externe Aufrufe per URL-Hash (historisch Helper 1.2.0); der Duplizieren-Button ruft `duplicateAd()` direkt auf, ohne Hash. Vom aktuellen Helper nicht verwendet |
-| `#kaRestore=<adId>` | Wiederherstellen (ab 3.12.0): auf `p-anzeige-aufgeben.html*` oder `p-anzeige-aufgeben-schritt2.html*` das Formular aus dem Snapshot `<adId>` befüllen. Nichts wird abgeschickt, nichts gelöscht; nur Ziffern gelten als adId | Helper (`openRestore`, ab 1.15.0): mit bekannter Kategorie `p-anzeige-aufgeben-schritt2.html?categoryId=<id>`, sonst `p-anzeige-aufgeben.html` |
+| `#kaRestore=<adId>` | Wiederherstellen (ab 3.12.0): auf `p-anzeige-aufgeben.html*` oder `p-anzeige-aufgeben-schritt2.html*` das Formular aus dem Snapshot `<adId>` befüllen. Nichts wird abgeschickt, nichts gelöscht; nur Ziffern gelten als adId | Helper (`openRestore`, ab 1.16.0): mit bekannter Kategorie `p-anzeige-aufgeben-schritt2.html?categoryId=<id>`, sonst `p-anzeige-aufgeben.html` |
 
 `isBatchMode()` im Worker prüft exakt `window.location.hash === '#smartRepublish'`.
 Nur in diesem Modus werden Result-Key und Batch-Watchdog aktiv. Der Snapshot
@@ -72,7 +72,7 @@ sind in beiden Dateien separat hart kodiert, siehe unten):
 - Geschrieben von: `batchPutSnapshot()` im Worker, **vor** dem Speichern der
   neuen Anzeige, in **beiden Modi** (Batch **und** manuell). Im manuellen
   Modus dient er nur als Sicherung während des Neu-Einstellens. Seit Helper
-  1.15.0 außerdem von `importBackupZip()` im Helper: eine Recovery- oder
+  1.16.0 außerdem von `importBackupZip()` im Helper: eine Recovery- oder
   Sicherungs-ZIP wird in dieselbe Objektform zurückgelesen (`capturedAt` aus
   dem ISO-String, `hiddenFields` leer, wenn die ZIP keine kennt, Bilder ohne
   Datei als `{ url, blob: null, mime: null }`). Existiert zur `adId` schon ein
@@ -133,7 +133,7 @@ passiert nichts.
 | ---------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ka-batch-delay`             | Helper (ab 1.10.0)            | Eingestellte Pausenspanne in Minuten als JSON `{min,max}`. Nur Helper-intern, der Worker liest sie nie. Fehlt der Eintrag oder ist er unbrauchbar, greift der Standard 3 bis 6 |
 | `ka-duplicate-result-<adId>` | Worker schreibt, Helper liest | Abschlusssignal einer Duplizierung (Wert `ok`)                                                                                                                                 |
-| `ka-restore-result-<adId>`   | Worker schreibt, Helper liest | Abschlusssignal einer Wiederherstellung (Wert `ok`, ab 3.12.0 / 1.15.0). Der Helper (`openRestore`) wartet darauf per `storage`-Event und Polling, schließt aber keinen Tab — der Nutzer hat das Formular selbst abgeschickt |
+| `ka-restore-result-<adId>`   | Worker schreibt, Helper liest | Abschlusssignal einer Wiederherstellung (Wert `ok`, ab 3.12.0 / 1.16.0). Der Helper (`openRestore`) wartet darauf per `storage`-Event und Polling, schließt aber keinen Tab — der Nutzer hat das Formular selbst abgeschickt |
 
 ## localStorage: Result-Keys
 
