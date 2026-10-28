@@ -265,6 +265,8 @@ describe('importBackupZip', () => {
         const all = await getSnapshotsAll();
         expect(all).toHaveLength(1);
         expect(all[0].title).toBe('Vorhanden');
+        // fake-indexeddb legt jsdom-Blobs als leeres Objekt ab; not.toBeNull()
+        // unterscheidet trotzdem "Bild vorhanden" vom Platzhalter (blob: null) der ZIP.
         expect(all[0].images[0].blob).not.toBeNull();
     });
 

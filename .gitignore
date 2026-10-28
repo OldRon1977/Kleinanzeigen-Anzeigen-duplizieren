@@ -42,3 +42,6 @@ REVIEW_SUMMARY.md
 
 # Kiro steering (nur lokal)
 .kiro/steering/
+
+# Abdeckungsbericht
+coverage/

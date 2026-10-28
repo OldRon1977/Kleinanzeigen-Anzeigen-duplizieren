@@ -1,0 +1,244 @@
+{
+  "success": [],
+  "error": [],
+  "ads": [
+    {
+      "id": 1000000001,
+      "title": "Testanzeige 1",
+      "price": "10 €",
+      "category": "Herrenbekleidung",
+      "activationDate": "29.09.2026",
+      "endDate": "28.11.2026",
+      "viewCount": 9,
+      "watchCount": 0,
+      "imageCount": 3,
+      "articles": [
+        {
+          "id": "1000000001:346",
+          "type": "AD_BUMP_UP",
+          "price": 2.99,
+          "priceFormatted": "2,99 €",
+          "runtimeText": "einmalig"
+        },
+        {
+          "id": "1000000001:204",
+          "type": "AD_HIGHLIGHT",
+          "price": 4.99,
+          "priceFormatted": "4,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000001:914",
+          "type": "AD_MULTI_BUMP_UP",
+          "price": 9.99,
+          "priceFormatted": "9,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000001:62",
+          "type": "AD_TOP_AD",
+          "price": 11.99,
+          "priceFormatted": "11,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000001:488",
+          "type": "AD_HP_GALLERY",
+          "price": 19.99,
+          "priceFormatted": "19,99 €",
+          "runtimeText": "10 Tage"
+        }
+      ],
+      "adImage": "https://img.kleinanzeigen.de/api/v1/prod-ads/images/00/00000000-0000-4000-8000-000000000001?rule=$_2.JPG",
+      "state": "active",
+      "seoUrl": "/s-anzeige/testanzeige-1/1000000001",
+      "replies": 0,
+      "hasVirtualTour": false,
+      "hasVideo": false,
+      "markAsSoldLabel": "Verkauft",
+      "isWantedAdType": false,
+      "l1Category": "153",
+      "l2Category": "160",
+      "l1CategoryName": "Mode_Beauty",
+      "l2CategoryName": "Kleidung_Herren",
+      "adPriceType": "FIXED",
+      "eligibleForC2b": false,
+      "buyNowEligible": false,
+      "adLifeTimeInSeconds": 2496838,
+      "creationDate": "29.09.2026",
+      "features": ""
+    },
+    {
+      "id": 1000000002,
+      "title": "Testanzeige 2",
+      "price": "10 €",
+      "category": "Herrenbekleidung",
+      "activationDate": "29.09.2026",
+      "endDate": "28.11.2026",
+      "viewCount": 9,
+      "watchCount": 0,
+      "imageCount": 5,
+      "articles": [
+        {
+          "id": "1000000002:346",
+          "type": "AD_BUMP_UP",
+          "price": 2.99,
+          "priceFormatted": "2,99 €",
+          "runtimeText": "einmalig"
+        },
+        {
+          "id": "1000000002:204",
+          "type": "AD_HIGHLIGHT",
+          "price": 4.99,
+          "priceFormatted": "4,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000002:914",
+          "type": "AD_MULTI_BUMP_UP",
+          "price": 9.99,
+          "priceFormatted": "9,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000002:62",
+          "type": "AD_TOP_AD",
+          "price": 11.99,
+          "priceFormatted": "11,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000002:488",
+          "type": "AD_HP_GALLERY",
+          "price": 19.99,
+          "priceFormatted": "19,99 €",
+          "runtimeText": "10 Tage"
+        }
+      ],
+      "adImage": "https://img.kleinanzeigen.de/api/v1/prod-ads/images/00/00000000-0000-4000-8000-000000000001?rule=$_2.JPG",
+      "state": "active",
+      "seoUrl": "/s-anzeige/testanzeige-2/1000000002",
+      "replies": 0,
+      "hasVirtualTour": false,
+      "hasVideo": false,
+      "markAsSoldLabel": "Verkauft",
+      "isWantedAdType": false,
+      "l1Category": "153",
+      "l2Category": "160",
+      "l1CategoryName": "Mode_Beauty",
+      "l2CategoryName": "Kleidung_Herren",
+      "adPriceType": "FIXED",
+      "eligibleForC2b": false,
+      "buyNowEligible": false,
+      "adLifeTimeInSeconds": 2497147,
+      "creationDate": "29.09.2026",
+      "features": ""
+    },
+    {
+      "id": 1000000003,
+      "title": "Testanzeige 3",
+      "price": "VB",
+      "category": "PC-Zubehör & Software",
+      "activationDate": "29.09.2026",
+      "endDate": "28.11.2026",
+      "viewCount": 45,
+      "watchCount": 0,
+      "imageCount": 2,
+      "articles": [
+        {
+          "id": "1000000003:376",
+          "type": "AD_BUMP_UP",
+          "price": 2.99,
+          "priceFormatted": "2,99 €",
+          "runtimeText": "einmalig"
+        },
+        {
+          "id": "1000000003:234",
+          "type": "AD_HIGHLIGHT",
+          "price": 4.99,
+          "priceFormatted": "4,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000003:944",
+          "type": "AD_MULTI_BUMP_UP",
+          "price": 9.99,
+          "priceFormatted": "9,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000003:92",
+          "type": "AD_TOP_AD",
+          "price": 11.99,
+          "priceFormatted": "11,99 €",
+          "runtimeText": "7 Tage"
+        },
+        {
+          "id": "1000000003:518",
+          "type": "AD_HP_GALLERY",
+          "price": 19.99,
+          "priceFormatted": "19,99 €",
+          "runtimeText": "10 Tage"
+        }
+      ],
+      "adImage": "https://img.kleinanzeigen.de/api/v1/prod-ads/images/00/00000000-0000-4000-8000-000000000001?rule=$_2.JPG",
+      "state": "active",
+      "seoUrl": "/s-anzeige/testanzeige-3/1000000003",
+      "replies": 0,
+      "hasVirtualTour": false,
+      "hasVideo": false,
+      "markAsSoldLabel": "Verkauft",
+      "isWantedAdType": false,
+      "l1Category": "161",
+      "l2Category": "225",
+      "l1CategoryName": "Multimedia_Elektronik",
+      "l2CategoryName": "PC_Zubehoer_Software",
+      "adPriceType": "NEGOTIABLE",
+      "eligibleForC2b": false,
+      "buyNowEligible": false,
+      "adLifeTimeInSeconds": 2497372,
+      "creationDate": "29.09.2026",
+      "features": ""
+    }
+  ],
+  "continuousFeatures": {
+    "continuousFeatures": [],
+    "totalSlotsTopAds": 0,
+    "totalSlotsHighlights": 0,
+    "totalSlotsPriorityAds": 0
+  },
+  "paging": {
+    "pageNum": 1,
+    "pageSize": 25,
+    "numFound": 3,
+    "last": 1,
+    "lastUncapped": 1,
+    "display": [
+      1
+    ]
+  },
+  "showRetiFeaturesPackageBanner": true,
+  "packageName": "",
+  "packageQuota": 0,
+  "quotaUsed": 3,
+  "showBrandingData": false,
+  "showBookingOverview": false,
+  "eligibleForEfficientAdManagement": false,
+  "hideAdvertisement": false,
+  "eligibleForAdDeactivation": false,
+  "eligibleForShowcase": false,
+  "eligibleForNewConstructions": false,
+  "eligibleForContinuousTopAd": false,
+  "eligibleForContinuousPriorityAd": false,
+  "eligibleForContinuousHighlights": false,
+  "eligibleForCallTrackingStatistics": false,
+  "eligibleForFeaturePackageBooking": false,
+  "eligibleForPriorityAd": false,
+  "adStateCounts": {
+    "PAUSED": 0,
+    "TOTAL": 3,
+    "ACTIVE": 3
+  },
+  "bizModelPresent": true,
+  "retiUser": false
+}
