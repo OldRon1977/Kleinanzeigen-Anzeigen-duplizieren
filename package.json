@@ -2,7 +2,7 @@
   "name": "kleinanzeigen-anzeigen-duplizieren",
   "version": "3.12.0",
   "helperVersion": "1.16.0",
-  "description": "eBay Kleinanzeigen - Anzeige duplizieren / neu einstellen. Einfaches Duplizieren und Smart Neu-Einstellen von Anzeigen mit automatischer Bilderhaltung",
+  "description": "Userscripts für kleinanzeigen.de: Anzeigen duplizieren, neu einstellen, sichern und wiederherstellen",
   "main": "kleinanzeigen-duplizieren.user.js",
   "scripts": {
     "build": "node scripts/build.js",
@@ -11,7 +11,6 @@
     "validate": "npm run build && npm run lint"
   },
   "keywords": [
-    "ebay",
     "kleinanzeigen",
     "userscript",
     "tampermonkey",
@@ -25,11 +24,11 @@
     "url": "https://github.com/OldRon1977/Kleinanzeigen-Anzeigen-duplizieren"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
-    "fake-indexeddb": "6.2.5",
+    "fake-indexeddb": "6.2.6",
     "jsdom": "^29.1.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
   }
 }
