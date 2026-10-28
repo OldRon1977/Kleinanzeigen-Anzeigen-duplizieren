@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.16.0
+// @version       1.16.1
 // @author        OldRon1977
 // @credits       panzli - erste Fassung des Helpers
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48), Wiederherstellen aus Sicherung (PR #74)
@@ -1517,6 +1517,15 @@
         return isNaN(n) ? null : n;
     }
 
+    // Der Titel-Link einer Karte beginnt mit einem nur fuer Screenreader
+    // sichtbaren <span class="sr-only">Anzeige </span> (live gesehen 10/2026).
+    // textContent nimmt ihn mit; ohne ihn steht der Titel wie auf der Seite.
+    function cardTitleText(link) {
+        const copy = link.cloneNode(true);
+        copy.querySelectorAll('.sr-only').forEach(function (n) { n.remove(); });
+        return copy.textContent.trim();
+    }
+
     function collectCandidates() {
         const cards = document.querySelectorAll('li[data-testid="ad-card"][data-adid]');
         const matches = [];
@@ -1525,7 +1534,7 @@
         cards.forEach(function (card) {
             const adId = card.getAttribute('data-adid');
             const titleEl = card.querySelector('h3 a');
-            const title = titleEl ? titleEl.textContent.trim() : '(ohne Titel)';
+            const title = titleEl ? cardTitleText(titleEl) : '(ohne Titel)';
             const endEl = card.querySelector('.managead-listitem-enddate');
             const endText = endEl ? endEl.textContent.trim() : '';
             const endDate = parseEndDate(endText);
@@ -3090,6 +3099,9 @@
             buildEstimateHint, buildSkippedNote,
             renderProgress,
             openDuplicate, processOne, RESULT_WAIT_TIMEOUT_MS, LS_RESULT_PREFIX,
+            runBatch, renderDone, startBatchFlow, openSmartRepublish,
+            addControlButtons, addBatchTriggerButton, addAdQuotaCounter,
+            resetBatchStop: function () { stopRequested = false; },
             appendRecoverySection,
             appendRecoveryIfPresent, appendImportSection,
             readZip, snapshotsFromZipFiles, putSnapshot, importBackupZip,
