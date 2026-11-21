@@ -101,9 +101,9 @@ Im Auswahl-Fenster:
 - **"verlängerbar (N)"** neben "Alle" und "Keine" wählt die Anzeigen, die sich jetzt kostenlos verlängern lassen. Kleinanzeigen erlaubt das in den letzten 8 Tagen vor Ablauf.
 - **"Auswahl verlängern (N)"** verlängert die ausgewählten verlängerbaren Anzeigen nach einer Rückfrage nacheinander, 2–5 Sekunden Abstand. Nicht verlängerbare in der Auswahl werden übersprungen und in der Rückfrage genannt. **Stop** beendet nach der laufenden Anzeige.
 
-Vor dem ersten Request lädt das Script die Anzeigenliste neu und prüft jede Anzeige. Geschickt wird nur, was in diesem Moment kostenlos verlängerbar ist (`extend` gesetzt, kein `extensionFee`). Kostenpflichtige Verlängerungen bleiben Handarbeit. Lässt sich die Liste oder das Token nicht laden, wird nichts verlängert. Es öffnet sich kein Tab, gelöscht oder angelegt wird nichts. Link und Button gibt es nur mit der JSON-Quelle.
+Vor dem ersten Request lädt das Script die Anzeigenliste neu und prüft jede Anzeige. Geschickt wird nur, was in diesem Moment kostenlos verlängerbar ist (`extend` gesetzt, kein `extensionFee`). Kostenpflichtige Verlängerungen bleiben Handarbeit. Lässt sich die Liste oder das Token nicht laden, wird nichts verlängert. Danach zeigt das Fenster je Anzeige das neue Enddatum aus der Antwort von Kleinanzeigen. Kleinanzeigen antwortet auch bei einer abgelehnten Verlängerung mit HTTP 200. Steht die Anzeige dort unter `error` oder fehlt sie unter `success`, zählt sie deshalb als fehlgeschlagen. Eine Antwort ohne diese Felder zählt wie auf der Seite als Erfolg und wird als unbestätigt gemeldet. Es öffnet sich kein Tab, gelöscht oder angelegt wird nichts. Link und Button gibt es nur mit der JSON-Quelle.
 
-Kleinanzeigen verlängert um 60 Tage ab dem bisherigen Ende. Das Alter der Anzeige läuft weiter, anders als beim Neu-Einstellen. Anzeigen mit gebuchtem Paket außer dem Basispaket zeigt Kleinanzeigen ohne Verlängern-Knopf; das Script prüft das nicht und verlängert sie, sobald `extend` gesetzt ist.
+Kleinanzeigen verlängert um 60 Tage ab dem bisherigen Ende. Das Alter der Anzeige läuft weiter, anders als beim Neu-Einstellen. Anzeigen mit gebuchtem Paket außer dem Basispaket zeigt Kleinanzeigen ohne Verlängern-Knopf. Das Script lädt dazu vor dem Lauf die Paketliste und überspringt diese Anzeigen ("übersprungen (Paket gebucht)"). Lässt sich die Paketliste nicht laden, verlängert es wie die Seite ohne diese Prüfung und nennt das im Abschluss. "verlängerbar (N)" zählt solche Anzeigen noch mit.
 
 ### Auswahl sichern (ZIP)
 
@@ -160,6 +160,8 @@ Auf allen Seiten von kleinanzeigen.de blendet es Werbung aus: Seitenbanner, Bill
 - `GET /p-anzeige-bearbeiten.html?adId={adId}` – Bearbeiten-Seite für "Auswahl sichern", nur lesend (Helper)
 - `POST /m-anzeigen-verlaengern.json?ids={adId}` mit Header `X-CSRF-TOKEN` – kostenlos verlängern, eine Anzeige je Request (Helper)
 - `GET /m-mein-profil.json` – CSRF-Token für das Verlängern, Feld `csrfToken` (Helper)
+- `GET /m-access-token.json` – Zugriffstoken im Antwort-Header `Authorization` (Helper)
+- `GET https://gateway.kleinanzeigen.de/private-bundles/v1/me/ads/bundles` mit diesem Header – gebuchte Pakete je Anzeige, `bundles[].adId` und `bundles[].bundle.bundleType` (Helper)
 - `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG` – Bilder in voller Auflösung (beide)
 
 ## Fehlerbehebung

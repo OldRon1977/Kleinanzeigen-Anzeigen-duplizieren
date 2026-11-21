@@ -2,6 +2,12 @@
 
 Hauptscript (`kleinanzeigen-duplizieren.user.js`) und Helper (`helper.user.js`) haben getrennte Versionsnummern.
 
+## Helper 1.18.0 — November 2026
+
+- Neu: Abschluss von "Auswahl verlängern" nennt je Anzeige das neue Enddatum
+- Behoben: Abgelehnte Verlängerung (HTTP 200 mit der Anzeige unter `error`) zählte als Erfolg
+- Geändert: Anzeigen mit gebuchtem Paket außer dem Basispaket werden beim Verlängern übersprungen, wie auf der Seite
+
 ## Helper 1.17.0 — November 2026
 
 - Neu: "verlängerbar (N)" in der Schnellwahl und "Auswahl verlängern (N)" im Auswahl-Fenster (Idee: @Atom9989, #70)
