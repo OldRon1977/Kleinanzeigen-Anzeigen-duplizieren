@@ -2,7 +2,7 @@
 
 Hauptscript (`kleinanzeigen-duplizieren.user.js`) und Helper (`helper.user.js`) haben getrennte Versionsnummern.
 
-## Helper 1.17.0 — Testversion
+## Helper 1.17.0 — November 2026
 
 - Neu: "verlängerbar (N)" in der Schnellwahl und "Auswahl verlängern (N)" im Auswahl-Fenster (Idee: @Atom9989, #70)
 

@@ -13,7 +13,7 @@ Zwei Userscripts für Tampermonkey, die auf kleinanzeigen.de Anzeigen dupliziere
 - **Anzeigenkontingent**: Zahl der in den letzten 30 Tagen neu aufgegebenen Anzeigen
 - **Recovery-Snapshot**: lokale Sicherung jeder Anzeige vor dem Neu-Einstellen
 - **Auswahl sichern**: ausgewählte Anzeigen samt Bildern als ZIP speichern, ohne sie zu ändern
-- **Verlängern** (Testversion): ausgewählte Anzeigen kostenlos verlängern
+- **Verlängern**: ausgewählte Anzeigen kostenlos verlängern
 - **Wiederherstellen**: verlorene Anzeige aus Snapshot oder ZIP ins Formular "Anzeige aufgeben" eintragen; abgeschickt wird von Hand
 - **Banner- und Werbeblocker**: blendet Upsell-Optionen, Upsell-Popups und Werbung aus
 
@@ -94,7 +94,7 @@ Bricht der Vorgang vorher ab, wird nichts gelöscht. Scheitert nur das Löschen,
 
 Vor jedem Neu-Einstellen speichert das Hauptscript die Anzeige lokal im Browser (IndexedDB). Nach Erfolg wird der Snapshot wieder gelöscht. Bleibt einer übrig, zeigt das Auswahl-Fenster einen gelben Kasten mit **Als ZIP herunterladen**, **Alle löschen** und je Snapshot **Wiederherstellen**. Snapshots verfallen nicht; auf geteilten Geräten nach einem Batch prüfen und bei Bedarf löschen.
 
-### Verlängern (Testversion)
+### Verlängern
 
 Im Auswahl-Fenster:
 
@@ -103,7 +103,7 @@ Im Auswahl-Fenster:
 
 Vor dem ersten Request lädt das Script die Anzeigenliste neu und prüft jede Anzeige. Geschickt wird nur, was in diesem Moment kostenlos verlängerbar ist (`extend` gesetzt, kein `extensionFee`). Kostenpflichtige Verlängerungen bleiben Handarbeit. Lässt sich die Liste oder das Token nicht laden, wird nichts verlängert. Es öffnet sich kein Tab, gelöscht oder angelegt wird nichts. Link und Button gibt es nur mit der JSON-Quelle.
 
-Stand der Testversion: An einer echten verlängerbaren Anzeige ist das Verlängern noch nicht gelaufen. Anzeigen mit gebuchtem Paket außer dem Basispaket zeigt Kleinanzeigen ohne Verlängern-Knopf; das Script prüft das nicht und würde sie verlängern, sobald `extend` gesetzt ist.
+Kleinanzeigen verlängert um 60 Tage ab dem bisherigen Ende. Das Alter der Anzeige läuft weiter, anders als beim Neu-Einstellen. Anzeigen mit gebuchtem Paket außer dem Basispaket zeigt Kleinanzeigen ohne Verlängern-Knopf; das Script prüft das nicht und verlängert sie, sobald `extend` gesetzt ist.
 
 ### Auswahl sichern (ZIP)
 

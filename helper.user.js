@@ -1132,9 +1132,9 @@
         return data.csrfToken;
     }
 
-    // Eine Anzeige pro Request, wie beim Klick auf der Seite. Die Antwort wird
-    // gekuerzt zurueckgegeben, damit sie im Log steht: wie eine erfolgreiche
-    // Antwort aussieht, ist noch nicht live gesehen.
+    // Eine Anzeige pro Request, wie beim Klick auf der Seite. Wie die Seite
+    // gilt jede 2xx-Antwort als Erfolg. Die Antwort (JSON mit success[],
+    // error[] und ads[].endDate) steht gekuerzt im Log.
     async function extendOneAd(adId, csrfToken) {
         if (!/^\d{1,20}$/.test(String(adId))) throw new Error('Ungültige Anzeigen-ID');
         const res = await fetchWithTimeout(AD_EXTEND_JSON_PATH + '?ids=' + adId, {
@@ -1688,16 +1688,6 @@
             if (mapped) matches.push(mapped);
             else skipped.push({ adId: ad && ad.id ? String(ad.id) : null, title: (ad && ad.title) || '(ohne Titel)', reason: 'kein Datum' });
         });
-
-        // Die Felder zum Verlaengern sind bisher nur aus dem Seiten-JS bekannt,
-        // nicht aus einer echten Antwort. Deshalb roh ins Log, sobald sie
-        // auftauchen -- das ist die Rueckmeldung fuer den ersten Test.
-        const extendInfo = raw.filter(function (ad) {
-            return ad && ('extend' in ad || 'extensionFee' in ad);
-        }).map(function (ad) {
-            return { adId: String(ad.id), extend: ad.extend, extensionFee: ad.extensionFee, endDate: ad.endDate };
-        });
-        if (extendInfo.length) log('Verlängern-Felder in der Anzeigenliste', extendInfo);
 
         return { matches: matches, skipped: skipped, source: 'json' };
     }
