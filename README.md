@@ -13,6 +13,7 @@ Zwei Userscripts für Tampermonkey, die auf kleinanzeigen.de Anzeigen dupliziere
 - **Anzeigenkontingent**: Zahl der in den letzten 30 Tagen neu aufgegebenen Anzeigen
 - **Recovery-Snapshot**: lokale Sicherung jeder Anzeige vor dem Neu-Einstellen
 - **Auswahl sichern**: ausgewählte Anzeigen samt Bildern als ZIP speichern, ohne sie zu ändern
+- **Verlängern**: ausgewählte Anzeigen kostenlos verlängern
 - **Wiederherstellen**: verlorene Anzeige aus Snapshot oder ZIP ins Formular "Anzeige aufgeben" eintragen; abgeschickt wird von Hand
 - **Banner- und Werbeblocker**: blendet Upsell-Optionen, Upsell-Popups und Werbung aus
 
@@ -93,6 +94,17 @@ Bricht der Vorgang vorher ab, wird nichts gelöscht. Scheitert nur das Löschen,
 
 Vor jedem Neu-Einstellen speichert das Hauptscript die Anzeige lokal im Browser (IndexedDB). Nach Erfolg wird der Snapshot wieder gelöscht. Bleibt einer übrig, zeigt das Auswahl-Fenster einen gelben Kasten mit **Als ZIP herunterladen**, **Alle löschen** und je Snapshot **Wiederherstellen**. Snapshots verfallen nicht; auf geteilten Geräten nach einem Batch prüfen und bei Bedarf löschen.
 
+### Verlängern
+
+Im Auswahl-Fenster:
+
+- **"verlängerbar (N)"** neben "Alle" und "Keine" wählt die Anzeigen, die sich jetzt kostenlos verlängern lassen. Kleinanzeigen erlaubt das in den letzten 8 Tagen vor Ablauf.
+- **"Auswahl verlängern (N)"** verlängert die ausgewählten verlängerbaren Anzeigen nach einer Rückfrage nacheinander, 2–5 Sekunden Abstand. Nicht verlängerbare in der Auswahl werden übersprungen und in der Rückfrage genannt. **Stop** beendet nach der laufenden Anzeige.
+
+Vor dem ersten Request lädt das Script die Anzeigenliste neu und prüft jede Anzeige. Geschickt wird nur, was in diesem Moment kostenlos verlängerbar ist (`extend` gesetzt, kein `extensionFee`). Kostenpflichtige Verlängerungen bleiben Handarbeit. Lässt sich die Liste oder das Token nicht laden, wird nichts verlängert. Es öffnet sich kein Tab, gelöscht oder angelegt wird nichts. Link und Button gibt es nur mit der JSON-Quelle.
+
+Kleinanzeigen verlängert um 60 Tage ab dem bisherigen Ende. Das Alter der Anzeige läuft weiter, anders als beim Neu-Einstellen. Anzeigen mit gebuchtem Paket außer dem Basispaket zeigt Kleinanzeigen ohne Verlängern-Knopf; das Script prüft das nicht und verlängert sie, sobald `extend` gesetzt ist.
+
 ### Auswahl sichern (ZIP)
 
 **"Auswahl sichern (ZIP)"** im Auswahl-Fenster sichert die angehakten Anzeigen, ohne sie zu ändern. Es gilt dieselbe Auswahl wie für Start. Das Script holt je Anzeige die Bearbeiten-Seite im Hintergrund (1–2 Sekunden Abstand, kein Tab); **Stop** beendet nach der laufenden Anzeige. Am Ende lädt **ZIP herunterladen** die Datei.
@@ -146,6 +158,8 @@ Auf allen Seiten von kleinanzeigen.de blendet es Werbung aus: Seitenbanner, Bill
 - `GET /m-meine-anzeigen-verwalten.json?pageNum={n}&sort=DEFAULT` – Anzeigenliste, höchstens 20 Seiten (Helper)
 - `GET /m-einstellungen-bearbeiten.json` – Anzeigenkontingent, Feld `newAdCount` (Helper)
 - `GET /p-anzeige-bearbeiten.html?adId={adId}` – Bearbeiten-Seite für "Auswahl sichern", nur lesend (Helper)
+- `POST /m-anzeigen-verlaengern.json?ids={adId}` mit Header `X-CSRF-TOKEN` – kostenlos verlängern, eine Anzeige je Request (Helper)
+- `GET /m-mein-profil.json` – CSRF-Token für das Verlängern, Feld `csrfToken` (Helper)
 - `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG` – Bilder in voller Auflösung (beide)
 
 ## Fehlerbehebung
