@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import helper from '../helper.user.js';
+import { fixture } from './fixtures.js';
 
 const {
     isFreeExtendable,
@@ -10,6 +11,8 @@ const {
     startExtendFlow,
     requestExtendStop,
     formatDate,
+    evaluateExtendAnswer,
+    fetchBundledAdIds,
     AD_EXTEND_JSON_PATH
 } = helper;
 
@@ -39,6 +42,18 @@ const FREE = jsonAd(1001, { title: 'Rasenmaeher', extend: true });
 const NOT_YET = jsonAd(1002, { title: 'Fahrrad', endDate: inDays(30) });
 const PAID = jsonAd(1003, { title: 'Sofa', extend: true, extensionFee: true });
 
+// Aufbau wie die live gesehene Antwort von /m-anzeigen-verlaengern.json
+// (Anzeige-Objekt dort gekuerzt auf id und endDate).
+function extendAnswer(id, endDate, over) {
+    return JSON.stringify(Object.assign({
+        action: 'EXTEND',
+        success: [Number(id)],
+        error: [],
+        ads: [{ id: Number(id), endDate: endDate }],
+        paging: { numFound: 1 }
+    }, over));
+}
+
 // fetch-Router: Anzeigenliste, Profil und Verlaengern-Endpunkt.
 function installFetch(opts) {
     const o = opts || {};
@@ -53,10 +68,20 @@ function installFetch(opts) {
         if (u.indexOf('/m-mein-profil.json') === 0) {
             return { ok: true, status: 200, json: async () => o.profile || {} };
         }
+        if (u.indexOf('/m-access-token.json') === 0) {
+            if (o.tokenStatus) return { ok: false, status: o.tokenStatus, headers: { get: () => null } };
+            if (o.tokenNoHeader) return { ok: true, status: 200, headers: { get: () => null } };
+            return { ok: true, status: 200, headers: { get: (h) => (h.toLowerCase() === 'authorization' ? 'Bearer TEST-JWT' : null) } };
+        }
+        if (u.indexOf('https://gateway.kleinanzeigen.de/private-bundles/') === 0) {
+            if (o.bundleError) throw o.bundleError;
+            return { ok: true, status: 200, json: async () => o.bundles || { bundles: [] } };
+        }
         if (u.indexOf(AD_EXTEND_JSON_PATH) === 0) {
             const id = u.split('ids=')[1];
             const status = (o.extendStatus && o.extendStatus[id]) || 200;
-            return { ok: status < 300, status: status, text: async () => '{"ok":true}' };
+            const body = (o.extendBody && o.extendBody[id] !== undefined) ? o.extendBody[id] : extendAnswer(id, '27.01.2027');
+            return { ok: status < 300, status: status, text: async () => body };
         }
         throw new Error('unerwartete URL ' + u);
     });
@@ -238,7 +263,119 @@ describe('runExtend', () => {
     });
 });
 
+describe('Antwort des Verlaengern-Endpunkts', () => {
+    it('Erfolg: ID in success, neues Enddatum aus ads[]', () => {
+        expect(evaluateExtendAnswer('1001', extendAnswer('1001', '27.01.2027')))
+            .toMatchObject({ confirmed: true, endDate: '27.01.2027' });
+    });
+
+    it('IDs als Zahl oder Text, Antwort eingerueckt', () => {
+        const pretty = JSON.stringify(JSON.parse(extendAnswer('1001', '27.01.2027', { success: ['1001'] })), null, 2);
+        expect(evaluateExtendAnswer('1001', pretty)).toMatchObject({ confirmed: true, endDate: '27.01.2027' });
+    });
+
+    it('echte Fehlerantwort (HTTP 200, ID unter error): Fehler', () => {
+        // tests/fixtures/anzeigen-verlaengern-error.json: live gemessene Antwort
+        // auf den Versuch, eine nicht verlaengerbare Anzeige zu verlaengern.
+        expect(() => evaluateExtendAnswer('1000000001', fixture('anzeigen-verlaengern-error.json')))
+            .toThrow('Server meldet Fehler');
+    });
+
+    it('ID in error: Fehler', () => {
+        const body = extendAnswer('1001', '28.11.2026', { success: [], error: [1001] });
+        expect(() => evaluateExtendAnswer('1001', body)).toThrow('Server meldet Fehler');
+    });
+
+    it('ID fehlt in success: Fehler', () => {
+        const body = extendAnswer('1001', '27.01.2027', { success: [1002] });
+        expect(() => evaluateExtendAnswer('1001', body)).toThrow('vom Server nicht bestätigt');
+    });
+
+    it('Erfolg ohne passendes ads[]-Objekt: bestaetigt, Enddatum unbekannt', () => {
+        const body = extendAnswer('1001', '27.01.2027', { ads: [] });
+        expect(evaluateExtendAnswer('1001', body)).toMatchObject({ confirmed: true, endDate: null });
+    });
+
+    it('2xx ohne JSON oder ohne success/error: unbestaetigt, kein Fehler', () => {
+        expect(evaluateExtendAnswer('1001', '')).toMatchObject({ confirmed: false, endDate: null });
+        expect(evaluateExtendAnswer('1001', '<html></html>')).toMatchObject({ confirmed: false });
+        expect(evaluateExtendAnswer('1001', '{"ok":true}')).toMatchObject({ confirmed: false });
+    });
+
+    it('runExtend: Fehler in der Antwort landet bei failed, die naechste Anzeige laeuft weiter', async () => {
+        setMetaToken('t');
+        const second = jsonAd(1004, { extend: true });
+        installFetch({ ads: [FREE, second], extendBody: { '1001': extendAnswer('1001', '', { success: [], error: [1001] }) } });
+        const state = await runExtend([{ adId: '1001', title: 'A' }, { adId: '1004', title: 'B' }], null, { gapMs: noGap });
+        expect(state.failed).toEqual([{ adId: '1001', title: 'A', error: 'Server meldet Fehler' }]);
+        expect(state.done).toEqual([{ adId: '1004', title: 'B', endDate: '27.01.2027', confirmed: true }]);
+    });
+});
+
+// Eintraege wie im Seiten-JS gelesen: { adId, bundle: { bundleType } }.
+// Live gesehen nur die leere Liste {"bundles":[]}.
+function bundle(adId, bundleType) {
+    return { adId: adId, bundle: bundleType === undefined ? undefined : { bundleType: bundleType } };
+}
+
+describe('Gebuchte Pakete', () => {
+    it('liest die Paketliste mit dem Authorization-Header aus /m-access-token.json', async () => {
+        installFetch({ bundles: { bundles: [bundle(1001, 'PREMIUM_PACKET'), bundle(1002, 'BASIS_PACKET'), bundle(1003)] } });
+        const ids = await fetchBundledAdIds();
+        expect(Array.from(ids)).toEqual(['1001']);
+        const call = global.fetch.mock.calls.find((c) => String(c[0]).indexOf('https://gateway.kleinanzeigen.de/') === 0);
+        expect(call[1].headers.Authorization).toBe('Bearer TEST-JWT');
+        expect(call[1].credentials).toBe('omit');
+    });
+
+    it('runExtend ueberspringt Anzeigen mit Paket, Basispaket wird verlaengert', async () => {
+        setMetaToken('t');
+        const second = jsonAd(1004, { extend: true });
+        installFetch({ ads: [FREE, second], bundles: { bundles: [bundle(1001, 'PREMIUM_PACKET'), bundle(1004, 'BASIS_PACKET')] } });
+        const state = await runExtend([{ adId: '1001', title: 'A' }, { adId: '1004', title: 'B' }], null, { gapMs: noGap });
+        expect(extendCalls().map((c) => c[0])).toEqual(['/m-anzeigen-verlaengern.json?ids=1004']);
+        expect(state.skipped).toEqual([{ adId: '1001', title: 'A', reason: 'Paket gebucht' }]);
+        expect(state.bundleCheckFailed).toBe(null);
+    });
+
+    it('Paketliste nicht ladbar: Lauf geht weiter, Abschluss nennt die fehlende Pruefung', async () => {
+        setMetaToken('t');
+        installFetch({ ads: [FREE], bundleError: new TypeError('Failed to fetch') });
+        await startExtendFlow([{ adId: '1001', title: 'A' }]);
+        expect(extendCalls()).toHaveLength(1);
+        expect(overlay().querySelector('[data-ka-extend="bundle-unchecked"]').textContent)
+            .toBe('Gebuchte Pakete nicht geprüft: Failed to fetch');
+    });
+
+    it('ohne Zugriffstoken wird die Paketliste nicht abgefragt', async () => {
+        setMetaToken('t');
+        installFetch({ ads: [FREE], tokenStatus: 401 });
+        const state = await runExtend([{ adId: '1001', title: 'A' }], null, { gapMs: noGap });
+        expect(state.bundleCheckFailed).toBe('Zugriffstoken HTTP 401');
+        expect(global.fetch.mock.calls.some((c) => String(c[0]).indexOf('https://gateway.') === 0)).toBe(false);
+        expect(state.done).toHaveLength(1);
+    });
+});
+
+describe('Gebuchte Pakete: Antwort ohne Token-Header', () => {
+    it('ohne Authorization-Header wird die Paketliste nicht abgefragt', async () => {
+        installFetch({ tokenNoHeader: true });
+        await expect(fetchBundledAdIds()).rejects.toThrow('kein Zugriffstoken');
+        expect(global.fetch.mock.calls.some((c) => String(c[0]).indexOf('https://gateway.') === 0)).toBe(false);
+    });
+});
+
 describe('startExtendFlow', () => {
+    it('nennt je Anzeige das neue Enddatum bzw. die fehlende Bestaetigung', async () => {
+        setMetaToken('t');
+        const second = jsonAd(1004, { extend: true });
+        installFetch({ ads: [FREE, second], extendBody: { '1004': '' } });
+        await startExtendFlow([{ adId: '1001', title: 'A' }, { adId: '1004', title: 'B' }]);
+        expect(overlay().querySelector('[data-ka-extend="ok"]').textContent).toBe('Verlängert: 2 von 2');
+        expect(overlay().textContent).toContain('A: läuft bis 27.01.2027');
+        expect(overlay().textContent).toContain('B: Antwort ohne Bestätigung, bitte nach dem Neuladen prüfen');
+    }, 10000); // echte Pause von 2-5 s zwischen den beiden Anzeigen
+
     it('zeigt das Ergebnis und bei Listenfehler, dass nichts verlaengert wurde', async () => {
         setMetaToken('t');
         installFetch({ ads: [FREE, NOT_YET] });

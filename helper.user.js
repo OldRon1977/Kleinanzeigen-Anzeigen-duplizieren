@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       1.17.0
+// @version       1.18.0
 // @author        OldRon1977
 // @credits       panzli - erste Fassung des Helpers
 // @credits       karlvonbonin - Idee und Grundlage der Auswahl im Batch-Overlay (PR #48), Wiederherstellen aus Sicherung (PR #74)
@@ -107,6 +107,11 @@
     // Token holt die Seite selbst aus dem Profil-JSON.
     const AD_EXTEND_JSON_PATH = '/m-anzeigen-verlaengern.json';
     const AD_PROFILE_JSON_PATH = '/m-mein-profil.json';
+    // Gebuchte Pakete je Anzeige. Die Seite blendet den Verlaengern-Knopf aus,
+    // wenn eine Anzeige ein Paket ausser BASIS_PACKET hat. Zugriff mit dem
+    // Authorization-Header aus der Antwort von /m-access-token.json.
+    const AD_ACCESS_TOKEN_PATH = '/m-access-token.json';
+    const AD_BUNDLES_URL = 'https://gateway.kleinanzeigen.de/private-bundles/v1/me/ads/bundles';
     const EXTEND_REQUEST_TIMEOUT_MS = 15000;
     // Abstand zwischen zwei Verlaengerungen. Die Seite schickt pro Klick eine
     // ID; ein Schwall Requests in derselben Sekunde saehe nicht danach aus.
@@ -1132,9 +1137,12 @@
         return data.csrfToken;
     }
 
-    // Eine Anzeige pro Request, wie beim Klick auf der Seite. Wie die Seite
-    // gilt jede 2xx-Antwort als Erfolg. Die Antwort (JSON mit success[],
-    // error[] und ads[].endDate) steht gekuerzt im Log.
+    // Eine Anzeige pro Request, wie beim Klick auf der Seite. Die Antwort
+    // lautet {"action":"EXTEND","success":[id],"error":[],"ads":[{id,endDate}]}.
+    // Auch eine abgelehnte Verlaengerung kommt mit HTTP 200, dann mit
+    // "success":[],"error":[id],"ads":[]. Steht die ID in `error` oder fehlt
+    // sie in `success`, gilt die Anzeige deshalb als nicht verlaengert. Eine 2xx-Antwort ohne diese Felder zaehlt wie auf der
+    // Seite als Erfolg, aber als unbestaetigt (`confirmed: false`).
     async function extendOneAd(adId, csrfToken) {
         if (!/^\d{1,20}$/.test(String(adId))) throw new Error('Ungültige Anzeigen-ID');
         const res = await fetchWithTimeout(AD_EXTEND_JSON_PATH + '?ids=' + adId, {
@@ -1149,7 +1157,56 @@
         let body = '';
         try { body = await res.text(); } catch (e) { /* Antwort ohne Body */ }
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        return String(body || '').slice(0, 300);
+        return evaluateExtendAnswer(adId, body);
+    }
+
+    function evaluateExtendAnswer(adId, body) {
+        const id = String(adId);
+        const answer = String(body || '').slice(0, 300);
+        let data = null;
+        try { data = JSON.parse(String(body || '')); } catch (e) { /* kein JSON */ }
+        const hasId = function (list) {
+            return Array.isArray(list) && list.some(function (x) {
+                return String(x !== null && typeof x === 'object' ? x.id : x) === id;
+            });
+        };
+        if (!data || typeof data !== 'object' || (!Array.isArray(data.success) && !Array.isArray(data.error))) {
+            return { confirmed: false, endDate: null, answer: answer };
+        }
+        if (hasId(data.error)) throw new Error('Server meldet Fehler');
+        if (!hasId(data.success)) throw new Error('vom Server nicht bestätigt');
+        const ad = Array.isArray(data.ads)
+            ? data.ads.find(function (a) { return a && String(a.id) === id; })
+            : null;
+        const end = ad ? parseJsonDate(ad.endDate) : null;
+        return { confirmed: true, endDate: end ? formatDate(end) : null, answer: answer };
+    }
+
+    // IDs der Anzeigen mit gebuchtem Paket ausser dem Basispaket, dieselbe
+    // Bedingung wie `hasNonExpiringBundle` im Seiten-JS.
+    async function fetchBundledAdIds() {
+        const tok = await fetchWithTimeout(AD_ACCESS_TOKEN_PATH, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        }, JSON_FETCH_TIMEOUT_MS);
+        if (!tok.ok) throw new Error('Zugriffstoken HTTP ' + tok.status);
+        const auth = tok.headers && tok.headers.get('authorization');
+        if (!auth) throw new Error('kein Zugriffstoken');
+        const res = await fetchWithTimeout(AD_BUNDLES_URL, {
+            headers: { 'Accept': 'application/json', 'Authorization': auth },
+            credentials: 'omit'
+        }, JSON_FETCH_TIMEOUT_MS);
+        if (!res.ok) throw new Error('Paketliste HTTP ' + res.status);
+        const data = await res.json();
+        if (!data || !Array.isArray(data.bundles)) throw new Error('Paketliste ohne bundles');
+        const ids = new Set();
+        data.bundles.forEach(function (b) {
+            if (b && b.adId !== undefined && b.bundle && typeof b.bundle === 'object' &&
+                b.bundle.bundleType !== 'BASIS_PACKET') {
+                ids.add(String(b.adId));
+            }
+        });
+        return ids;
     }
 
     function randomExtendGapMs() {
@@ -1159,7 +1216,10 @@
     // Vor dem ersten Request wird die Liste frisch geladen und jede Anzeige
     // gegen den aktuellen Serverstand geprueft. Die Auswahl im Overlay kann aus
     // dem Cache stammen; verschickt wird nur, was JETZT kostenlos verlaengerbar
-    // ist. Scheitert das Laden, wird gar nichts verschickt.
+    // ist. Scheitert das Laden, wird gar nichts verschickt. Anzeigen mit
+    // gebuchtem Paket werden uebersprungen. Laesst sich die Paketliste nicht
+    // laden, geht der Lauf wie auf der Seite ohne diese Pruefung weiter
+    // (`state.bundleCheckFailed` nennt den Grund).
     async function runExtend(matches, onProgress, options) {
         const opts = options || {};
         const gapMs = opts.gapMs || randomExtendGapMs;
@@ -1169,7 +1229,8 @@
             failed: [],
             skipped: [],
             current: null,
-            aborted: false
+            aborted: false,
+            bundleCheckFailed: null
         };
         extendStopRequested = false;
         if (onProgress) onProgress(state);
@@ -1178,6 +1239,13 @@
         const byId = new Map();
         fresh.forEach(function (ad) { if (ad && ad.id !== undefined) byId.set(String(ad.id), ad); });
         const token = await resolveCsrfToken();
+        let bundled = null;
+        try {
+            bundled = await fetchBundledAdIds();
+        } catch (e) {
+            state.bundleCheckFailed = e.message || String(e);
+            warn('Paketliste nicht geladen, Pakete werden nicht geprüft', e);
+        }
 
         let sent = 0;
         for (let i = 0; i < matches.length; i++) {
@@ -1196,6 +1264,10 @@
                 });
                 continue;
             }
+            if (bundled && bundled.has(String(m.adId))) {
+                state.skipped.push({ adId: m.adId, title: m.title, reason: 'Paket gebucht' });
+                continue;
+            }
             if (sent > 0) {
                 await waitMs(gapMs(), null, function () { return extendStopRequested; });
                 if (extendStopRequested) { state.aborted = true; break; }
@@ -1204,9 +1276,9 @@
             if (onProgress) onProgress(state);
             sent++;
             try {
-                const answer = await extendOneAd(m.adId, token);
-                state.done.push({ adId: m.adId, title: m.title });
-                log('Verlängert adId ' + m.adId, { antwort: answer });
+                const result = await extendOneAd(m.adId, token);
+                state.done.push({ adId: m.adId, title: m.title, endDate: result.endDate, confirmed: result.confirmed });
+                log('Verlängert adId ' + m.adId, { bis: result.endDate, bestaetigt: result.confirmed, antwort: result.answer });
             } catch (e) {
                 state.failed.push({ adId: m.adId, title: m.title, error: e.message || String(e) });
                 warn('Verlängern fehlgeschlagen adId ' + m.adId, e);
@@ -1278,6 +1350,10 @@
             okLine.textContent = 'Verlängert: ' + state.done.length + ' von ' + state.total;
             body.appendChild(okLine);
             const lists = [
+                [state.done, '#2e7d32', function (d) {
+                    if (!d.confirmed) return (d.title || d.adId) + ': Antwort ohne Bestätigung, bitte nach dem Neuladen prüfen';
+                    return (d.title || d.adId) + (d.endDate ? ': läuft bis ' + d.endDate : ': verlängert');
+                }],
                 [state.skipped, '#a06200', function (s) { return (s.title || s.adId) + ': übersprungen (' + s.reason + ')'; }],
                 [state.failed, '#e74c3c', function (f) { return (f.title || f.adId) + ': ' + f.error; }]
             ];
@@ -1292,10 +1368,19 @@
                 });
                 body.appendChild(ul);
             });
-            const hint = document.createElement('div');
-            hint.style.cssText = 'color:#777;font-size:11px;margin-top:8px;';
-            hint.textContent = 'Die neuen Enddaten zeigt die Seite nach dem Neuladen.';
-            body.appendChild(hint);
+            if (state.bundleCheckFailed) {
+                const bw = document.createElement('div');
+                bw.setAttribute('data-ka-extend', 'bundle-unchecked');
+                bw.style.cssText = 'color:#a06200;font-size:12px;margin-top:6px;';
+                bw.textContent = 'Gebuchte Pakete nicht geprüft: ' + state.bundleCheckFailed;
+                body.appendChild(bw);
+            }
+            if (state.done.length) {
+                const hint = document.createElement('div');
+                hint.style.cssText = 'color:#777;font-size:11px;margin-top:8px;';
+                hint.textContent = 'Die Liste auf der Seite zeigt die neuen Enddaten erst nach dem Neuladen.';
+                body.appendChild(hint);
+            }
         }
         overlay.appendChild(body);
 
@@ -3401,7 +3486,7 @@
             runBackup, renderBackupProgress, renderBackupDone, startBackupFlow,
             requestBackupStop: function () { backupStopRequested = true; },
             AD_EDIT_PATH, BACKUP_GAP_MIN_MS, BACKUP_GAP_MAX_MS,
-            isFreeExtendable, resolveCsrfToken, extendOneAd, runExtend,
+            isFreeExtendable, resolveCsrfToken, extendOneAd, evaluateExtendAnswer, fetchBundledAdIds, runExtend,
             renderExtendProgress, renderExtendDone, startExtendFlow,
             requestExtendStop: function () { extendStopRequested = true; },
             AD_EXTEND_JSON_PATH, AD_PROFILE_JSON_PATH,
