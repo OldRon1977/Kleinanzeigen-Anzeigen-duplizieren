@@ -29,8 +29,8 @@
     // als "aelter als 7 Tage", wenn das Enddatum hoechstens (60 - 7) = 53 Tage
     // in der Zukunft liegt.
     //
-    // Historischer Schwellwert: im Produktivcode liest ihn keine Stelle mehr.
-    // Ueber Alter und Auswahl entscheiden heute ageFromDaysLeft() und ageBand()
+    // Im Produktivcode liest den Wert keine Stelle. Ueber Alter und Auswahl
+    // entscheiden ageFromDaysLeft() und ageBand()
     // sowie die Praedikate der Schnellwahl im Overlay -- statt einer einzigen
     // Ja/Nein-Grenze gibt es Altersbaender. Die Konstante bleibt, weil
     // tests/helper.logic.test.js den Wert 53 als dokumentierte Herleitung
@@ -39,8 +39,8 @@
 
     // Regellaufzeit einer Kleinanzeige. Die Kartenliste nennt nur das ENDdatum,
     // kein Erstelldatum -- das Alter ist daher immer abgeleitet:
-    // Alter = AD_RUNTIME_DAYS - Restlaufzeit. Dieselbe Annahme steckt seit jeher
-    // in MIN_DAYS_TO_END (60 - 7 = 53). Bei abweichender Laufzeit (verlaengert,
+    // Alter = AD_RUNTIME_DAYS - Restlaufzeit. Dieselbe Annahme steckt in
+    // MIN_DAYS_TO_END (60 - 7 = 53). Bei abweichender Laufzeit (verlaengert,
     // gewerblich) ist das Alter entsprechend ungenau; die UI weist darauf hin.
     const AD_RUNTIME_DAYS = 60;
 
@@ -102,8 +102,8 @@
     // im rollierenden 30-Tage-Fenster. Anders als eine Rechnung aus der
     // Anzeigenliste umfasst er auch inzwischen geloeschte Anzeigen.
     const AD_QUOTA_JSON_PATH = '/m-einstellungen-bearbeiten.json';
-    // Verlaengern wie der Knopf auf "Meine Anzeigen" (my-ads-frontend-bundle.js,
-    // gelesen 10/2026): POST mit den IDs als Query, CSRF-Token im Header. Das
+    // Verlaengern wie der Knopf auf "Meine Anzeigen" (my-ads-frontend-bundle.js):
+    // POST mit den IDs als Query, CSRF-Token im Header. Das
     // Token holt die Seite selbst aus dem Profil-JSON.
     const AD_EXTEND_JSON_PATH = '/m-anzeigen-verlaengern.json';
     const AD_PROFILE_JSON_PATH = '/m-mein-profil.json';
@@ -229,7 +229,7 @@
                         title: s.title || '(ohne Titel)',
                         capturedAt: s.capturedAt,
                         imageCount: (s.images || []).length,
-                        // fehlt in Snapshots von Hauptscript < 3.11.0
+                        // fehlt in Snapshots ohne hiddenFields
                         categoryId: (s.hiddenFields && s.hiddenFields.categoryId) || null
                     };
                 });
@@ -634,8 +634,8 @@
     // Wiederherstellen: Der Worker befuellt das Formular "Anzeige aufgeben"
     // aus dem Snapshot (Hash #kaRestore=<adId>) und ueberlaesst das Absenden
     // dem Nutzer. Mit bekannter Kategorie geht es direkt zu Schritt 2 --
-    // Kleinanzeigen nimmt categoryId als Query-Parameter (live geprueft
-    // 10/2026); ohne Kategorie (Snapshot von Hauptscript < 3.11.0) zu
+    // Kleinanzeigen nimmt categoryId als Query-Parameter; ohne Kategorie im
+    // Snapshot zu
     // Schritt 1, wo der Nutzer sie waehlt und der Worker den Auftrag ueber
     // einen sessionStorage-Marker mitnimmt.
     const POST_AD_STEP1_URL = 'https://www.kleinanzeigen.de/p-anzeige-aufgeben.html';
@@ -804,7 +804,7 @@
         if (titleInput) fields.title = titleInput.value;
         const descTa = root.querySelector('textarea[name="description"], textarea#description');
         if (descTa) fields.description = descTa.value;
-        // "priceAmount" ist der aktuelle Name (live gesehen 09/2026), "price" der fruehere.
+        // Feldname "priceAmount", ersatzweise "price".
         const price = formValue(root, ['priceAmount', 'price']);
         if (price !== undefined) fields.price = price;
         const priceType = formValue(root, ['priceType']);
@@ -817,7 +817,7 @@
     // Reihenfolge der Bilder, wie Kleinanzeigen sie fuehrt: Das Formular traegt
     // je Bild ein Hidden-Feld adImages[n].url, n ist die Position (0 = Titelbild).
     // Sie wird im ZIP zu image_01, image_02, ... Die Vorschaubilder der Seite
-    // stehen heute in derselben Reihenfolge (live geprueft 09/2026), verbindlich
+    // stehen in derselben Reihenfolge, verbindlich
     // ist aber nur der Index.
     const AD_IMAGE_FIELD = /^adImages\[(\d+)\]\.url$/;
 
@@ -1779,7 +1779,7 @@
 
     // JSON zuerst, DOM als Rueckfallebene. Die JSON-Quelle kennt alle Seiten und
     // das echte Erstelldatum; faellt sie aus (Schnittstelle geaendert, nicht
-    // eingeloggt, Netzfehler), arbeitet der Batch wie bisher mit dem DOM
+    // eingeloggt, Netzfehler), arbeitet der Batch mit dem DOM
     // weiter -- dann eben nur mit der sichtbaren Seite und geschaetztem Alter.
     async function collectCandidatesResilient(options) {
         const force = !!(options && options.force);
@@ -1837,7 +1837,7 @@
     }
 
     // Der Titel-Link einer Karte beginnt mit einem nur fuer Screenreader
-    // sichtbaren <span class="sr-only">Anzeige </span> (live gesehen 10/2026).
+    // sichtbaren <span class="sr-only">Anzeige </span>.
     // textContent nimmt ihn mit; ohne ihn steht der Titel wie auf der Seite.
     function cardTitleText(link) {
         const copy = link.cloneNode(true);
@@ -1863,8 +1863,8 @@
                 return;
             }
 
-            // Es werden ALLE Anzeigen mit lesbarem Datum gelistet, nicht mehr nur
-            // die aelteren. Was tatsaechlich laeuft, entscheidet die Auswahl im
+            // Es werden ALLE Anzeigen mit lesbarem Datum gelistet. Was
+            // tatsaechlich laeuft, entscheidet die Auswahl im
             // Overlay -- dort ist beim Oeffnen nichts angehakt.
             const days = daysUntil(endDate);
             matches.push({
@@ -1917,9 +1917,7 @@
         return b;
     }
 
-    // Der Aufruf stand dreimal wortgleich in den Overlays, inklusive desselben
-    // Log-Texts. Ein Textwechsel an zwei von drei Stellen waere eine lautlose
-    // Inkonsistenz gewesen.
+    // Gemeinsam fuer alle Overlays, damit Anzeige und Log-Text gleich bleiben.
     async function appendRecoveryIfPresent(parent) {
         let snapsMeta = [];
         try { snapsMeta = await listSnapshotMeta(); }
@@ -2507,7 +2505,7 @@
         // Der Filter blendet aus, statt nur abzuwaehlen: eine ausgeblendete
         // Anzeige kann nicht angehakt sein, und was beim Ausblenden angehakt
         // war, kommt beim Einblenden zurueck. Damit ist der Haken in beide
-        // Richtungen umkehrbar -- reines Abwaehlen war es nicht.
+        // Richtungen umkehrbar.
         function applyVisibility() {
             entries.forEach(function (e) {
                 const hide = !passesFavFilter(e.match);
@@ -2657,8 +2655,7 @@
             return row;
         }
 
-        // Gleiche Grenze wie die frueheren festen Links: "aelter als 7"
-        // nimmt Anzeigen ab 7 Tagen, passend zu den Farbbaendern.
+        // "aelter als 7" nimmt Anzeigen ab 7 Tagen, passend zu den Farbbaendern.
         overlay.appendChild(makePickRow('older', 'älter als', 'Tage', pickCfg.older,
             function (days) { return function (m, age) { return age >= days; }; }));
         // Abgelaufene (Restlaufzeit 0 oder negativ) gehoeren dazu. Ohne
@@ -2785,7 +2782,7 @@
         //   4. dieselbe Erlaubnis JETZT neu abgeleitet, direkt aus favCount
         //   5. Zeile sichtbar in der Liste
         // 3 und 4 sind absichtlich zwei verschiedene Dinge: 3 ist gespeicherter
-        // Zustand von damals, 4 ist die Ableitung von jetzt aus den Rohdaten.
+        // Zustand, 4 ist die aktuelle Ableitung aus den Rohdaten.
         // Nur wenn beide zum selben Ergebnis kommen, laeuft die Anzeige. Damit
         // schuetzt die Pruefung auch gegen einen Fehler in ihrer eigenen
         // Buchfuehrung -- ein einzelnes falsches Bit reicht nicht mehr aus.
@@ -2954,8 +2951,7 @@
         status.appendChild(cur);
 
         // Beide Hinweiszeilen gehoeren zum Geruest und werden ueber display
-        // ein- und ausgeblendet. Es ist immer hoechstens eine sichtbar, wie
-        // vorher auch.
+        // ein- und ausgeblendet. Es ist immer hoechstens eine sichtbar.
         const note = document.createElement('div');
         note.dataset.kaStopNote = 'true';
         note.style.cssText = 'color:#e74c3c;margin-top:4px;font-weight:600;';
@@ -3009,8 +3005,7 @@
         ui.cur.textContent = 'Aktuell: ' + (state.currentLabel || '\u2013');
 
         // Ausgeblendete Zeilen werden auch geleert, nicht nur versteckt:
-        // textContent des Overlays soll denselben Inhalt haben wie vorher, als
-        // die jeweilige Zeile gar nicht existierte.
+        // textContent des Overlays enthaelt nur sichtbare Hinweise.
         if (state.stopping) {
             ui.note.textContent = 'Stop angefordert – der laufende Vorgang wird noch zu Ende geführt.';
             ui.note.style.display = '';

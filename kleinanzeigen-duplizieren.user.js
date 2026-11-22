@@ -23,16 +23,6 @@
 /*
  * Basierend auf dem Original-Script von J05HI
  * https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5
- *
- * Änderungen in v3.4.0:
- * - Banner/Popup-Dismisser: Blendet störende Upsell-Banner und Popups automatisch aus
- * - "Ohne Hochschieben weiter"-Popup wird automatisch weggeklickt
- * - Kostenpflichtige Feature-Optionen werden ausgeblendet
- *
- * Änderungen in v3.5.2:
- * - Fix Issue #39: Popup-Dismisser klickt mit Cooldown erneut, solange das
- *   "Effektiver verkaufen"-Popup steht (vorher One-Shot, Klick konnte
- *   verpuffen bevor die Handler des Modals aktiv waren); Timeout 10s -> 30s
  */
 
 (function () {
@@ -111,8 +101,8 @@
      * Selektoren adaptiert aus dem Userscript von Andi (Zer089), MIT-Lizenz:
      * https://github.com/Zer089/Kleinanzeigen.de-Anzeige_duplizieren_neu_einstellen
      *
-     * Live geprueft am 18.08.2026 auf Startseite, Suchergebnis und Detailseite
-     * (jeweils ohne Login). [live] = hat dort echte Werbung getroffen,
+     * Auf Startseite, Suchergebnis und Detailseite (jeweils ohne Login)
+     * geprueft. [live] = hat dort echte Werbung getroffen,
      * [ungeprueft] = kein Treffer auf den erreichbaren Seiten. Ungeprueftes
      * bleibt drin, weil es entweder eingeloggte Seiten betrifft oder folgenlos
      * ist -- ein Selektor ohne Treffer tut nichts. Gegenrichtung ebenfalls
@@ -218,7 +208,7 @@
      * - Kein One-Shot: Das "Effektiver verkaufen"-Modal rendert seine Buttons,
      *   bevor die Click-Handler aktiv sind (Spinner im Modal). Ein einzelner
      *   früher Klick verpufft dann. Deshalb wird mit Cooldown erneut
-     *   geklickt, solange der Button noch im DOM steht (Issue #39).
+     *   geklickt, solange der Button noch im DOM steht.
      *
      * Lieber kein Auto-Click als ein falscher Click während der save-clicked-
      * Phase, in der das Original schon gelöscht ist.
@@ -410,7 +400,7 @@
 
     // Werte im Alt-Format (reiner String ohne Zeitstempel) gelten weiter, weil
     // ein Script-Update einen Tab mit altem Marker hinterlassen kann. Sie haben
-    // dann keine Verfallszeit -- wie vor der Umstellung. maxAgeMs (optional)
+    // keine Verfallszeit. maxAgeMs (optional)
     // ersetzt CONFIG.MARKER_MAX_AGE_MS fuer Marker mit eigener Laufzeit.
     function readVorgangMarker(key, maxAgeMs) {
         let raw = null;
@@ -441,10 +431,9 @@
         return value;
     }
 
-    // Spinner weg, Buttons wieder klickbar. Stand an sechs Stellen wortgleich
-    // als Zeilenpaar. Der Selektor muss zu den Klassennamen aus createButtons()
-    // und zur CSS-Regel in ensureStyles() passen -- eine Umbenennung dort ist
-    // jetzt an einer Stelle nachzuziehen statt an sechs.
+    // Spinner weg, Buttons wieder klickbar. Der Selektor muss zu den
+    // Klassennamen aus createButtons() und zur CSS-Regel in ensureStyles()
+    // passen.
     function releaseBusyUi() {
         showLoadingSpinner(false);
         document.querySelectorAll(ACTION_BUTTON_SELECTOR).forEach(btn => btn.disabled = false);
@@ -508,9 +497,9 @@
         }
 
         const controller = new AbortController();
-        // Der Timer startet erst nach der Token-Aufloesung. Lief er wie vorher
-        // schon davor, verbrauchte ein langsames Nachladen des CSRF-Tokens das
-        // Budget des Loesch-Requests: der wurde dann sofort mit AbortError
+        // Der Timer startet erst nach der Token-Aufloesung. Liefe er schon
+        // davor, verbrauchte ein langsames Nachladen des CSRF-Tokens das
+        // Budget des Loesch-Requests: der wuerde sofort mit AbortError
         // abgewiesen und als "Timeout beim Loeschen" gemeldet, obwohl er nie
         // gesendet wurde. resolveCsrfToken bringt sein eigenes Budget mit.
         let timeout = null;
@@ -556,10 +545,8 @@
     }
 
     // === HAUPTFUNKTIONEN ===
-    // Die Erkennungsregel des Speichern-Buttons steht hier einmal. Sie stand
-    // vorher zusaetzlich in describeAdIdLookup(), dort als indexOf(...) === 0 --
-    // zwei Formulierungen derselben Regel, und der Button-Text ist genau die
-    // Stelle, die Kleinanzeigen aendern kann.
+    // Die Erkennungsregel des Speichern-Buttons steht nur hier; der
+    // Button-Text ist genau die Stelle, die Kleinanzeigen aendern kann.
     function findSaveButtonIn(doc) {
         return Array.from(doc.querySelectorAll('button')).find(
             b => b.textContent.trim().startsWith('Anzeige speichern')
@@ -598,7 +585,7 @@
      * namensunabhaengig das Input gesucht, dessen Wert exakt der adId aus der
      * URL entspricht -- auf der Bearbeiten-Seite ist dieser Treffer eindeutig,
      * weil der Wert die ID der gerade bearbeiteten Anzeige ist. Damit ueberlebt
-     * die Aufloesung eine weitere Umbenennung des Feldnamens (Issue #49).
+     * die Aufloesung eine Umbenennung des Feldnamens.
      *
      * Bleibt der Treffer mehrdeutig, wird bewusst null geliefert: lieber
      * abbrechen als das falsche Feld neutralisieren.
@@ -608,8 +595,8 @@
         if (direct) return direct;
         if (!urlAdId) return null;
 
-        // Bewusst nur Hidden-Felder: das Ad-ID-Feld war in jeder bisherigen
-        // Variante versteckt. Ein sichtbares Feld mit zufaellig gleichem Wert
+        // Bewusst nur Hidden-Felder: das Ad-ID-Feld ist versteckt. Ein
+        // sichtbares Feld mit zufaellig gleichem Wert
         // (etwa ein Titel, der nur aus der ID besteht) wuerde durch die
         // Neutralisierung geleert -- die Kopie waere beschaedigt.
         const candidates = Array.from(doc.querySelectorAll('input[type="hidden"]'))
@@ -625,7 +612,7 @@
      * Ein Treffer per Fallback bedeutet: Kleinanzeigen hat den Feldnamen
      * geaendert. Das soll im Log stehen, bevor der naechste Selektor-Bruch
      * kommt -- sonst ist aus einem erfolgreichen Lauf nicht ablesbar, dass die
-     * bekannten Selektoren nicht mehr greifen (Issue #49).
+     * bekannten Selektoren nicht mehr greifen.
      */
     function describeAdIdResolution(el) {
         const perSelektor = el.matches(AD_ID_SELECTOR);
@@ -648,7 +635,7 @@
     /**
      * Bestandsaufnahme fuer den Abbruch-Fall. Ohne die Feldnamen aus der
      * betroffenen Umgebung ist nicht entscheidbar, ob das Feld nur umbenannt
-     * wurde oder ganz fehlt (Issue #49) -- die Ausgabe ist bewusst so knapp,
+     * wurde oder ganz fehlt -- die Ausgabe ist bewusst so knapp,
      * dass sie gefahrlos in ein Issue kopiert werden kann: nur Feldnamen und
      * Wertlaengen, keine Feldinhalte.
      */
@@ -695,13 +682,6 @@
      * Hash-Trigger (#duplicate / #smartRepublish) direkt beim Laden gestartet,
      * ist die Form noch nicht hydratisiert. Ein Speichern-Klick verpufft dann
      * -- der Vollbild-Spinner dreht endlos und der Batch meldet einen Fehler.
-     *
-     * Bis 3.9.0 kam smartRepublish ohne diesen Wait aus, weil die Loeschung des
-     * Originals (Netzwerk + 2s Pause) davor lag und die Zeit nebenbei
-     * mitbrachte. Mit der Umstellung auf "erst anlegen, dann loeschen" fiel
-     * diese Pause weg -- und damit im Batch der Klick ins Leere. Seitdem steht
-     * die Wartezeit explizit hier, statt sich auf einen Nebeneffekt zu
-     * verlassen.
      */
     async function awaitFormReady() {
         await waitUntilPageLoaded();
@@ -897,8 +877,8 @@
     // nicht mehr zusammen.
     // Die Versandmethoden (shippingOptions[n].id) fuehrt das Formular aus
     // seiner eigenen Auswahl und der Paketgroessen-Empfehlung; ein direkt
-    // gesetzter Wert hielt live nicht (10/2026: gesichert DHL_001, danach
-    // standen drei Methoden im Formular). Sie werden nur verglichen, siehe
+    // gesetzter Wert haelt nicht (gesichert eine Methode, danach stehen drei
+    // im Formular). Sie werden nur verglichen, siehe
     // compareShippingOptions.
     const RESTORE_SKIP_FIELD = /^(adId|adDraftUuid|posterType|trackingId|postAdWenkseSessionId|locationId|buyNowEligible|articles|marketingOptIn|categoryId|parentCategoryId)$|^adImages\[|^shippingOptions\[/;
 
@@ -999,9 +979,8 @@
      * bleiben hier unberuehrt: sie setzt applyAttributeWidgets ueber die
      * Auswahlknoepfe. Ein vorab direkt gesetzter Wert wuerde dort die Pruefung
      * nach dem Klick aushebeln -- das Feld truege den Sollwert dann schon,
-     * egal ob der Klick gewirkt hat. Snapshots von Hauptscript < 3.11.0 haben
-     * keine hiddenFields; dann bleiben Preistyp und Attribute auf dem Standard
-     * des Formulars.
+     * egal ob der Klick gewirkt hat. Bei Snapshots ohne hiddenFields bleiben
+     * Preistyp und Attribute auf dem Standard des Formulars.
      *
      * Rueckgabe: { set, kept, missing, skipped, attributes } -- jeweils
      * Feldnamen; attributes fuellt erst applyAttributeWidgets.
@@ -1032,7 +1011,7 @@
     // === KATEGORIE-ATTRIBUTE UEBER DIE AUSWAHLKNOEPFE VON KLEINANZEIGEN ===
     // Art, Farbe, Zustand und andere Attribute haengen an einem versteckten
     // Feld, das React kontrolliert: ein direkt gesetzter Wert ueberlebt den
-    // naechsten Re-Render nicht (live gesehen 10/2026). Verlaesslich ist nur
+    // naechsten Re-Render nicht. Verlaesslich ist nur
     // der Weg des Nutzers -- Knopf oeffnen, Eintrag waehlen. Zwei Bauarten:
     //  - Listbox: button#<key>[role=combobox] und ul#<key>-menu mit
     //    li[role=option]. Die Eintraege tragen keinen Wert, nur ihren Text; der
@@ -1159,10 +1138,10 @@
      * zum Waehlen von Hand.
      *
      * Ohne Auswahlknopf:
-     *  - Gibt es zum Attribut ein anderes Bedienelement (live 10/2026: die
-     *    Marke ist ein Eingabefeld mit Vorschlagsliste, input#<key>), wird
-     *    nichts gesetzt ('widget_unsupported'). Ein direkt gesetzter Wert
-     *    hielt dort nicht; das Panel nennt das Feld zum Eintragen von Hand.
+     *  - Gibt es zum Attribut ein anderes Bedienelement (etwa die Marke als
+     *    Eingabefeld mit Vorschlagsliste, input#<key>), wird nichts gesetzt
+     *    ('widget_unsupported'). Ein direkt gesetzter Wert haelt dort nicht;
+     *    das Panel nennt das Feld zum Eintragen von Hand.
      *  - Gibt es gar kein Bedienelement, ist der direkte Wert der einzige Weg.
      */
     async function applyAttributeWidgets(root, snap, report) {
@@ -1444,8 +1423,7 @@
      * das ganze Dokument. Sonst landen Felder aus Suchleiste, Newsletter-Box
      * oder Cookie-Bannern im Snapshot. Bevorzugt wird das Formular, in dem das
      * Ad-ID-Feld haengt; erst wenn das nicht aufloesbar ist, wird auf das erste
-     * Formular und zuletzt auf das Dokument zurueckgefallen -- damit wird die
-     * Erfassung nie schlechter als vorher.
+     * Formular und zuletzt auf das Dokument zurueckgefallen.
      */
     function getAdFormRoot(doc, urlAdId) {
         const d = doc || document;
@@ -1510,7 +1488,7 @@
         if (titleInput) fields.title = titleInput.value;
         const descTa = root.querySelector('textarea[name="description"], textarea#description');
         if (descTa) fields.description = descTa.value;
-        // "priceAmount" ist der aktuelle Name (live gesehen 09/2026), "price" der fruehere.
+        // Feldname "priceAmount", ersatzweise "price".
         const price = formValue(root, ['priceAmount', 'price']);
         if (price !== undefined) fields.price = price;
         const priceType = formValue(root, ['priceType']);
@@ -1529,11 +1507,11 @@
     // Zurueckgefallen wird bewusst auf das ganze Dokument, wenn im Formular kein
     // einziges Bild steckt: liegt die Galerie ausserhalb des <form>, waere ein
     // strikter Scope schlimmer als das Problem -- der Snapshot haette dann gar
-    // keine Bilder mehr. So wird die Erfassung nie schlechter als vorher.
+    // keine Bilder mehr.
     // Reihenfolge der Bilder, wie Kleinanzeigen sie fuehrt: Das Formular traegt
     // je Bild ein Hidden-Feld adImages[n].url, n ist die Position (0 = Titelbild).
     // Sie wird im ZIP zu image_01, image_02, ... Die Vorschaubilder der Seite
-    // stehen heute in derselben Reihenfolge (live geprueft 09/2026), verbindlich
+    // stehen in derselben Reihenfolge, verbindlich
     // ist aber nur der Index.
     const AD_IMAGE_FIELD = /^adImages\[(\d+)\]\.url$/;
 
@@ -1719,12 +1697,10 @@
             }
 
             // REIHENFOLGE: erst anlegen, dann loeschen.
-            // Bis Helper 1.8.0 wurde das Original zuerst geloescht und danach die
-            // neue Anzeige angelegt. Scheiterte der zweite Schritt, war die
-            // Anzeige weg -- der Snapshot war die einzige Rettung. Jetzt bleibt
-            // das Original bestehen, bis der Server die Neuanlage bestaetigt hat;
-            // geloescht wird erst auf der Bestaetigungs-Seite. Der schlimmste
-            // Fall ist damit ein Duplikat, kein verlorener Datensatz.
+            // Das Original bleibt bestehen, bis der Server die Neuanlage
+            // bestaetigt hat; geloescht wird erst auf der Bestaetigungs-Seite.
+            // Der schlimmste Fall ist damit ein Duplikat, kein verlorener
+            // Datensatz.
 
             // Erst wenn die Form bedienbar ist, darf neutralisiert und geklickt
             // werden -- im Batch startet dieser Ablauf direkt beim Seitenladen.
