@@ -5,7 +5,7 @@
 // @icon          https://www.kleinanzeigen.de/favicon.ico
 // @copyright     2026
 // @license       MIT
-// @version       3.12.0
+// @version       3.12.1
 // @author        OldRon1977
 // @credits       J05HI - Original-Gist, Grundlage des Projekts: https://gist.github.com/J05HI/9f3fc7a496e8baeff5a56e0c1a710bb5
 // @credits       karlvonbonin - Wiederherstellen aus Sicherung: Formular "Anzeige aufgeben" aus dem Snapshot befuellen (PR #74)
@@ -38,7 +38,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '3.12.0'; // wird von scripts/build.js synchron zu package.json gehalten
+    const SCRIPT_VERSION = '3.12.1'; // wird von scripts/build.js synchron zu package.json gehalten
 
     // === KONSTANTEN ===
     const CONFIG = {
@@ -463,26 +463,29 @@
         throw new Error('CSRF-Token nicht gefunden (weder meta noch input)');
     }
 
-    // Auf der Bestaetigungs-Seite steht das CSRF-Meta nicht zwingend im DOM.
-    // Dann wird es aus "Meine Anzeigen" nachgeladen, statt die Loeschung
-    // scheitern zu lassen.
+    // Auf der Bestaetigungs-Seite steht das CSRF-Token nicht im DOM. Dann wird
+    // es wie von der Seite selbst aus dem Profil geholt (Feld csrfToken);
+    // "Meine Anzeigen" hat kein _csrf-Meta-Tag.
     async function resolveCsrfToken() {
         try {
             return getCsrfToken();
         } catch (e) {
-            logger.log('CSRF-Token nicht im Dokument, lade aus "Meine Anzeigen" nach');
+            logger.log('CSRF-Token nicht im Dokument, lade aus dem Profil nach');
         }
         // Eigener Abbruch fuer diesen Request. Ohne ihn haengt die Loeschung
-        // unbegrenzt, wenn der Server auf "Meine Anzeigen" nicht antwortet --
-        // und der Aufrufer meldet dann nie ein Ergebnis.
+        // unbegrenzt, wenn der Server nicht antwortet -- und der Aufrufer
+        // meldet dann nie ein Ergebnis.
         const csrfController = new AbortController();
         const csrfTimeout = setTimeout(() => csrfController.abort(), CONFIG.CSRF_FETCH_TIMEOUT_MS);
-        let res;
+        let data;
         try {
-            res = await fetch('https://www.kleinanzeigen.de/m-meine-anzeigen.html', {
+            const res = await fetch('https://www.kleinanzeigen.de/m-mein-profil.json', {
+                headers: { 'accept': 'application/json', 'x-requested-with': 'XMLHttpRequest' },
                 credentials: 'same-origin',
                 signal: csrfController.signal
             });
+            if (!res.ok) throw new Error('CSRF-Token nicht ermittelbar (HTTP ' + res.status + ')');
+            data = await res.json();
         } catch (e) {
             // Der eigene Abbruch wird hier in einen sprechenden Fehler
             // uebersetzt. Sonst liest der Aufrufer einen AbortError und meldet
@@ -493,11 +496,10 @@
         } finally {
             clearTimeout(csrfTimeout);
         }
-        if (!res.ok) throw new Error('CSRF-Token nicht ermittelbar (HTTP ' + res.status + ')');
-        const html = await res.text();
-        const m = html.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/i);
-        if (!m) throw new Error('CSRF-Token nicht ermittelbar (kein meta-Tag)');
-        return m[1];
+        if (!data || typeof data.csrfToken !== 'string' || !data.csrfToken) {
+            throw new Error('CSRF-Token nicht ermittelbar (kein csrfToken im Profil)');
+        }
+        return data.csrfToken;
     }
 
     async function deleteAd(adId) {

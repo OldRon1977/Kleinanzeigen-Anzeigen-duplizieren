@@ -19,6 +19,7 @@ const {
 } = worker;
 
 const EDIT_FORM = fixture('edit-page-form.html');
+const MY_ADS_LIST = fixture('meine-anzeigen-list.html');
 const AD = '1000000001';
 
 function setPage(path) {
@@ -55,8 +56,20 @@ function imageFetchMock() {
         if (String(url).includes('img.kleinanzeigen.de')) {
             return { ok: true, status: 200, blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }) };
         }
+        // Wie live: "Meine Anzeigen" ohne _csrf-Meta, das Token steht im Profil.
+        if (String(url).includes('m-meine-anzeigen.html')) {
+            return { ok: true, status: 200, text: async () => MY_ADS_LIST };
+        }
+        if (String(url).includes('m-mein-profil.json')) {
+            return { ok: true, status: 200, json: async () => ({ userId: 'x', csrfToken: 'TEST-csrf' }) };
+        }
         return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
     });
+}
+
+function deleteToken() {
+    const call = global.fetch.mock.calls.find((c) => String(c[0]).includes('m-anzeigen-loeschen.json'));
+    return call && call[1].headers['x-csrf-token'];
 }
 
 let deleteCalls;
@@ -152,10 +165,11 @@ describe('smartRepublish auf der echten Bearbeiten-Seite', () => {
         // Navigation nach dem Speichern: derselbe Tab, neue Seite
         setPage('/p-anzeige-aufgeben-bestaetigung.html?adId=2000000001');
         document.body.innerHTML = '<div>Anzeige aufgegeben</div>';
-        document.head.innerHTML = '<meta name="_csrf" content="TEST-csrf">';
+        document.head.innerHTML = '';
         await handleConfirmationPage();
 
         expect(deleteCalls()).toEqual([expect.stringContaining('ids=' + AD)]);
+        expect(deleteToken()).toBe('TEST-csrf');
         expect(localStorage.getItem('ka-batch-result-' + AD)).toBe('ok');
         expect(sessionStorage.getItem('ka-delete-after-create')).toBeNull();
         // Im Batch löscht der Helper den Snapshot, nicht die Bestätigungsseite
@@ -272,13 +286,14 @@ describe('init: welche Seite welchen Ablauf startet', () => {
 
     it('auf der Bestätigungsseite wird der Löschauftrag ausgeführt', async () => {
         setPage('/p-anzeige-aufgeben-bestaetigung.html');
-        document.head.innerHTML = '<meta name="_csrf" content="TEST-csrf">';
+        document.head.innerHTML = '';
         document.body.innerHTML = '';
         sessionStorage.setItem('ka-delete-after-create', JSON.stringify({ v: AD, ts: Date.now() }));
         sessionStorage.setItem('ka-batch-original-adid', JSON.stringify({ v: AD, ts: Date.now() }));
         init();
         await vi.waitFor(() => expect(localStorage.getItem('ka-batch-result-' + AD)).toBe('ok'));
         expect(deleteCalls()).toHaveLength(1);
+        expect(deleteToken()).toBe('TEST-csrf');
     });
 
     it('auf "Anzeige aufgeben" ohne Auftrag passiert nichts außer dem Werbeblocker', () => {

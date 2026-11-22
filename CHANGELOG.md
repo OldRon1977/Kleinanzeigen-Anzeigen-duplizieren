@@ -2,6 +2,10 @@
 
 Hauptscript (`kleinanzeigen-duplizieren.user.js`) und Helper (`helper.user.js`) haben getrennte Versionsnummern.
 
+## 3.12.1 — November 2026
+
+- Behoben: Original wurde nach "Smart neu einstellen" nicht gelöscht, wenn die Bestätigungsseite kein CSRF-Token im DOM hat (Firefox); Token kommt jetzt aus `/m-mein-profil.json` (#86)
+
 ## Helper 1.18.0 — November 2026
 
 - Neu: Abschluss von "Auswahl verlängern" nennt je Anzeige das neue Enddatum
