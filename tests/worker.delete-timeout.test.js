@@ -17,7 +17,7 @@ const ORIG = '3485614406';
 // "geteiltes Budget" nicht messen.
 function delayedFetch(plan) {
     return vi.fn((url, options) => {
-        const key = String(url).includes('m-meine-anzeigen') ? 'csrf' : 'delete';
+        const key = String(url).includes('m-mein-profil.json') ? 'csrf' : 'delete';
         const entry = plan[key];
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => resolve(entry.response()), entry.delayMs);
@@ -37,7 +37,7 @@ function delayedFetch(plan) {
 const okCsrfPage = () => ({
     ok: true,
     status: 200,
-    text: async () => '<meta name="_csrf" content="tok-from-page">'
+    json: async () => ({ userId: 'x', csrfToken: 'tok-from-profile' })
 });
 
 const okDelete = () => ({ ok: true, status: 200, json: async () => ({}) });
@@ -67,7 +67,7 @@ describe('deleteAd: getrennte Budgets fuer Token und Loeschung', () => {
         await expect(p).resolves.toEqual({});
 
         const urls = global.fetch.mock.calls.map((c) => String(c[0]));
-        expect(urls.some((u) => u.includes('m-meine-anzeigen'))).toBe(true);
+        expect(urls.some((u) => u.includes('m-mein-profil.json'))).toBe(true);
         expect(urls.some((u) => u.includes('m-anzeigen-loeschen.json?ids=' + ORIG))).toBe(true);
     });
 
@@ -101,6 +101,23 @@ describe('deleteAd: getrennte Budgets fuer Token und Loeschung', () => {
     });
 });
 
+describe('deleteAd ohne Token im Dokument (Bestaetigungs-Seite)', () => {
+    it('sendet das Profil-Token im x-csrf-token-Header', async () => {
+        global.fetch = delayedFetch({
+            csrf: { delayMs: 0, response: okCsrfPage },
+            delete: { delayMs: 0, response: okDelete }
+        });
+
+        const p = deleteAd(ORIG);
+        await vi.advanceTimersByTimeAsync(10);
+        await p;
+        const del = global.fetch.mock.calls.find((c) => String(c[0]).includes('m-anzeigen-loeschen.json'));
+        expect(String(del[0])).toBe('https://www.kleinanzeigen.de/m-anzeigen-loeschen.json?ids=' + ORIG);
+        expect(del[1].method).toBe('POST');
+        expect(del[1].headers['x-csrf-token']).toBe('tok-from-profile');
+    });
+});
+
 describe('resolveCsrfToken', () => {
     it('nimmt das Token aus dem Dokument, ohne zu laden', async () => {
         document.head.innerHTML = '<meta name="_csrf" content="tok-im-dom">';
@@ -108,6 +125,30 @@ describe('resolveCsrfToken', () => {
 
         await expect(resolveCsrfToken()).resolves.toBe('tok-im-dom');
         expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('holt das Token aus /m-mein-profil.json, wenn das Dokument keins hat', async () => {
+        global.fetch = delayedFetch({
+            csrf: { delayMs: 0, response: okCsrfPage },
+            delete: { delayMs: 0, response: okDelete }
+        });
+
+        const p = resolveCsrfToken();
+        await vi.advanceTimersByTimeAsync(10);
+        await expect(p).resolves.toBe('tok-from-profile');
+        expect(String(global.fetch.mock.calls[0][0])).toBe('https://www.kleinanzeigen.de/m-mein-profil.json');
+    });
+
+    it('meldet ein leeres csrfToken im Profil als Fehler', async () => {
+        global.fetch = delayedFetch({
+            csrf: { delayMs: 0, response: () => ({ ok: true, status: 200, json: async () => ({ csrfToken: '' }) }) },
+            delete: { delayMs: 0, response: okDelete }
+        });
+
+        const p = resolveCsrfToken();
+        const assertion = expect(p).rejects.toThrow('kein csrfToken im Profil');
+        await vi.advanceTimersByTimeAsync(10);
+        await assertion;
     });
 
     it('bricht das Nachladen nach CSRF_FETCH_TIMEOUT_MS ab', async () => {

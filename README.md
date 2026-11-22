@@ -154,12 +154,11 @@ Auf allen Seiten von kleinanzeigen.de blendet es Werbung aus: Seitenbanner, Bill
 ### Endpunkte
 
 - `POST /m-anzeigen-loeschen.json?ids={adId}` – Original löschen (Hauptscript)
-- `GET /m-meine-anzeigen.html` – CSRF-Token nachladen, wenn keines im DOM steht (Hauptscript)
 - `GET /m-meine-anzeigen-verwalten.json?pageNum={n}&sort=DEFAULT` – Anzeigenliste, höchstens 20 Seiten (Helper)
 - `GET /m-einstellungen-bearbeiten.json` – Anzeigenkontingent, Feld `newAdCount` (Helper)
 - `GET /p-anzeige-bearbeiten.html?adId={adId}` – Bearbeiten-Seite für "Auswahl sichern", nur lesend (Helper)
 - `POST /m-anzeigen-verlaengern.json?ids={adId}` mit Header `X-CSRF-TOKEN` – kostenlos verlängern, eine Anzeige je Request (Helper)
-- `GET /m-mein-profil.json` – CSRF-Token für das Verlängern, Feld `csrfToken` (Helper)
+- `GET /m-mein-profil.json` – CSRF-Token, Feld `csrfToken`: zum Löschen des Originals, wenn keines im DOM steht (Hauptscript), und für das Verlängern (Helper)
 - `GET /m-access-token.json` – Zugriffstoken im Antwort-Header `Authorization` (Helper)
 - `GET https://gateway.kleinanzeigen.de/private-bundles/v1/me/ads/bundles` mit diesem Header – gebuchte Pakete je Anzeige, `bundles[].adId` und `bundles[].bundle.bundleType` (Helper)
 - `GET https://img.kleinanzeigen.de/...?rule=$_57.JPG` – Bilder in voller Auflösung (beide)
@@ -172,7 +171,7 @@ Auf allen Seiten von kleinanzeigen.de blendet es Werbung aus: Seitenbanner, Bill
 
 **Löschen schlägt fehl**:
 - Sitzung abgelaufen → neu anmelden.
-- "CSRF-Token nicht ermittelbar (Timeout)": "Meine Anzeigen" hat nicht innerhalb von 8 Sekunden geantwortet. Nichts wurde gelöscht. Kurz warten, erneut versuchen.
+- "CSRF-Token nicht ermittelbar (Timeout)": `/m-mein-profil.json` hat nicht innerhalb von 8 Sekunden geantwortet. Nichts wurde gelöscht. Kurz warten, erneut versuchen.
 - "Timeout beim Löschen": Der Löschauftrag kam nicht innerhalb von 8 Sekunden zurück. Ob gelöscht wurde, zeigt "Meine Anzeigen".
 
 **Upsell-Popup blockiert den Vorgang**: Seite neu laden und erneut versuchen. In der Konsole (F12) nach `[KA-Script] Popup erkannt` suchen.

@@ -92,10 +92,10 @@ describe('Bestaetigungs-Seite: erst anlegen, dann loeschen', () => {
     });
 
     it('holt das CSRF-Token nach, wenn die Seite keins im DOM hat', async () => {
-        // Kein meta-Tag: das Token muss aus "Meine Anzeigen" nachgeladen werden.
+        // Kein meta-Tag: das Token muss aus dem Profil nachgeladen werden.
         global.fetch = vi.fn(async (url) => {
-            if (String(url).includes('m-meine-anzeigen.html')) {
-                return { ok: true, status: 200, text: async () => '<meta name="_csrf" content="tok-nachgeladen">' };
+            if (String(url).includes('m-mein-profil.json')) {
+                return { ok: true, status: 200, json: async () => ({ csrfToken: 'tok-nachgeladen' }) };
             }
             return { ok: true, status: 200, json: async () => ({}) };
         });
